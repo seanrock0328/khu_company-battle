@@ -1,0 +1,91 @@
+/* 담당 A: 화면 꾸미기는 이 파일에서 */
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --text: #1d1f23;
+  --muted: #6b7280;
+  --accent: #9e1b32; /* 경희 크림슨 느낌 */
+  --line: #e2e4e8;
+  --bubble: #fee500;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header { padding: 24px 16px 8px; text-align: center; }
+header h1 { margin: 0; color: var(--accent); }
+.sub { margin: 4px 0 0; color: var(--muted); }
+
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+.companies {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+@media (max-width: 640px) {
+  .companies { grid-template-columns: 1fr; }
+}
+
+.company, .card, .messenger {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.company h3 { margin-top: 0; }
+.company .row { display: flex; gap: 6px; margin: 8px 0; }
+.company select, .company input { padding: 6px; font-size: 14px; }
+.company input { flex: 1; min-width: 0; }
+.company ul { padding-left: 18px; }
+.company .spent { color: var(--muted); font-size: 14px; }
+.company .remove { margin-left: 6px; font-size: 12px; padding: 2px 6px; }
+
+label { display: block; font-weight: bold; }
+textarea {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.counter { font-size: 12px; color: var(--muted); font-weight: normal; }
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 15px;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* 사내 메신저 말풍선 */
+.messenger h3 { margin-top: 0; }
+.msg { margin: 10px 0; }
+.msg .who { font-size: 12px; color: var(--muted); }
+.msg .bubble {
+  display: inline-block;
+  background: #eef0f3;
+  padding: 8px 12px;
+  border-radius: 12px;
+  margin-top: 2px;
+}
+.msg.ceo .bubble { background: var(--bubble); }
+
+#verdict { margin: 16px 0; }
+#verdict:empty { display: none; }
