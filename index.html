@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>10자 사원 주식회사</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>10자 사원 주식회사</h1>
+    <p class="sub">지시는 내려갈수록 짧아진다</p>
+  </header>
+
+  <main>
+    <!-- 1단계: 채용 (담당 A가 꾸미고, 담당 B가 규칙을 채움) -->
+    <section id="screen-hire" class="screen active">
+      <h2>1. 채용</h2>
+      <p>각 회사는 예산 <b id="budget-total"></b> 안에서 직원을 뽑습니다. 성격은 10자 이내로 적어요.</p>
+      <div class="companies">
+        <div class="company" data-company="0"></div>
+        <div class="company" data-company="1"></div>
+      </div>
+      <button id="btn-to-crisis">채용 끝, 위기 받기</button>
+    </section>
+
+    <!-- 2단계: 위기와 사장 지시 -->
+    <section id="screen-crisis" class="screen">
+      <h2>2. 위기 발생</h2>
+      <div id="crisis-card" class="card"></div>
+      <div class="companies">
+        <label>A사 사장님 지시 (100자)
+          <textarea id="order-0" maxlength="100" rows="4"></textarea>
+          <span class="counter" data-for="order-0"></span>
+        </label>
+        <label>B사 사장님 지시 (100자)
+          <textarea id="order-1" maxlength="100" rows="4"></textarea>
+          <span class="counter" data-for="order-1"></span>
+        </label>
+      </div>
+      <button id="btn-run">지시 내리기</button>
+    </section>
+
+    <!-- 3단계: 사내 메신저와 결과 -->
+    <section id="screen-result" class="screen">
+      <h2>3. 지시가 내려가는 중</h2>
+      <div class="companies">
+        <div class="messenger" id="messenger-0"></div>
+        <div class="messenger" id="messenger-1"></div>
+      </div>
+      <div id="verdict" class="card"></div>
+      <button id="btn-restart">다시 하기</button>
+    </section>
+  </main>
+
+  <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결 -->
+  <script src="data/crisis.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
