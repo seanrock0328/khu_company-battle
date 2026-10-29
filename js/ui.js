@@ -122,8 +122,8 @@ function renderFoundingNews() {
       <p class="detail">${esc(c.detail)}</p>
     </article>
     <div class="card teaser">
-      <p><b>2년, 8분기</b> 동안 위기 ${EVENT_ORDER.filter(t => t === "위기").length}번과 기회 ${EVENT_ORDER.filter(t => t === "기회").length}번이 찾아옵니다.</p>
-      <p class="hint">2년 누적 수익으로 순위를 겨룹니다. 인건비 예산은 ${budgetOf(c)}, 분기마다 연봉 1당 ${COST_PER_SALARY}만원이 나갑니다.</p>
+      <p><b>1년, 4분기</b> 동안 위기 ${EVENT_ORDER.filter(t => t === "위기").length}번과 기회 ${EVENT_ORDER.filter(t => t === "기회").length}번이 찾아옵니다.</p>
+      <p class="hint">1년 누적 수익으로 순위를 겨룹니다. 인건비 예산은 ${budgetOf(c)}, 분기마다 연봉 1당 ${COST_PER_SALARY}만원이 나갑니다.</p>
     </div>`;
 }
 
@@ -160,13 +160,16 @@ function renderInterview(index) {
       ${statBar("능력", x.skill)}
       ${statBar("운", x.luck, "luck")}
       <div class="stat hidden-stat"><span>정직</span><div class="bar"><div></div></div><b>???</b></div>
-      <div class="qa">
-        <p class="q">Q. 우리 회사에서 무엇을 하고 싶나요?</p>
-        <p class="a">${esc(x.answer)}</p>
+      <div class="interview-questions" aria-label="${esc(x.name)}에게 할 질문">
+        ${INTERVIEW_QUESTIONS.map(q => `<button class="secondary small" data-action="ask" data-id="${x.id}" data-question="${q.id}" aria-pressed="${x.interviewed.includes(q.id)}">${esc(q.label)}${x.interviewed.includes(q.id) ? " ✓" : ""}</button>`).join("")}
       </div>
+      ${x.interviewed.length ? x.interviewed.map(id => `<div class="qa">
+        <p class="q">Q. ${esc(INTERVIEW_QUESTIONS.find(q => q.id === id).question)}</p>
+        <p class="a">${esc(interviewAnswer(x, id))}</p>
+      </div>`).join("") : '<p class="hint">질문을 골라 답변을 들어 보세요. 면접 답변이 모두 진실일까요?</p>'}
       <div class="cand-foot">
         <span class="salary">연봉 <b>${x.salary}</b></span>
-        <button class="${hired ? "secondary" : "primary"} small" data-action="hire" data-id="${x.id}">${hired ? "채용됨 ✓" : "채용"}</button>
+        <button class="${hired ? "secondary" : "primary"} small" data-action="hire" data-id="${x.id}" ${!x.interviewed.length ? "disabled" : ""}>${hired ? "채용됨 ✓" : "채용"}</button>
       </div>
     </article>`;
   }).join("");
@@ -192,33 +195,77 @@ function renderInterview(index) {
 // ===== 이벤트 =====
 
 function hearts(n) {
-  return `<span class="hearts" title="충성심 ${n}/10">${"♥".repeat(Math.ceil(n / 2))}<span class="empty">${"♥".repeat(5 - Math.ceil(n / 2))}</span></span>`;
+  return `<span class="hearts" title="충성심 ${n}/10" aria-label="충성심 ${n}/10">${"♥".repeat(Math.ceil(n / 2))}<span class="empty">${"♥".repeat(5 - Math.ceil(n / 2))}</span> ${n}/10</span>`;
+}
+
+function powerPanel(stage) {
+  const c = game.company;
+  const used = c.powerUsed;
+  const staff = staffOf(c);
+  return `<section class="power-panel" aria-label="사장 필살기">
+    <h3>⚡ 사장 필살기 <small>${used ? "남은 횟수 0 / 1" : "세 가지 중 한 번만 사용"}</small></h3>
+    ${used ? `<p class="hint">${quarterLabel(used.round)}에 ${esc(CEO_POWERS.find(p => p.id === used.id).name)} 사용</p>` : ""}
+    <div class="power-grid">${CEO_POWERS.map(p => {
+      const disabled = used || !staff.length || (stage === "before" ? p.id === "visit" : p.id !== "visit")
+        || (p.id === "direct" && staff.length < 2) || (p.id === "dinner" && staff.every(x => x.loyalty === LOYALTY_MAX));
+      return `<button type="button" class="secondary power-button" data-power="${p.id}" ${disabled ? "disabled" : ""}>
+        <b>${esc(p.name)}</b><small>${esc(p.when)} · ${esc(p.text)}</small></button>`;
+    }).join("")}</div>
+  </section>`;
+}
+
+function renderDecisionTools() {
+  const round = game.company.rounds[game.round];
+  const box = document.getElementById("decision-tools");
+  box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
+    <h3>🗂️ 보고 옆에 놓인 단서</h3>
+    ${cluesFor(round).map(text => `<p>${esc(text)}</p>`).join("")}
+    <p class="hint">일부 상황만 담긴 단서입니다. 보고와 비교해 보세요. 성공 여부를 확정하는 증거는 아닙니다.</p>
+    </section>${powerPanel("after")}
+    ${round.power === "visit" ? `<section class="visit-result" aria-label="현장 출동 결과">
+      <h3>🔎 사장님이 직접 확인한 현장</h3>
+      <p>${esc(round.result.action)}</p><p>${esc(round.result.audit)}</p>
+      <p><b>성과 ${round.result.score}점 · ${round.result.score >= SUCCESS_LINE ? "잘 수행함" : "수행 실패"}</b></p>
+      <p class="hint">확인한 사실을 바탕으로 칭찬·추궁을 선택하세요.</p></section>` : ""}`;
 }
 
 function renderEvent() {
   const c = game.company;
   const ev = c.events[game.round];
+  const round = c.rounds[game.round];
+  const activeStaff = staffOf(c);
   document.getElementById("event-heading").textContent = `${quarterLabel(game.round)} · ${game.round + 1} / ${ROUNDS}`;
   document.getElementById("profit-now").innerHTML = game.round
     ? `누적 수익 <b class="${totalProfit(c) < 0 ? "neg" : "pos"}">${money(totalProfit(c))}</b>` : "";
-  const chain = staffOf(c).map(x => `<li><span class="rank">${x.rank}</span>${esc(x.name)} ${hearts(x.loyalty)}
+  const chain = transmissionStaff(c).map(x => `<li><span class="rank">${x.rank}</span>${esc(x.name)} ${hearts(x.loyalty)}
     <small>${x.mbti} · ${rankInfo(x.rank).chars}자</small></li>`).join("");
   const quit = allCandidates(c).filter(x => x.quit).map(x => `${x.rank} ${esc(x.name)}`);
   document.getElementById("event-box").innerHTML = `
     <div class="card">
       ${companyTitle(c)}
+      <ol class="quarter-track" aria-label="1년 경영 진행도">${EVENT_ORDER.map((type, i) => `<li class="${i < game.round ? "done" : i === game.round ? "current" : ""}" ${i === game.round ? 'aria-current="step"' : ""}>${quarterLabel(i)}<small>${type}${i < game.round ? " ✓" : ""}</small></li>`).join("")}</ol>
       <div class="event ${ev.type === "기회" ? "chance" : "crisis"}">
         <p class="tag">${ev.type === "기회" ? "✨ 기회" : "⚠️ 위기"}</p>
         <h3>${esc(ev.title)}</h3>
         <p>${esc(ev.text)}</p>
       </div>
+      ${activeStaff.length ? powerPanel("before") : ""}
+      ${game.round === ROUNDS - 1 && activeStaff.length ? `<fieldset class="final-strategy">
+        <legend>🏁 마지막 분기, 어떤 승부를 걸까요?</legend>
+        <p class="hint">두 전략 모두 인건비·불이익·필살기 비용은 별도입니다. 지시를 내리기 전에 하나를 골라 주세요.</p>
+        ${FINAL_STRATEGIES.map(s => `<label class="strategy-option">
+          <input type="radio" name="final-strategy" data-strategy="${s.id}" ${round.strategy === s.id ? "checked" : ""}>
+          <span><b>${esc(s.name)}</b><small>${esc(s.text)}</small></span></label>`).join("")}
+        <p class="hint">신사업 매출 범위 0~1억 4,000만원 · 안전 운영 매출 범위 4,000~6,000만원</p>
+      </fieldset>` : ""}
       <label class="field">사장님 지시
-        <span class="counter" data-for="order">0 / ${ORDER_MAX}</span>
-        <textarea id="order" maxlength="${ORDER_MAX}" rows="4" placeholder="예: 오늘 안에 해결해. 고객에게는 솔직하게 사과하고, 원인은 내일 아침까지 보고해."></textarea>
+        <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span>
+        <textarea id="order" maxlength="${ORDER_MAX}" rows="4" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 오늘 안에 해결해. 고객에게는 솔직하게 사과하고, 원인은 내일 아침까지 보고해.">${esc(round.order)}</textarea>
       </label>
       <p class="field-label">이 지시를 듣는 순서 <span class="hint">♥ 충성심</span></p>
       <ol class="chain">${chain}</ol>
       ${quit.length ? `<p class="hint">퇴사: ${quit.join(", ")}</p>` : ""}
+      ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : `<p class="hint">이번 분기 인건비 ${money(payroll(c) * COST_PER_SALARY, false)} · 성과 ${SUCCESS_LINE}점 이상이면 잘 수행한 것으로 판정합니다.</p>`}
     </div>`;
 }
 
@@ -232,26 +279,30 @@ async function renderReports() {
   document.getElementById("result-box").innerHTML = `
     <div class="card">
       <div class="messenger" id="room"><p class="room">📈 보고 라인</p></div>
-    </div>`;
+    </div><div id="decision-tools"></div>`;
   const room = document.getElementById("room");
-  const up = [...staffOf(c)].reverse();
+  const up = [...c.rounds[game.round].chain].reverse().map(id => candidateById(c, id));
   for (let k = 0; k < up.length; k++) {
     const isFinal = k === up.length - 1;
     await addBubble(room, `${up[k].rank} ${up[k].name}${isFinal ? " → 사장님께" : ""}`, r.up[k].say, isFinal ? "final" : "");
   }
+  renderDecisionTools();
 }
 
 async function renderTruth() {
   const c = game.company;
   const round = c.rounds[game.round];
   const r = round.result;
+  const closed = round.choice === "closed";
+  document.getElementById("decision-tools")?.remove();
   const staff = round.chain.map(id => candidateById(c, id)); // 이번 분기에 있던 직원 (퇴사자 포함)
-  document.getElementById("result-title").textContent = round.choice === "dig" ? "🔍 파고들어 보니…" : "👏 칭찬했습니다. 그런데 진실은…";
-  document.getElementById("result-lead").textContent = "🤥 표시는 일부러 말을 바꾸거나 거짓말한 직원입니다.";
+  document.getElementById("result-title").textContent = closed ? "🚪 직원 부재로 영업을 중단했습니다" : round.choice === "dig" ? "🔍 파고들어 보니…" : "👏 칭찬했습니다. 그런데 진실은…";
+  document.getElementById("result-lead").textContent = closed ? "직원이 없어 이번 이벤트를 수행하지 못했습니다. 4분기까지 결산은 이어집니다." : "🤥 표시는 일부러 말을 바꾸거나 거짓말한 직원입니다.";
 
   const room = document.getElementById("room");
   room.innerHTML = `<p class="room">📉 실제 지시 라인</p>`;
-  await addBubble(room, `사장 ${c.player} (나)`, round.order, "ceo");
+  if (!closed) await addBubble(room, `사장 ${c.player} (나)`, round.order, "ceo");
+  else room.hidden = true;
   for (let k = 0; k < staff.length; k++) {
     await addBubble(room, `${staff[k].rank} ${staff[k].name}`, r.down[k].say, r.down[k].lie ? "lie" : "");
   }
@@ -261,26 +312,29 @@ async function renderTruth() {
   box.className = "action";
   box.innerHTML = `
     <p class="tag">실제로 한 일</p><p>${esc(r.action)}</p>
-    <p class="tag">사장님이 받은 보고</p><p>"${esc(r.up[r.up.length - 1].say)}"</p>
+    ${!closed ? `<p class="tag">사장님이 받은 보고</p><p>"${esc(r.up[r.up.length - 1].say)}"</p>` : ""}
     ${upLies.length ? `<p class="tag">보고를 부풀린 직원</p><p>🤥 ${upLies.map(x => esc(x.name)).join(", ")}</p>` : ""}
     ${round.choice === "dig" ? `<p class="tag">🔍 파고들어 알아낸 것</p><p>${esc(r.audit)}</p>` : ""}
-    ${allHonestNote(r)}`;
+    ${!closed ? allHonestNote(r) : ""}`;
   room.after(box);
 
   const ev = c.events[game.round];
   const verdict = document.createElement("article");
   verdict.className = "news";
   verdict.innerHTML = `
-    <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
+    <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
     <h3>${esc(r.news)}</h3>
     <p class="outcome ${round.success ? "good" : "bad"}">${round.success ? "✅ 잘 수행함" : "❌ 수행 실패"} <small>성과 ${r.score}점 · ${esc(r.reason)}</small></p>
     <p class="choice-result ${round.penalty ? "bad" : round.choice === "dig" && round.success ? "warn" : "good"}">
-      ${round.choice === "dig" ? "🔍 파고들기" : "👏 칭찬하기"} → ${esc(round.loyaltyNote)}</p>
+      ${closed ? "🚪 영업 중단" : round.choice === "dig" ? "🔍 파고들기" : "👏 칭찬하기"} → ${esc(round.loyaltyNote)}</p>
     ${round.quits.length ? `<p class="choice-result bad">🚪 충성심이 바닥난 ${round.quits.map(esc).join(", ")}이(가) 퇴사했습니다</p>` : ""}
+    ${round.power ? `<p class="hint">이번 분기 필살기: ${esc(CEO_POWERS.find(p => p.id === round.power).name)}</p>` : ""}
     <table class="ledger">
-      <tr><td>매출 (성과 ${r.score}점)</td><td>${money(round.revenue)}</td></tr>
+      <tr><td>기본 매출 (성과 ${r.score}점)</td><td>${money(round.baseRevenue)}</td></tr>
+      ${round.strategy && !closed ? `<tr><td>${esc(FINAL_STRATEGIES.find(s => s.id === round.strategy).name)} 매출 조정</td><td>${money(round.strategyDelta)}</td></tr>` : ""}
       <tr><td>인건비</td><td>${money(-round.cost)}</td></tr>
-      ${round.penalty ? `<tr class="bad"><td>칭찬 실패 불이익</td><td>${money(-round.penalty)}</td></tr>` : ""}
+      ${round.powerCost ? `<tr><td>회식 비용</td><td>${money(-round.powerCost)}</td></tr>` : ""}
+      ${round.penalty ? `<tr class="bad"><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
       <tr class="sum"><td>이번 분기 수익</td><td class="${round.profit < 0 ? "neg" : "pos"}">${money(round.profit)}</td></tr>
       <tr><td>누적 수익</td><td class="${totalProfit(c) < 0 ? "neg" : "pos"}">${money(totalProfit(c))}</td></tr>
     </table>
@@ -299,7 +353,7 @@ function renderFinal(placed) {
   const twist = fundingTwist(c);
   const everyone = HIRE_RANKS.map(r => c.hires[r] ? candidateById(c, c.hires[r]) : null).filter(Boolean);
 
-  // 거짓말왕: 8분기 동안 거짓말한 횟수 (그 분기에 있던 직원 기준)
+  // 거짓말왕: 4분기 동안 거짓말한 횟수 (그 분기에 있던 직원 기준)
   const lies = new Map(everyone.map(x => [x.id, 0]));
   c.rounds.forEach(round => {
     const chain = round.chain || [];
@@ -309,30 +363,40 @@ function renderFinal(placed) {
   const topLiar = everyone.reduce((best, x) => (lies.get(x.id) > (best ? lies.get(best.id) : 0) ? x : best), null);
   const honest = everyone.filter(x => lies.get(x.id) === 0 && !x.quit);
   const profit = totalProfit(c);
+  const ending = endingFor(c);
 
   const banner = placed
-    ? `<p class="placed">${medal(placed.rank)} 전체 <b>${placed.rank}위</b> <span>/ ${placed.total}명</span></p>`
+    ? `<p class="placed">${medal(placed.rank)} 같은 업종 <b>${placed.rank}위</b> <span>/ ${placed.total}명</span></p>`
     : `<p class="placed practice">연습 모드가 섞여서 순위에 기록되지 않았어요</p>`;
 
   const rows = c.rounds.map((round, i) => `
     <li><span class="etype ${c.events[i].type === "기회" ? "chance" : "crisis"}">${quarterLabel(i)}</span>
-      <span class="ename">${esc(c.events[i].title)} ${round.choice === "dig" ? "🔍" : "👏"}${round.success ? "✅" : "❌"}<small>${esc(round.result.news)}</small></span>
+      <span class="ename">${esc(c.events[i].title)} ${round.choice === "closed" ? "🚪" : round.choice === "dig" ? "🔍" : "👏"}${round.success ? "✅" : "❌"}<small>${esc(round.result.news)}</small></span>
       <b class="${round.profit < 0 ? "neg" : "pos"}">${money(round.profit)}</b></li>`).join("");
 
   document.getElementById("final").innerHTML = `
-    <h2 class="center">2년 결산</h2>
+    <h2 class="center">1년 결산</h2>
     ${banner}
     <div class="solo">
       <article class="news win">
-        <p class="paper">경희경제신문 · 2년 결산</p>
+        <p class="paper">경희경제신문 · 1년 결산</p>
         ${companyTitle(c)}
-        <p class="tag" style="margin-top:12px">2년 누적 수익</p>
+        <p class="tag" style="margin-top:12px">1년 누적 수익</p>
         <p class="score big ${profit < 0 ? "neg" : "pos"}">${money(profit)}</p>
         <ol class="rounds">${rows}</ol>
         ${twist ? `<p class="twist ${twist.kind}">${esc(twist.text)}</p>` : ""}
       </article>
+      <article class="news ending-card">
+        <p class="paper">경희경제신문 · 사장님 특별호</p>
+        <p class="tag">올해의 사장 유형</p><h3 class="ending-title">${esc(ending.title)}</h3>
+        <p>${esc(ending.headline)}</p><p>${esc(ending.text)}</p>
+        <p class="hint">칭찬 ${c.rounds.filter(r => r.choice === "praise").length}회 · 추궁 ${c.rounds.filter(r => r.choice === "dig").length}회 · 재직 직원 ${staffOf(c).length}명</p>
+        <button class="secondary" data-action="copy-ending">📋 내 결산 복사하기</button>
+        <details class="ending-share"><summary>공유할 결산 문구 보기</summary>
+          <textarea id="ending-share" rows="5" readonly aria-label="공유할 결산 문구">${esc(endingShareText(c))}</textarea></details>
+      </article>
       <div class="card awards">
-        ${topLiar ? `<p>🤥 <b>2년간의 거짓말왕</b> ${esc(topLiar.rank)} ${esc(topLiar.name)} <small>(${lies.get(topLiar.id)}번, 정직도 ${topLiar.honesty})</small></p>` : ""}
+        ${topLiar ? `<p>🤥 <b>1년간의 거짓말왕</b> ${esc(topLiar.rank)} ${esc(topLiar.name)} <small>(${lies.get(topLiar.id)}번, 정직도 ${topLiar.honesty})</small></p>` : ""}
         ${honest.length ? `<p>😇 <b>끝까지 정직했던 직원</b> ${honest.map(x => `${esc(x.name)} <small>(정직도 ${x.honesty})</small>`).join(", ")}</p>` : ""}
         <p class="field-label">직원들의 진짜 정직도와 마지막 충성심</p>
         <ul class="reveal-list">${everyone.map(x => `<li><span class="rank">${x.rank}</span>${esc(x.name)}${x.quit ? " 🚪" : ""}
@@ -347,7 +411,7 @@ function renderBoard(highlightAt) {
   const list = sortedBoard();
   const season = getSeason();
   document.getElementById("board-lead").textContent = list.length
-    ? `지금까지 ${list.length}명이 겨뤘습니다. 2년 누적 수익 순위예요. (이 노트북에 저장)`
+    ? `같은 업종의 사장님 ${list.length}명이 겨뤘습니다. 1년 누적 수익 순위예요. (이 노트북에 저장 · 다른 기기와 자동 합산되지 않음)`
     : "아직 기록이 없어요. 첫 번째 사장님이 되어 보세요!";
   document.getElementById("season-box").innerHTML = season ? `
     <div class="card season">

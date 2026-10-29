@@ -1,5 +1,5 @@
 // 담당 C: ChatKHU 연결
-// 한 판에 ChatKHU를 최대 10번 부릅니다: 업종 뽑기(대결의 첫 사람만) → 창업(뉴스·이벤트 8개·면접 후보) → 8분기 이벤트
+// 한 판에 ChatKHU를 기본 6번, 업종 다시 뽑기 포함 최대 7번 부릅니다: 업종 → 창업(이벤트 4개·면접 후보) → 4분기 이벤트
 // 요청문 문구를 고치면 결과가 달라집니다. 고칠 때마다 docs/ai-log.md에 기록!
 
 // ===== 0. ChatKHU API 자동 연결 =====
@@ -136,7 +136,7 @@ function buildFoundingRequest() {
 
 [만들 것]
 1. news: 창업 소식 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 하는 일, 사훈, 자금 출처를 재치 있게.
-2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개 (2년 동안 분기마다 하나). 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황. 서로 겹치지 않게, 뒤로 갈수록 규모가 커지게.
+2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개 (1년 동안 분기마다 하나). 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황. 서로 겹치지 않게, 뒤로 갈수록 규모가 커지게.
 3. candidates: 면접 후보 전원(id 그대로)에 대해
    - name: 한국식 이름 3글자. 성격이 드러나는 웃긴 이름도 좋음 (예: 김대충). 실존 유명인 이름 금지.
    - intro: 면접 자기소개 30자 이내. MBTI, 애착 유형, 능력치가 은근히 드러나게, 웃기게.
@@ -211,7 +211,9 @@ function buildEventRequest() {
     quarter: `${quarterLabel(i)} (${i + 1}/${ROUNDS})`,
     event: c.events[i],
     ceoOrder: round.order,
-    staff: staffOf(c).map(x => ({
+    ceoPower: round.power === "direct" ? "직통 전화: 중간 직급을 건너뛰고 가장 낮은 직급에게 직접 지시" : round.power === "dinner" ? "회식으로 충성심 회복" : "없음",
+    finalStrategy: FINAL_STRATEGIES.find(s => s.id === round.strategy)?.name || "일반 운영",
+    staff: transmissionStaff(c).map(x => ({
       rank: x.rank, name: x.name, mbti: x.mbti, attachment: attachmentLabel(x),
       skill: x.skill, honesty: x.honesty, luck: x.luck, loyalty: x.loyalty, chars: rankInfo(x.rank).chars
     })),
@@ -240,6 +242,7 @@ function buildEventRequest() {
 5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 이전 라운드가 있으면 이어지는 이야기로.
 6. reason: 점수 이유 한 줄 (50자 이내). 결정적이었던 직원 이름을 넣어라.
 7. audit: 사장이 "제대로 했는지 파고들었을 때" 드러나는 사실 한 문장 (50자 이내). 거짓말이 있었다면 누가 무엇을 숨겼는지.
+8. score는 순수한 업무 수행 성과만 판정하라. 최종 전략의 매출 조정과 필살기 비용은 게임이 따로 계산한다. ceoPower가 직통 전화이면 staff에 있는 마지막 직원만 연기하며 중간 직급을 추가하지 마라.
 
 [상황]
 ${JSON.stringify(input)}
@@ -255,7 +258,7 @@ function applyEvent(text, model) {
   const score = Math.round(Number(d.score));
   if (!Number.isFinite(score)) throw new Error("score가 숫자가 아니에요.");
 
-  const staff = staffOf(c);
+  const staff = transmissionStaff(c);
   let over = 0;
   const fit = (item, rank) => {
     const limit = rankInfo(rank).chars;
@@ -282,7 +285,7 @@ const LIES_UP = ["완벽하게 끝냈습니다!", "반응 폭발입니다", "목
 
 function practiceEvent() {
   const c = game.company;
-  const staff = staffOf(c);
+  const staff = transmissionStaff(c);
   const down = [];
   let heard = c.rounds[game.round].order;
   for (const x of staff) {
@@ -343,7 +346,7 @@ const AI_STEPS = {
   },
   founding: {
     title: "ChatKHU가 창업 소식과 면접 후보를 준비 중",
-    lead: "창업 뉴스, 2년 동안 닥칠 이벤트 8개, 직급별 면접 후보 18명의 자기소개를 만듭니다. 30초~1분 걸려요.",
+    lead: "창업 뉴스, 1년 동안 닥칠 이벤트 4개, 직급별 면접 후보 18명의 자기소개를 만듭니다. 30초~1분 걸려요.",
     build: buildFoundingRequest, apply: applyFounding, practice: practiceFounding
   },
   event: {

@@ -1,5 +1,5 @@
 // 담당 D: 버튼과 흐름 연결
-// 창업 → (ChatKHU 업종) → (ChatKHU 창업·후보) → 면접 → [이벤트 → (ChatKHU) → 보고 → 진실 공개] x3 → 최종 결산·순위
+// 창업 → 면접 → [분기 이벤트 → 보고 → 사장 선택 → 진실 공개] x4 → 수익 결산·순위
 
 let lastPlacedAt = null;   // 방금 플레이한 기록 (순위표에서 강조)
 let interviewIndex = 0;    // 지금 면접 중인 직급 번호
@@ -136,6 +136,9 @@ document.getElementById("interview").addEventListener("click", e => {
   };
 
   switch (btn.dataset.action) {
+    case "ask":
+      if (askCandidate(c, rank, Number(btn.dataset.id), btn.dataset.question)) renderInterview(interviewIndex);
+      return;
     case "tab": return go(Number(btn.dataset.i));
     case "hire": {
       const error = hireCandidate(c, rank, Number(btn.dataset.id));
@@ -161,24 +164,52 @@ document.getElementById("interview").addEventListener("click", e => {
 function startRound() {
   game.company.rounds[game.round] = { order: "", result: null };
   renderEvent();
-  const area = document.getElementById("order");
-  area.addEventListener("input", () => {
-    document.querySelector('.counter[data-for="order"]').textContent = `${area.value.length} / ${ORDER_MAX}`;
-  });
+  document.getElementById("btn-run").textContent = staffOf(game.company).length ? "지시 내리기" : "영업 중단 분기 결산하기";
   showScreen("screen-event");
 }
 
+const eventBox = document.getElementById("event-box");
+eventBox.addEventListener("input", e => {
+  if (e.target.id !== "order") return;
+  game.company.rounds[game.round].order = e.target.value;
+  document.querySelector('.counter[data-for="order"]').textContent = `${e.target.value.length} / ${ORDER_MAX}`;
+});
+eventBox.addEventListener("change", e => {
+  if (e.target.dataset.strategy) setFinalStrategy(game.company, e.target.dataset.strategy);
+});
+eventBox.addEventListener("click", e => {
+  const btn = e.target.closest("[data-power]");
+  if (!btn) return;
+  const error = usePower(game.company, btn.dataset.power);
+  if (error) return toast(error);
+  renderEvent();
+  toast("필살기를 사용했어요. 이번 판의 남은 필살기는 0회입니다.");
+});
+
 document.getElementById("btn-run").addEventListener("click", () => {
+  if (!staffOf(game.company).length) {
+    closeUnstaffedRound(game.company);
+    return showClosedRound();
+  }
   const order = document.getElementById("order").value.trim();
   if (!order) return toast("사장님, 지시를 적어 주세요.");
   const round = game.company.rounds[game.round];
+  if (game.round === ROUNDS - 1 && !round.strategy) return toast("마지막 분기의 안전·도전 전략을 먼저 골라 주세요.");
   round.order = order;
-  round.chain = staffOf(game.company).map(x => x.id); // 이번 분기에 지시를 들은 직원 순서
+  round.chain = transmissionStaff(game.company).map(x => x.id); // 직통 전화면 마지막 직원만
   runAI("event", showRoundResult);
 });
 
 const choiceBox = document.getElementById("choice");
 const nextBtn = document.getElementById("btn-next");
+
+document.getElementById("result-box").addEventListener("click", e => {
+  const btn = e.target.closest('[data-power="visit"]');
+  if (!btn || choiceBox.hidden) return;
+  const error = usePower(game.company, "visit");
+  if (error) return toast(error);
+  renderDecisionTools();
+});
 
 async function showRoundResult() {
   choiceBox.hidden = true;
@@ -191,14 +222,23 @@ async function showRoundResult() {
 
 // 보고를 받은 뒤 사장의 선택: 파고들기 / 칭찬하기
 async function choose(choice) {
+  if (game.company.rounds[game.round].choice) return;
   choiceBox.hidden = true;
   settleRound(game.company, choice);
   await renderTruth();
-  const noStaff = staffOf(game.company).length === 0;
-  const last = game.round >= ROUNDS - 1 || noStaff;
-  nextBtn.textContent = last
-    ? (noStaff ? "직원이 모두 떠났습니다… 결산 보기" : "2년 결산 보기")
+  nextBtn.textContent = game.round >= ROUNDS - 1
+    ? "1년 결산 보기"
     : `${quarterLabel(game.round + 1)}로 →`;
+  nextBtn.hidden = false;
+}
+
+async function showClosedRound() {
+  choiceBox.hidden = true;
+  nextBtn.hidden = true;
+  showScreen("screen-result");
+  document.getElementById("result-box").innerHTML = '<div class="messenger" id="room"></div>';
+  await renderTruth();
+  nextBtn.textContent = game.round >= ROUNDS - 1 ? "1년 결산 보기" : `${quarterLabel(game.round + 1)}로 →`;
   nextBtn.hidden = false;
 }
 
@@ -207,7 +247,8 @@ document.getElementById("btn-praise").addEventListener("click", () => choose("pr
 
 nextBtn.addEventListener("click", () => {
   const c = game.company;
-  if (game.round < ROUNDS - 1 && staffOf(c).length > 0) {
+  if (!c.rounds[game.round].choice) return;
+  if (game.round < ROUNDS - 1) {
     game.round++;
     return startRound();
   }
@@ -218,6 +259,22 @@ nextBtn.addEventListener("click", () => {
 });
 
 document.getElementById("btn-restart").addEventListener("click", startGame);
+
+document.getElementById("final").addEventListener("click", async e => {
+  if (!e.target.closest('[data-action="copy-ending"]')) return;
+  const text = endingShareText(game.company);
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("결산을 복사했어요. 친구에게 공유해 보세요!");
+  } catch {
+    const area = document.getElementById("ending-share");
+    area.closest("details").open = true;
+    area.select();
+    let copied = false;
+    try { copied = document.execCommand("copy"); } catch {}
+    toast(copied ? "결산을 복사했어요!" : "아래 결산 문구를 직접 복사해 주세요.");
+  }
+});
 
 // ===== 순위표 =====
 
