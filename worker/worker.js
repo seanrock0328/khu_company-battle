@@ -11,6 +11,17 @@
 //   4. 우리 게임 요청문(표시 문구 포함)만 통과
 
 const CHATKHU_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/chat/completions/";
+const CHATKHU_MODELS_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/models/";
+
+// ChatKHU 방화벽이 봇으로 보고 막지 않도록 일반적인 요청 머리말을 붙입니다
+function chatkhuHeaders(key) {
+  return {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (compatible; khu-company-battle/1.0; +https://seanrock0328.github.io/khu_company-battle/)",
+    "Authorization": `Bearer ${key}`
+  };
+}
 
 const ALLOWED_ORIGINS = [
   "https://seanrock0328.github.io",
@@ -67,7 +78,25 @@ export default {
       return allowed ? new Response(null, { status: 204, headers: corsHeaders(allowed) }) : new Response(null, { status: 403 });
     }
     if (request.method === "GET") {
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY }, allowed);
+      // 진단: 주소 뒤에 /diag 를 붙여 열면 이 서버에서 ChatKHU에 접속되는지 확인합니다 (크레딧 안 씀)
+      if (new URL(request.url).pathname === "/diag") {
+        let status = 0, body = "";
+        try {
+          const r = await fetch(CHATKHU_MODELS_URL, { headers: chatkhuHeaders(env.CHATKHU_KEY || "") });
+          status = r.status;
+          body = (await r.text()).slice(0, 120);
+        } catch (e) {
+          body = String(e).slice(0, 120);
+        }
+        return reply(200, {
+          chatkhuStatus: status,
+          ok: status === 200,
+          hint: status === 200 ? "정상: ChatKHU에 접속됩니다" : status === 401 ? "키 문제: CHATKHU_KEY를 확인하세요" : status === 403 ? "차단: ChatKHU가 이 서버를 막고 있어요" : "기타 문제",
+          serverLocation: request.cf ? `${request.cf.colo} (${request.cf.country})` : "",
+          bodyStart: body
+        }, allowed);
+      }
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, version: 2 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
@@ -94,7 +123,7 @@ export default {
     try {
       res = await fetch(CHATKHU_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.CHATKHU_KEY}` },
+        headers: chatkhuHeaders(env.CHATKHU_KEY),
         body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], max_tokens: MAX_TOKENS })
       });
     } catch {
