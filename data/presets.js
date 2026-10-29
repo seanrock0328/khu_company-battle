@@ -34,8 +34,8 @@ const FALLBACK_EVENTS = {
     { title: "대기업 협업 제안", text: "대기업이 공동 프로모션을 하자고 제안했다." }
   ]
 };
-// 한 판 = 2년 x 4분기 = 8턴. 분기마다 이벤트 하나 (위기 5번, 기회 3번)
-const EVENT_ORDER = ["위기", "기회", "위기", "위기", "기회", "위기", "기회", "위기"];
+// 한 판 = 1년 x 4분기 = 4턴. 분기마다 이벤트 하나 (위기 2번, 기회 2번)
+const EVENT_ORDER = ["위기", "기회", "위기", "기회"];
 
 // 연습 모드용 후보 이름과 자기소개
 const FALLBACK_NAMES = [
@@ -48,12 +48,19 @@ const FALLBACK_INTROS = {
   luck: ["로또 4등 3번 당첨됐습니다.", "제가 가는 곳은 항상 비가 그칩니다.", "운으로 여기까지 왔습니다."]
 };
 
+// 추가 면접은 API 호출 없이 후보의 성격에 맞춰 답합니다.
+const INTERVIEW_QUESTIONS = [
+  { id: "motivation", label: "지원 동기", question: "우리 회사에서 무엇을 하고 싶나요?" },
+  { id: "mistake", label: "실수 대처", question: "업무 중 큰 실수를 했다면 어떻게 하실 건가요?" },
+  { id: "handoff", label: "지시 전달", question: "짧게 지시를 전달해야 한다면 무엇을 남기나요?" }
+];
+
 // 창업 자금: 예산과 대가가 다릅니다
 // 직급 6자리를 모두 평범하게 채우면 인건비가 약 21 듭니다.
 const FUNDING = [
   { id: "parents", name: "부모님 돈", budget: 18, note: "결산 때 부모님 잔소리" },
   { id: "angel", name: "엔젤 투자", budget: 22, note: "기본" },
-  { id: "vc", name: "대형 VC", budget: 28, note: "2년 수익이 적자면 사장 해임" }
+  { id: "vc", name: "대형 VC", budget: 28, note: "1년 수익이 적자면 사장 해임" }
 ];
 
 const MBTI = ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP",
