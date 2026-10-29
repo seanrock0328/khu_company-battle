@@ -11,7 +11,7 @@ const CHATKHU_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/chat/complet
 // 팀 중간 서버 (Cloudflare Worker, 코드는 worker/worker.js)
 // 팀 키는 이 서버에만 비밀로 저장돼 있어서, 플레이어는 키 없이 ChatKHU를 씁니다.
 // Cloudflare에 배포한 뒤 받은 주소를 여기에 넣으세요. (키가 아니라 주소라서 공개돼도 괜찮음)
-const TEAM_SERVER_URL = "";
+const TEAM_SERVER_URL = "https://khu-company-battle.seanrock0328.workers.dev";
 
 const CHATKHU_MODELS = [
   { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (빠름)" },
