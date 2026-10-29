@@ -9,52 +9,101 @@
 <body>
   <header>
     <h1>10자 사원 주식회사</h1>
-    <p class="sub">지시는 내려갈수록 짧아진다</p>
+    <p class="sub">지시는 내려갈수록 짧아지고, 보고는 올라갈수록 부풀려진다</p>
+    <ol class="steps">
+      <li data-step="found">창업</li>
+      <li data-step="hire">채용</li>
+      <li data-step="crisis">위기</li>
+      <li data-step="result">결산</li>
+    </ol>
   </header>
 
   <main>
-    <!-- 1단계: 채용 (담당 A가 꾸미고, 담당 B가 규칙을 채움) -->
-    <section id="screen-hire" class="screen active">
-      <h2>1. 채용</h2>
-      <p>각 회사는 예산 <b id="budget-total"></b> 안에서 직원을 뽑습니다. 성격은 10자 이내로 적어요.</p>
+    <!-- 1. 창업 -->
+    <section id="screen-found" class="screen active" data-step="found">
+      <h2>회사를 차리세요</h2>
+      <p class="lead">업종 카드를 고르고, 이름과 사훈을 정하세요. 사훈은 직원들이 지시를 해석하는 방식이 됩니다.</p>
       <div class="companies">
-        <div class="company" data-company="0"></div>
-        <div class="company" data-company="1"></div>
+        <div class="company found" data-company="0"></div>
+        <div class="company found" data-company="1"></div>
       </div>
-      <button id="btn-to-crisis">채용 끝, 위기 받기</button>
+      <button id="btn-found" class="primary">창업하기</button>
     </section>
 
-    <!-- 2단계: 위기와 사장 지시 -->
-    <section id="screen-crisis" class="screen">
-      <h2>2. 위기 발생</h2>
-      <div id="crisis-card" class="card"></div>
-      <div class="companies">
-        <label>A사 사장님 지시 (100자)
-          <textarea id="order-0" maxlength="100" rows="4"></textarea>
-          <span class="counter" data-for="order-0"></span>
-        </label>
-        <label>B사 사장님 지시 (100자)
-          <textarea id="order-1" maxlength="100" rows="4"></textarea>
-          <span class="counter" data-for="order-1"></span>
-        </label>
+    <!-- ChatKHU 연결 (창업 뉴스, 결전 판정에서 공통으로 사용) -->
+    <section id="screen-ai" class="screen">
+      <h2 id="ai-title"></h2>
+      <p class="lead" id="ai-lead"></p>
+      <ol class="ai-steps">
+        <li>
+          <b>요청문 복사</b>
+          <div class="row">
+            <button id="btn-copy" class="primary">요청문 복사하기</button>
+            <a href="https://chat.khu.ac.kr" target="_blank" rel="noopener" class="ghost-link">ChatKHU 열기 ↗</a>
+          </div>
+          <details>
+            <summary>요청문 미리 보기</summary>
+            <textarea id="ai-request" rows="8" readonly></textarea>
+          </details>
+        </li>
+        <li><b>ChatKHU에 붙여넣고 답변 받기</b></li>
+        <li>
+          <b>ChatKHU 답변을 통째로 여기에 붙여넣기</b>
+          <textarea id="ai-response" rows="6" placeholder='{"companies": [ ... ] }'></textarea>
+        </li>
+      </ol>
+      <p id="ai-error" class="error" role="alert"></p>
+      <div class="row">
+        <button id="btn-apply" class="primary">결과 적용</button>
+        <button id="btn-practice" class="secondary">ChatKHU 없이 연습 모드로</button>
       </div>
-      <button id="btn-run">지시 내리기</button>
     </section>
 
-    <!-- 3단계: 사내 메신저와 결과 -->
-    <section id="screen-result" class="screen">
-      <h2>3. 지시가 내려가는 중</h2>
+    <!-- 2. 창업 뉴스 -->
+    <section id="screen-news" class="screen" data-step="found">
+      <h2>창업 소식</h2>
+      <div class="companies" id="founding-news"></div>
+      <button id="btn-to-hire" class="primary">직원 뽑으러 가기</button>
+    </section>
+
+    <!-- 3. 채용 -->
+    <section id="screen-hire" class="screen" data-step="hire">
+      <h2>직원을 뽑으세요</h2>
+      <p class="lead">직급이 높을수록 길게 말하지만 비쌉니다. 성격은 10자 이내로, 예시를 눌러도 돼요.</p>
       <div class="companies">
-        <div class="messenger" id="messenger-0"></div>
-        <div class="messenger" id="messenger-1"></div>
+        <div class="company hire" data-company="0"></div>
+        <div class="company hire" data-company="1"></div>
       </div>
-      <div id="verdict" class="card"></div>
-      <button id="btn-restart">다시 하기</button>
+      <button id="btn-to-crisis" class="primary">채용 끝, 위기 받기</button>
+    </section>
+
+    <!-- 4. 위기와 사장 지시 -->
+    <section id="screen-crisis" class="screen" data-step="crisis">
+      <h2>위기 발생!</h2>
+      <p class="lead">사장님, 100자 안에 지시를 내려 주세요. 이 말이 직원들을 거쳐 내려갑니다.</p>
+      <div class="companies" id="crisis-boxes"></div>
+      <button id="btn-run" class="primary">지시 내리기</button>
+    </section>
+
+    <!-- 5. 결과: 보고 → 진실 공개 → 결산 -->
+    <section id="screen-result" class="screen" data-step="result">
+      <h2 id="result-title">사장님께 보고가 올라왔습니다</h2>
+      <p class="lead" id="result-lead">직원들이 일을 마치고 보고했습니다. 정말 이렇게 잘 됐을까요?</p>
+      <div class="companies" id="result-boxes"></div>
+      <div class="row center">
+        <button id="btn-reveal" class="primary">진실 공개</button>
+      </div>
+      <div id="verdict"></div>
+      <div class="row center">
+        <button id="btn-restart" class="secondary">새 회사 차리기</button>
+      </div>
     </section>
   </main>
 
+  <div id="toast" role="status"></div>
+
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결 -->
-  <script src="data/crisis.js"></script>
+  <script src="data/presets.js"></script>
   <script src="js/game.js"></script>
   <script src="js/ai.js"></script>
   <script src="js/ui.js"></script>

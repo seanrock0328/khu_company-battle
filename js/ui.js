@@ -1,75 +1,250 @@
 // 담당 A: 화면 그리기
-// 계산은 game.js에 맡기고, 여기서는 보여주기만 합니다.
+// 계산은 game.js, AI는 ai.js에 맡기고 여기서는 보여주기만 합니다.
+// 사용자가 쓴 글은 반드시 esc()를 거쳐서 넣기!
+
+const BUBBLE_DELAY = 550; // 말풍선이 하나씩 뜨는 간격 (ms)
 
 function showScreen(id) {
+  const screen = document.getElementById(id);
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  document.getElementById(id).classList.add("active");
+  screen.classList.add("active");
+  const step = screen.dataset.step;
+  if (step) {
+    let passed = true;
+    document.querySelectorAll(".steps li").forEach(li => {
+      li.classList.toggle("current", li.dataset.step === step);
+      if (li.dataset.step === step) passed = false;
+      li.classList.toggle("done", passed);
+    });
+  }
   window.scrollTo(0, 0);
 }
 
-// 채용 화면의 회사 칸 하나를 그립니다.
-function renderCompany(index) {
-  const company = game.companies[index];
-  const box = document.querySelector(`.company[data-company="${index}"]`);
+function companyBox(selector, i) {
+  return document.querySelector(`${selector}[data-company="${i}"]`);
+}
 
-  const options = RANKS.filter(r => r.name !== "사장")
-    .map(r => `<option value="${r.name}">${r.name} (${r.chars}자, 비용 ${r.cost})</option>`)
-    .join("");
+function companyTitle(c) {
+  return `<div class="ctitle">
+    <span class="emoji">${c.emoji}</span>
+    <div><b>${esc(c.name)}</b><small>${esc(c.industry)} · ${esc(c.label)}</small></div>
+  </div>
+  <p class="motto">사훈 "${esc(c.motto)}"</p>`;
+}
 
-  const list = chainOf(company)
-    .map(s => `<li>${s.rank} · ${escapeHtml(s.persona)}
-      <button class="remove" data-id="${s.id}">해고</button></li>`)
-    .join("");
+// ===== 창업 =====
+
+function renderFound(i) {
+  const c = game.companies[i];
+  const box = companyBox(".company.found", i);
+
+  const cards = c.cards.map((card, k) => `
+    <button class="industry ${c.industry === card.name ? "picked" : ""}" data-action="pick" data-k="${k}">
+      <span class="emoji">${card.emoji}</span>${esc(card.name)}
+    </button>`).join("");
+
+  const funding = FUNDING.map(f => `
+    <label class="fund ${c.funding === f.id ? "picked" : ""}">
+      <input type="radio" name="fund-${i}" value="${f.id}" ${c.funding === f.id ? "checked" : ""} data-action="fund">
+      <b>${f.name}</b><span>예산 ${f.budget}</span><small>${f.note}</small>
+    </label>`).join("");
 
   box.innerHTML = `
-    <h3>${company.name}</h3>
-    <p class="spent">쓴 예산 ${spent(company)} / ${BUDGET}</p>
-    <div class="row">
-      <select>${options}</select>
-      <input maxlength="${PERSONA_MAX}" placeholder="성격 (예: 밈 장인)">
-      <button class="add">채용</button>
-    </div>
-    <ul>${list || "<li>아직 직원이 없어요</li>"}</ul>
+    <h3>${c.label} 사장님</h3>
+    <p class="field-label">업종 카드</p>
+    <div class="industries">${cards}</div>
+    <button class="text-btn" data-action="reroll" ${c.rerolled ? "disabled" : ""}>
+      ${c.rerolled ? "다시 뽑기 사용함" : "🎲 다시 뽑기 (1회)"}
+    </button>
+    <label class="field">회사 이름
+      <input data-field="name" maxlength="${NAME_MAX}" value="${esc(c.name)}" placeholder="예: 붕세권">
+    </label>
+    <label class="field">사훈 <span class="counter">${c.motto.length} / ${MOTTO_MAX}</span>
+      <input data-field="motto" maxlength="${MOTTO_MAX}" value="${esc(c.motto)}" placeholder="예: 빠르게 실패하자">
+    </label>
+    <p class="field-label">창업 자금</p>
+    <div class="funds">${funding}</div>
   `;
 }
 
-function renderCrisis(crisis) {
-  document.getElementById("crisis-card").innerHTML =
-    `<h3>${crisis.title}</h3><p>${crisis.text}</p>`;
+// ===== ChatKHU 연결 화면 =====
+
+function renderAI(mode) {
+  const isFounding = mode === "founding";
+  document.getElementById("ai-title").textContent =
+    isFounding ? "ChatKHU가 창업 소식을 씁니다" : "ChatKHU가 직원들을 연기합니다";
+  document.getElementById("ai-lead").textContent = isFounding
+    ? "두 회사의 창업 뉴스와, 곧 닥칠 위기 카드를 ChatKHU가 만들어 줍니다."
+    : "지시가 직원들을 거쳐 내려가고, 보고가 부풀려져 올라오는 과정을 ChatKHU가 연기하고 판정합니다.";
+  document.getElementById("ai-request").value = isFounding ? buildFoundingRequest() : buildBattleRequest();
+  document.getElementById("ai-response").value = "";
+  document.getElementById("ai-error").textContent = "";
+  document.getElementById("btn-copy").textContent = "요청문 복사하기";
 }
 
-// 사내 메신저: 말풍선을 하나씩 시간차로 띄웁니다.
-async function renderMessenger(index, messages) {
-  const box = document.getElementById(`messenger-${index}`);
-  box.innerHTML = `<h3>${game.companies[index].name} 단톡방</h3>`;
-  for (const m of messages) {
-    const div = document.createElement("div");
-    div.className = "msg" + (m.ceo ? " ceo" : "");
-    div.innerHTML = `<div class="who">${escapeHtml(m.who)}</div>
-      <div class="bubble">${escapeHtml(m.text)}</div>`;
-    box.appendChild(div);
-    await wait(600);
-  }
+// ===== 창업 뉴스 =====
+
+function renderFoundingNews() {
+  document.getElementById("founding-news").innerHTML = game.companies.map(c => `
+    <article class="news">
+      <p class="paper">경희경제신문 <span>${c.foundingByAI ? "ChatKHU 작성" : "연습 모드"}</span></p>
+      <h3>${esc(c.news)}</h3>
+      ${companyTitle(c)}
+    </article>`).join("");
 }
 
-function renderVerdict(scores) {
-  const [a, b] = scores;
-  const winner = a === b ? "무승부!" : `${game.companies[a > b ? 0 : 1].name} 승리!`;
-  document.getElementById("verdict").innerHTML =
-    `<h3>분기 결산</h3><p>A사 ${a}점 · B사 ${b}점</p><p><b>${winner}</b></p>`;
+// ===== 채용 =====
+
+function renderHire(i) {
+  const c = game.companies[i];
+  const box = companyBox(".company.hire", i);
+  const budget = budgetOf(c);
+  const used = spent(c);
+
+  const options = RANKS.filter(r => r.name !== "사장")
+    .map(r => `<option value="${r.name}">${r.name} · ${r.chars}자 · 비용 ${r.cost}</option>`)
+    .join("");
+
+  const chips = PERSONA_PRESETS
+    .map(p => `<button class="chip" data-action="preset" data-p="${esc(p)}">${esc(p)}</button>`).join("");
+
+  const list = chainOf(c).map(s => `
+    <li><span class="rank">${s.rank}</span>${esc(s.persona)}
+      <button class="text-btn" data-action="fire" data-id="${s.id}">해고</button></li>`).join("");
+
+  box.innerHTML = `
+    ${companyTitle(c)}
+    <div class="budget"><div style="width:${Math.min(100, used / budget * 100)}%"></div></div>
+    <p class="spent">인건비 ${used} / ${budget} (${fundingOf(c).name})</p>
+    <div class="row hire-row">
+      <select data-field="rank">${options}</select>
+      <input data-field="persona" maxlength="${PERSONA_MAX}" placeholder="성격 10자">
+      <button class="primary small" data-action="hire">채용</button>
+    </div>
+    <div class="chips">${chips}</div>
+    <ul class="staff">
+      <li class="ceo"><span class="rank">사장</span>나 (플레이어)</li>
+      ${list || '<li class="empty">아직 직원이 없어요</li>'}
+    </ul>
+  `;
 }
 
-function updateCounter(textarea) {
-  const span = document.querySelector(`.counter[data-for="${textarea.id}"]`);
-  span.textContent = `${textarea.value.length} / ${textarea.maxLength}`;
+// ===== 위기 =====
+
+function renderCrisisBoxes() {
+  document.getElementById("crisis-boxes").innerHTML = game.companies.map((c, i) => `
+    <div class="company">
+      ${companyTitle(c)}
+      <div class="crisis">
+        <p class="tag">⚠️ 위기 카드</p>
+        <h3>${esc(c.crisis.title)}</h3>
+        <p>${esc(c.crisis.text)}</p>
+      </div>
+      <label class="field">사장님 지시
+        <span class="counter" data-for="order-${i}">0 / ${ORDER_MAX}</span>
+        <textarea id="order-${i}" maxlength="${ORDER_MAX}" rows="4" placeholder="예: 슈크림 메뉴 전면에 내세우고 팥은 원가 협상해. 가격은 유지."></textarea>
+      </label>
+      <p class="hint">이 지시를 듣는 순서: ${chainOf(c).map(s => `${s.rank}(${rankInfo(s.rank).chars}자)`).join(" → ")}</p>
+    </div>`).join("");
+}
+
+// ===== 결과 1: 부풀려진 보고 =====
+
+async function renderReports() {
+  const boxes = document.getElementById("result-boxes");
+  boxes.innerHTML = game.companies.map((c, i) => `
+    <div class="company">
+      ${companyTitle(c)}
+      <div class="messenger" id="msg-${i}"><p class="room">📈 보고 라인</p></div>
+    </div>`).join("");
+
+  await Promise.all(game.companies.map(async (c, i) => {
+    const room = document.getElementById(`msg-${i}`);
+    const upChain = [...chainOf(c)].reverse();
+    for (let k = 0; k < upChain.length; k++) {
+      const s = upChain[k];
+      const isFinal = k === upChain.length - 1;
+      await addBubble(room, `${s.rank} (${s.persona})${isFinal ? " → 사장님께" : ""}`, c.result.up[k], isFinal ? "final" : "");
+    }
+  }));
+}
+
+// ===== 결과 2: 진실 공개 =====
+
+async function renderTruth() {
+  document.getElementById("result-title").textContent = "진실 공개";
+  document.getElementById("result-lead").textContent = "사장님 지시는 사실 이렇게 내려갔습니다.";
+
+  await Promise.all(game.companies.map(async (c, i) => {
+    const room = document.getElementById(`msg-${i}`);
+    room.innerHTML = `<p class="room">📉 실제 지시 라인</p>`;
+    await addBubble(room, "사장 (나)", c.order, "ceo");
+    const chain = chainOf(c);
+    for (let k = 0; k < chain.length; k++) {
+      await addBubble(room, `${chain[k].rank} (${chain[k].persona})`, c.result.down[k], "");
+    }
+    const action = document.createElement("div");
+    action.className = "action";
+    action.innerHTML = `<p class="tag">실제로 한 일</p><p>${esc(c.result.action)}</p>
+      <p class="tag">사장님이 받은 보고</p><p>"${esc(c.result.up[c.result.up.length - 1])}"</p>`;
+    room.after(action);
+  }));
+}
+
+// ===== 결과 3: 결산 =====
+
+function renderVerdict() {
+  const w = winnerIndex();
+  const cards = game.companies.map((c, i) => {
+    const r = c.result;
+    const twist = fundingTwist(c);
+    return `
+    <article class="news ${w === i ? "win" : ""}">
+      <p class="paper">경희경제신문 · 결산 <span>${r.practice ? "연습 모드" : "ChatKHU 판정"}</span></p>
+      <h3>${esc(r.news)}</h3>
+      <p class="score">${r.score}<small>점</small></p>
+      <p class="reason">${esc(r.reason)}</p>
+      ${twist ? `<p class="twist ${twist.kind}">${esc(twist.text)}</p>` : ""}
+      ${r.over ? `<p class="note">AI가 글자 수를 ${r.over}번 넘겨서 잘랐어요</p>` : ""}
+      <p class="cname">${c.emoji} ${esc(c.name)}</p>
+    </article>`;
+  }).join("");
+
+  const banner = w < 0 ? "무승부!" : `${game.companies[w].emoji} ${esc(game.companies[w].name)} 승리!`;
+  document.getElementById("verdict").innerHTML = `
+    <h2 class="banner">${banner}</h2>
+    <div class="companies">${cards}</div>`;
+}
+
+// ===== 공통 =====
+
+async function addBubble(room, who, text, kind) {
+  const div = document.createElement("div");
+  div.className = `msg ${kind}`;
+  div.innerHTML = `<div class="who">${esc(who)}</div><div class="bubble">${esc(text)}</div>`;
+  room.appendChild(div);
+  await wait(BUBBLE_DELAY);
+}
+
+function updateCounter(input, max) {
+  const span = document.querySelector(`.counter[data-for="${input.id}"]`);
+  if (span) span.textContent = `${input.value.length} / ${max}`;
+}
+
+let toastTimer;
+function toast(message) {
+  const el = document.getElementById("toast");
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
 }
 
 function wait(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// 사용자가 쓴 글을 화면에 넣을 때 꼭 거치기 (태그가 실행되는 것 방지)
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c =>
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }

@@ -2,9 +2,13 @@
 // 이 파일은 화면을 직접 건드리지 않습니다. 계산만 합니다.
 
 // ===== 팀 약속: 데이터 모양 (바꾸려면 단톡방에 먼저 공유!) =====
+// 회사 하나:
+// {
+//   name: "붕세권", industry: "붕어빵 프랜차이즈", emoji: "🐟", motto: "빠르게 실패하자",
+//   funding: "angel", staff: [직원...], news: "창업 기사", crisis: {title, text, keywords?},
+//   order: "사장 지시", result: { down: [...], action, up: [...], news, score, reason, practice }
+// }
 // 직원 한 명: { id: 1, rank: "사원", persona: "밈 장인" }
-// 회사 하나: { name: "A사", staff: [직원, 직원, ...] }
-// 지시가 내려가는 순서는 직급 순서(사장 → 부장 → 과장 → 대리 → 사원)입니다.
 
 const RANKS = [
   { name: "사장", chars: 100, cost: 0 },  // 사장은 플레이어, 회사당 1명 고정
@@ -14,17 +18,54 @@ const RANKS = [
   { name: "사원", chars: 10, cost: 1 }
 ];
 
-const BUDGET = 15;          // 회사당 인건비 예산
-const PERSONA_MAX = 10;     // 성격 설명 최대 글자 수
+const PERSONA_MAX = 10;   // 성격 최대 글자 수
+const MOTTO_MAX = 20;     // 사훈 최대 글자 수
+const NAME_MAX = 12;      // 회사 이름 최대 글자 수
+const ORDER_MAX = 100;    // 사장 지시 최대 글자 수
+
+function newCompany(label) {
+  return {
+    label,                // "A사" / "B사" (플레이어 구분용)
+    name: "", industry: "", emoji: "", motto: "", funding: "angel",
+    cards: [], rerolled: false,
+    staff: [], news: "", crisis: null, order: "", result: null
+  };
+}
 
 const game = {
-  companies: [
-    { name: "A사", staff: [] },
-    { name: "B사", staff: [] }
-  ],
-  crisis: null,
+  companies: [newCompany("A사"), newCompany("B사")],
   nextId: 1
 };
+
+// ===== 창업 =====
+
+// 업종 카드 3장 뽑기 (두 회사가 같은 카드를 받을 수도 있음)
+function drawCards() {
+  const pool = [...INDUSTRIES];
+  const cards = [];
+  while (cards.length < 3 && pool.length) {
+    cards.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  }
+  return cards;
+}
+
+// 실패하면 이유 문자열, 성공하면 null
+function checkFounding(company) {
+  if (!company.industry) return `${company.label}: 업종 카드를 골라 주세요.`;
+  if (!company.name.trim()) return `${company.label}: 회사 이름을 지어 주세요.`;
+  if (!company.motto.trim()) return `${company.label}: 사훈을 정해 주세요.`;
+  return null;
+}
+
+function fundingOf(company) {
+  return FUNDING.find(f => f.id === company.funding) || FUNDING[1];
+}
+
+function budgetOf(company) {
+  return fundingOf(company).budget;
+}
+
+// ===== 채용 =====
 
 function rankInfo(rankName) {
   return RANKS.find(r => r.name === rankName);
@@ -34,19 +75,18 @@ function spent(company) {
   return company.staff.reduce((sum, s) => sum + rankInfo(s.rank).cost, 0);
 }
 
-// 직원 추가. 실패하면 이유를 문자열로 돌려줍니다.
 function hire(companyIndex, rank, persona) {
   const company = game.companies[companyIndex];
   const info = rankInfo(rank);
   persona = persona.trim();
 
   if (!info || rank === "사장") return "뽑을 수 없는 직급입니다.";
-  if (persona.length === 0) return "성격을 적어 주세요.";
+  if (persona.length === 0) return "성격을 적거나 골라 주세요.";
   if (persona.length > PERSONA_MAX) return `성격은 ${PERSONA_MAX}자까지입니다.`;
-  if (spent(company) + info.cost > BUDGET) return "예산이 부족합니다.";
+  if (spent(company) + info.cost > budgetOf(company)) return "예산이 부족합니다.";
 
   company.staff.push({ id: game.nextId++, rank, persona });
-  return null; // 성공
+  return null;
 }
 
 function fire(companyIndex, staffId) {
@@ -54,32 +94,40 @@ function fire(companyIndex, staffId) {
   company.staff = company.staff.filter(s => s.id !== staffId);
 }
 
-// 지시가 내려가는 순서대로 직원 정렬 (높은 직급부터)
+// 지시가 내려가는 순서대로 정렬 (높은 직급부터). 같은 직급은 뽑은 순서대로.
 function chainOf(company) {
   const order = RANKS.map(r => r.name);
-  return [...company.staff].sort((a, b) => order.indexOf(a.rank) - order.indexOf(b.rank));
+  return [...company.staff].sort((a, b) =>
+    order.indexOf(a.rank) - order.indexOf(b.rank) || a.id - b.id);
 }
 
-function pickCrisis() {
-  game.crisis = CRISES[Math.floor(Math.random() * CRISES.length)];
-  return game.crisis;
+// ===== 결산 =====
+
+function winnerIndex() {
+  const [a, b] = game.companies.map(c => c.result ? c.result.score : 0);
+  if (a === b) return -1;
+  return a > b ? 0 : 1;
 }
 
-// 실적 판정 (임시 규칙). 나중에 AI 판정으로 바꿀 수 있습니다.
-// 맨 아래 직원의 말에 위기 키워드가 얼마나 살아남았는지로 점수를 냅니다.
-function score(messages, crisis) {
-  if (messages.length === 0) return 0;
-  const last = messages[messages.length - 1].text;
-  const all = messages.map(m => m.text).join(" ");
-  let points = 50;
-  for (const k of crisis.keywords) {
-    if (last.includes(k)) points += 15;      // 끝까지 살아남은 키워드
-    else if (all.includes(k)) points += 5;   // 중간에 사라진 키워드
+// 창업 자금에 따른 대가
+function fundingTwist(company) {
+  const score = company.result ? company.result.score : 0;
+  if (company.funding === "parents") {
+    const nags = [
+      "엄마: 그래서 그 돈으로 붕어빵을 판다고?",
+      "아빠: 공무원 시험은 언제 볼 거니",
+      "엄마: 옆집 애는 대기업 갔다더라",
+      "아빠: 회사 이름이 그게 뭐냐"
+    ];
+    return { kind: "nag", text: nags[Math.floor(Math.random() * nags.length)] };
   }
-  return Math.min(points, 100);
+  if (company.funding === "vc" && score < 50) {
+    return { kind: "fired", text: "이사회 결정: 사장님은 오늘부로 해임되셨습니다." };
+  }
+  return null;
 }
 
 function resetGame() {
-  game.companies.forEach(c => (c.staff = []));
-  game.crisis = null;
+  game.companies = [newCompany("A사"), newCompany("B사")];
+  game.nextId = 1;
 }

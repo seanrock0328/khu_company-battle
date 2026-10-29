@@ -2,6 +2,10 @@
 
 2026 KHU AI Challenge 출품작. 직급별 글자 수로 직원을 만들어 회사를 운영하는 AI 텍스트 배틀 게임입니다.
 
+**게임 흐름**: 창업(업종 카드·회사 이름·사훈·자금) → ChatKHU 창업 뉴스 → 채용 → 위기 카드와 사장 지시 → ChatKHU가 직원 연기 → 부풀려진 보고 → 진실 공개 → 결산 뉴스
+
+ChatKHU 쓰는 법은 [`prompts/chatkhu.md`](prompts/chatkhu.md)에 있습니다.
+
 **마감: 10/30(금) 17:00** · 우리 목표: 금요일 15시 제출
 
 ---
@@ -12,9 +16,9 @@
 
 | 담당 | 고치는 파일 | 할 일 |
 |---|---|---|
-| A 화면 | `index.html`, `css/style.css`, `js/ui.js` | 채용 화면, 사내 메신저 꾸미기 |
-| B 게임 규칙 | `js/game.js`, `data/crisis.js` | 예산, 직급, 위기 카드, 점수 규칙 |
-| C AI | `js/ai.js`, `prompts/` | ChatKHU로 직원 전달 지침 만들기 |
+| A 화면 | `index.html`, `css/style.css`, `js/ui.js` | 화면 디자인, 단톡방과 신문 연출 |
+| B 게임 규칙 | `js/game.js`, `data/presets.js` | 업종 카드, 성격 예시, 자금, 예산 규칙 |
+| C AI | `js/ai.js`, `prompts/` | ChatKHU 요청문 다듬기, 모델 비교 실험 |
 | D 연결, 제출 | `js/main.js`, `docs/` | 버튼 연결, 배포, 서식 3~5 |
 
 다른 사람 파일을 고쳐야 하면 **단톡방에 먼저 말하고** 고치세요.
@@ -134,11 +138,11 @@ ChatKHU를 쓸 때마다 `docs/ai-log.md`에 한 줄씩 남겨 주세요. 서식
 ```
 index.html          화면 뼈대
 css/style.css       디자인
-data/crisis.js      위기 카드 목록
-js/game.js          게임 규칙 (예산, 직급, 점수)
-js/ai.js            AI 전달 (지금은 연습 모드)
+data/presets.js     업종 카드, 성격 예시, 창업 자금
+js/game.js          게임 규칙 (예산, 직급, 결산)
+js/ai.js            ChatKHU 요청문 만들기, 결과 적용, 연습 모드
 js/ui.js            화면 그리기
 js/main.js          버튼 연결
-prompts/relay.md    ChatKHU 직원 지침
+prompts/chatkhu.md  ChatKHU 사용법과 실험 목록
 docs/ai-log.md      AI 사용 기록
 ```
