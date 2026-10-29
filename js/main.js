@@ -1,5 +1,5 @@
 // 담당 D: 버튼과 흐름 연결
-// 창업 → (ChatKHU 업종) → (ChatKHU 창업·후보) → 면접 → [이벤트 → (ChatKHU) → 보고 → 진실 공개] x3 → 최종 결산·순위
+// 창업 → 면접 → [분기 이벤트 → 보고 → 사장 선택 → 진실 공개] x4 → 수익 결산·순위
 
 let lastPlacedAt = null;   // 방금 플레이한 기록 (순위표에서 강조)
 let interviewIndex = 0;    // 지금 면접 중인 직급 번호
@@ -136,6 +136,9 @@ document.getElementById("interview").addEventListener("click", e => {
   };
 
   switch (btn.dataset.action) {
+    case "ask":
+      if (askCandidate(c, rank, Number(btn.dataset.id), btn.dataset.question)) renderInterview(interviewIndex);
+      return;
     case "tab": return go(Number(btn.dataset.i));
     case "hire": {
       const error = hireCandidate(c, rank, Number(btn.dataset.id));
@@ -161,6 +164,7 @@ document.getElementById("interview").addEventListener("click", e => {
 function startRound() {
   game.company.rounds[game.round] = { order: "", result: null };
   renderEvent();
+  document.getElementById("btn-run").textContent = staffOf(game.company).length ? "지시 내리기" : "영업 중단 분기 결산하기";
   const area = document.getElementById("order");
   area.addEventListener("input", () => {
     document.querySelector('.counter[data-for="order"]').textContent = `${area.value.length} / ${ORDER_MAX}`;
@@ -169,6 +173,10 @@ function startRound() {
 }
 
 document.getElementById("btn-run").addEventListener("click", () => {
+  if (!staffOf(game.company).length) {
+    closeUnstaffedRound(game.company);
+    return showClosedRound();
+  }
   const order = document.getElementById("order").value.trim();
   if (!order) return toast("사장님, 지시를 적어 주세요.");
   const round = game.company.rounds[game.round];
@@ -191,14 +199,23 @@ async function showRoundResult() {
 
 // 보고를 받은 뒤 사장의 선택: 파고들기 / 칭찬하기
 async function choose(choice) {
+  if (game.company.rounds[game.round].choice) return;
   choiceBox.hidden = true;
   settleRound(game.company, choice);
   await renderTruth();
-  const noStaff = staffOf(game.company).length === 0;
-  const last = game.round >= ROUNDS - 1 || noStaff;
-  nextBtn.textContent = last
-    ? (noStaff ? "직원이 모두 떠났습니다… 결산 보기" : "2년 결산 보기")
+  nextBtn.textContent = game.round >= ROUNDS - 1
+    ? "1년 결산 보기"
     : `${quarterLabel(game.round + 1)}로 →`;
+  nextBtn.hidden = false;
+}
+
+async function showClosedRound() {
+  choiceBox.hidden = true;
+  nextBtn.hidden = true;
+  showScreen("screen-result");
+  document.getElementById("result-box").innerHTML = '<div class="messenger" id="room"></div>';
+  await renderTruth();
+  nextBtn.textContent = game.round >= ROUNDS - 1 ? "1년 결산 보기" : `${quarterLabel(game.round + 1)}로 →`;
   nextBtn.hidden = false;
 }
 
@@ -207,7 +224,8 @@ document.getElementById("btn-praise").addEventListener("click", () => choose("pr
 
 nextBtn.addEventListener("click", () => {
   const c = game.company;
-  if (game.round < ROUNDS - 1 && staffOf(c).length > 0) {
+  if (!c.rounds[game.round].choice) return;
+  if (game.round < ROUNDS - 1) {
     game.round++;
     return startRound();
   }
