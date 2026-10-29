@@ -50,12 +50,12 @@ function renderFound() {
     : c.industry
     ? `<div class="industry-card">
          <span class="emoji">${esc(c.emoji)}</span>
-         <div><small>ChatKHU가 뽑은 업종 · 이번 대결의 업종이 됩니다</small><b>${esc(c.industry)}</b></div>
+         <div><small>ChatKHU가 뽑은 업종</small><b>${esc(c.industry)}</b></div>
        </div>
        <button class="text-btn" data-action="roll" ${c.rolls >= MAX_ROLLS ? "disabled" : ""}>
          ${c.rolls >= MAX_ROLLS ? "다시 뽑기 사용함" : "🎲 다시 뽑기 (1회)"}</button>`
-    : `<button class="roll-btn" data-action="roll">🎲 ChatKHU로 대결 업종 뽑기</button>
-       <p class="hint">처음 뽑은 업종이 이번 대결의 업종이 되어, 다음 사장님들도 같은 업종으로 겨룹니다.</p>`;
+    : `<button class="roll-btn" data-action="roll">🎲 ChatKHU로 업종 뽑기</button>
+       <p class="hint">업종은 사장님마다 랜덤이에요. 순위는 업종 상관없이 수익으로 겨룹니다.</p>`;
 
   const funding = FUNDING.map(f => `
     <label class="fund ${c.funding === f.id ? "picked" : ""}">
@@ -366,7 +366,7 @@ function renderFinal(placed) {
   const ending = endingFor(c);
 
   const banner = placed
-    ? `<p class="placed">${medal(placed.rank)} 같은 업종 <b>${placed.rank}위</b> <span>/ ${placed.total}명</span></p>`
+    ? `<p class="placed">${medal(placed.rank)} ${SHARED_INDUSTRY ? "같은 업종" : "전체"} <b>${placed.rank}위</b> <span>/ ${placed.total}명</span></p>`
     : `<p class="placed practice">연습 모드가 섞여서 순위에 기록되지 않았어요</p>`;
 
   const rows = c.rounds.map((round, i) => `
@@ -411,7 +411,7 @@ function renderBoard(highlightAt) {
   const list = sortedBoard();
   const season = getSeason();
   document.getElementById("board-lead").textContent = list.length
-    ? `같은 업종의 사장님 ${list.length}명이 겨뤘습니다. 1년 누적 수익 순위예요. (이 노트북에 저장 · 다른 기기와 자동 합산되지 않음)`
+    ? `${SHARED_INDUSTRY ? "같은 업종의 " : ""}사장님 ${list.length}명이 겨뤘습니다. 1년 누적 수익 순위예요. (이 노트북에 저장 · 다른 기기와 자동 합산되지 않음)`
     : "아직 기록이 없어요. 첫 번째 사장님이 되어 보세요!";
   document.getElementById("season-box").innerHTML = season ? `
     <div class="card season">

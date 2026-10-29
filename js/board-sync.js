@@ -52,11 +52,11 @@
       const data = await api("GET", "/board");
       state.entries = Array.isArray(data.entries) ? data.entries : [];
       state.loaded = true;
-      if (data.season && data.season.industry) {
+      if (SHARED_INDUSTRY && data.season && data.season.industry) {
         state.season = data.season;
         local.setSeason(data.season.industry, data.season.emoji);
         applySeasonToNewGame();
-      } else if (getSeason()) {
+      } else if (SHARED_INDUSTRY && getSeason()) {
         // 서버엔 아직 대결 업종이 없고 이 기기엔 있으면, 이 기기 것을 서버에 올림
         const s = getSeason();
         api("POST", "/season", { industry: s.industry, emoji: s.emoji }).then(adoptSeason).catch(() => {});
@@ -105,7 +105,7 @@
 
   setSeason = function (industry, emoji) {
     local.setSeason(industry, emoji);
-    if (state.enabled) api("POST", "/season", { industry, emoji }).then(adoptSeason).catch(() => {});
+    if (state.enabled && SHARED_INDUSTRY) api("POST", "/season", { industry, emoji }).then(adoptSeason).catch(() => {});
   };
 
   // 공유 순위표 초기화는 관리자 코드가 있어야 합니다 (아무나 지우지 못하게)
@@ -119,7 +119,7 @@
         state.season = null;
         local.clearBoard();
         renderBoard(null);
-        toast("모든 기기의 순위표와 대결 업종을 초기화했어요.");
+        toast(SHARED_INDUSTRY ? "모든 기기의 순위표와 대결 업종을 초기화했어요." : "모든 기기의 순위표를 초기화했어요.");
       })
       .catch(err => toast(err.message));
   };

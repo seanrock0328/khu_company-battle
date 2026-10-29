@@ -5,11 +5,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function setup() {
+function setup(options = {}) {
   const saved = new Map();
   const context = vm.createContext({
     URL, URLSearchParams,
     location: new URL("file:///C:/game/index.html"),
+    KHU_SHARED_INDUSTRY: options.sharedIndustry === true,
     localStorage: {
       getItem: key => saved.get(key) ?? null,
       setItem: (key, value) => saved.set(key, value),
@@ -315,8 +316,23 @@ test("연습 모드에서 전원 퇴사해도 정식 순위에 기록하지 않�
   assert.equal(run("recordResult(c)"), null);
 });
 
-test("순위표는 현재 업종으로 걸러내며 다른 업종의 기록도 보관한다", () => {
+test("기본: 업종이 달라도 순위표 하나로 수익순 정렬한다 (10/29 팀 결정)", () => {
   const run = setup();
+  run(`
+    saveBoard([
+      { industry: "붕어빵", profit: 200, at: 1 },
+      { industry: "AI", profit: 9999, at: 2 },
+      { industry: "붕어빵", profit: 300, at: 3 }
+    ]);
+    setSeason("붕어빵", "🐟");
+  `);
+  assert.equal(run("getSeason()"), null);
+  assert.equal(run("sortedBoard().length"), 3);
+  assert.equal(run("sortedBoard()[0].industry"), "AI");
+});
+
+test("같은 업종 모드: 순위표는 현재 업종으로 걸러내며 다른 업종의 기록도 보관한다", () => {
+  const run = setup({ sharedIndustry: true });
   run(`
     saveBoard([
       { industry: "붕어빵", profit: 200, at: 1 },
@@ -332,8 +348,8 @@ test("순위표는 현재 업종으로 걸러내며 다른 업종의 기록도 �
   assert.equal(run("sortedBoard().length"), 1);
 });
 
-test("index.html을 직접 열어도 유효한 업종 공유 링크를 만든다", () => {
-  const run = setup();
+test("같은 업종 모드: index.html을 직접 열어도 유효한 업종 공유 링크를 만든다", () => {
+  const run = setup({ sharedIndustry: true });
   run('setSeason("붕어빵 프랜차이즈", "🐟")');
   const url = new URL(run("seasonLink()"));
   assert.equal(url.protocol, "file:");

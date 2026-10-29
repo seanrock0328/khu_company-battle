@@ -318,7 +318,7 @@ clearBtn.addEventListener("click", () => {
   clearArmed = false;
   clearBtn.textContent = "순위표 초기화";
   renderBoard(null);
-  toast("순위표를 비웠어요. 다음 사장님이 새 대결 업종을 뽑습니다.");
+  toast("순위표를 비웠어요.");
 });
 
 // ===== ChatKHU 연결 설정 =====
