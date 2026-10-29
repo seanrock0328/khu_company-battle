@@ -10,7 +10,6 @@ const TYPING_DELAY = 380;    // 말풍선 전에 "입력 중…"을 보여 주�
 const SUSPENSE_DELAY = 1100; // 파고들기/칭찬하기 직후 두구두구 (ms)
 const BIG_LOSS = -3000;      // 분기 수익이 이 이하면 화면이 흔들림 (만원)
 const BIG_WIN = 3000;        // 분기 수익이 이 이상이면 색종이 (만원)
-const FUND_ICONS = { parents: "👪", angel: "😇", vc: "🦈" };
 const FLOOR_RANKS = ["사장", ...HIRE_RANKS]; // 사무실 층: 0 = 사장실, 1 = 임원 … 6 = 사원
 
 const OFFICE_SCREENS = ["screen-interview", "screen-event", "screen-result", "screen-final"];
@@ -107,15 +106,18 @@ function renderHud() {
   if (id === "screen-interview") {
     items = [
       { ico: "👥", label: "채용", value: `${hired} / ${HIRE_RANKS.length}` },
-      { ico: "💰", label: "인건비", value: `${payroll(c)} / ${budgetOf(c)}`, tone: payroll(c) / budgetOf(c) >= .9 ? "neg" : "" }
+      { ico: "💰", label: "분기 급여", value: money(payroll(c) * COST_PER_SALARY, false), tone: payroll(c) / budgetOf(c) >= .9 ? "neg" : "" },
+      { ico: "🏦", label: "통장", value: money(cashBalance(c), false), key: "bank" }
     ];
   } else if (inQuarter || id === "screen-final") {
     const total = totalProfit(c);
+    const balance = cashBalance(c);
     const avg = staff.length ? Math.round(staff.reduce((s, x) => s + x.loyalty, 0) / staff.length) : 0;
     items = [
-      { ico: "💰", label: "누적 수익", value: money(total, total !== 0), tone: total < 0 ? "neg" : total > 0 ? "pos" : "", money: total, key: "money" },
-      { ico: "👥", label: "직원", value: `${staff.length}명` },
-      { ico: "♥", label: "충성심", value: staff.length ? `${avg}/10` : "—", tone: avg && avg <= 3 ? "neg" : "" }
+      { ico: "🏦", label: "통장 잔액", value: money(balance, false), tone: balance < 0 ? "neg" : "", key: "bank" },
+      { ico: "💰", label: "순이익", value: money(total, total !== 0), tone: total < 0 ? "neg" : total > 0 ? "pos" : "", money: total, key: "money" },
+      { ico: "👥", label: "직원", value: `${staff.length}명`, key: "staff" },
+      { ico: "♥", label: "충성심", value: staff.length ? `${avg}/10` : "—", tone: avg && avg <= 3 ? "neg" : "", key: "heart" }
     ];
   }
   res.innerHTML = items.map(it => `<span class="res ${it.key || ""}"><i aria-hidden="true">${it.ico}</i><span class="res-text"><small>${esc(it.label)}</small><b class="${it.tone || ""}">${esc(it.value)}</b></span></span>`).join("");
@@ -265,6 +267,8 @@ function pickOne(list) {
 }
 
 // 누적 수익 꺾은선 (이미 끝난 분기만). big이면 결산용 큰 그래프
+// PR #12 이후 화면마다 돈 그래프는 하나만: 분기 결과·결산은 financeChart(통장 잔액·수입·지출)를 씁니다.
+// 이 함수는 다른 담당이 부를 수 있어 그대로 남겨 둡니다.
 function profitChart(c, big) {
   const pts = [0];
   c.rounds.forEach(r => { if (typeof r.profit === "number") pts.push(pts[pts.length - 1] + r.profit); });
@@ -1819,12 +1823,21 @@ function renderFound() {
     : `<button class="roll-btn" data-action="roll"><span class="dice" aria-hidden="true">🎲</span> ChatKHU로 업종 뽑기</button>
        <p class="hint">업종은 사장님마다 랜덤이에요. 순위는 업종 상관없이 수익으로 겨룹니다.</p>`;
 
-  const funding = FUNDING.map(f => `
-    <label class="fund ${c.funding === f.id ? "picked" : ""}">
-      <input type="radio" name="fund" value="${f.id}" ${c.funding === f.id ? "checked" : ""} data-action="fund">
-      <span class="fund-ico" aria-hidden="true">${FUND_ICONS[f.id] || "💰"}</span>
-      <b>${esc(f.name)}</b><span class="fund-budget">예산 <strong>${f.budget}</strong></span><small>${esc(f.note)}</small>
-    </label>`).join("");
+  // 창업자금 = 봉투 세 장. 창업할 때 한 번만 열고(main.js의 openFunding), 연 뒤에는 바꿀 수 없습니다.
+  const opened = Number.isFinite(c.initialCash);
+  const funding = FUNDING.map(f => {
+    const [icon, label] = fundParts(f);
+    const lotto = f.id === "lottery";
+    return `
+    <label class="fund envelope ${c.funding === f.id ? "picked" : ""} ${opened ? "sealed-off" : ""} ${lotto ? "lotto" : ""}">
+      <input type="radio" name="fund" value="${f.id}" ${c.funding === f.id ? "checked" : ""} ${opened ? "disabled" : ""} data-action="fund">
+      <span class="env-flap" aria-hidden="true"></span>
+      <span class="fund-ico" aria-hidden="true">${esc(icon)}</span>
+      <b>${esc(label)}</b>
+      <span class="fund-cash">${lotto ? `<strong>???</strong><small>봉투를 열면 금액 공개</small>` : `<strong>${money(f.cash, false)}</strong>`}</span>
+      <small class="fund-note">${esc(f.note)}</small>
+    </label>`;
+  }).join("");
 
   const box = document.getElementById("found-box");
   box.innerHTML = `
@@ -1845,13 +1858,21 @@ function renderFound() {
     <label class="field">사훈 <span class="counter" data-for="motto">${c.motto.length} / ${MOTTO_MAX}</span>
       <input data-field="motto" maxlength="${MOTTO_MAX}" value="${esc(c.motto)}" placeholder="예: 빠르게 실패하자">
     </label></div></div>
-    <div class="step-block"><p class="step-label"><span class="step-no">4</span>창업 자금 <span class="hint">난이도</span></p>
-    <div class="funds">${funding}</div></div>
+    <div class="step-block"><p class="step-label"><span class="step-no">4</span>창업 자금 <span class="hint">봉투 하나를 고르세요</span></p>
+    <div class="funds">${funding}</div>
+    ${opened ? `<p class="funding-open opened-note"><span class="fo-ico" aria-hidden="true">✉️</span><span>이미 연 봉투: <b>${esc(fundingOf(c).name)} · ${money(c.initialCash, false)}</b><br><small>자금 출처와 금액은 이번 판에 고정됩니다.</small></span></p>` : '<p class="hint fund-hint">창업할 때 봉투를 딱 한 번 엽니다. 받은 돈은 순이익에 포함되지 않아요.</p>'}</div>
   `;
+  document.getElementById("btn-found").textContent = opened ? "창업 준비 이어가기" : "✉️ 봉투 열고 창업하기";
   // 입력하는 대로 명함 미리 보기 (보여 주기만, 저장은 main.js)
   box.oninput = () => setTimeout(renderFoundPreview, 0);
   box.onchange = () => setTimeout(renderFoundPreview, 0);
   renderFoundPreview();
+}
+
+// "👪 부모님 돈" → ["👪", "부모님 돈"]
+function fundParts(f) {
+  const [icon, label] = splitIcon(f.name);
+  return icon === "⚡" ? ["💰", label] : [icon, label];
 }
 
 function renderFoundPreview() {
@@ -1859,11 +1880,13 @@ function renderFoundPreview() {
   const el = document.getElementById("found-preview");
   if (!el) return;
   const f = fundingOf(c);
+  const [icon] = fundParts(f);
+  const cash = Number.isFinite(c.initialCash) ? money(c.initialCash, false) : f.id === "lottery" ? "봉투 속 ???" : money(f.cash, false);
   el.innerHTML = `<p class="biz-head"><span>사업자 등록증</span><span>No.${String((c.name || "").length * 7 + 101).padStart(4, "0")}</span></p>
     <div class="biz-main"><span class="biz-emoji" aria-hidden="true">${esc(c.emoji || "🏢")}</span>
     <div><b class="biz-name">${esc(c.name || "회사 이름")}</b><small>${esc(c.industry || "업종 미정")}</small></div></div>
     <p class="biz-motto">${c.motto ? `"${esc(c.motto)}"` : "사훈을 정해 주세요"}</p>
-    <p class="biz-foot"><span>대표 <b>${esc(c.player || "???")}</b></span><span>${FUND_ICONS[f.id] || "💰"} 예산 ${f.budget}</span></p>
+    <p class="biz-foot"><span>대표 <b>${esc(c.player || "???")}</b></span><span>${esc(icon)} 자본금 ${esc(cash)}</span></p>
     ${c.name && c.motto && c.industry && c.player ? stamp("승인 대기", "biz-stamp") : ""}`;
 }
 
@@ -1962,7 +1985,9 @@ function aiTips() {
     "💡 충성심이 0이 되면 짐을 싸서 퇴사해요",
     "💡 사장 필살기는 한 판에 딱 한 번!",
     "💡 보고는 올라갈수록 부풀려져요. 단서를 의심하세요",
-    "💡 마지막 분기엔 🛡️ 안전 또는 🚀 도전 전략을 골라요"
+    `💡 분기마다 ${money(INVESTMENT_COST, false)} 투자 가능! 성과 ${SUCCESS_LINE}점 이상이면 ${money(INVESTMENT_WIN, false)} 회수`,
+    "💡 통장이 마이너스면 새 투자와 회식이 막혀요",
+    "💡 창업자금은 통장 잔액일 뿐, 순위는 순이익으로 겨뤄요"
   ];
 }
 
@@ -2014,10 +2039,32 @@ function renderFoundingNews() {
       <p class="detail">${esc(c.detail)}</p>
       ${stamp("창업 승인", "news-stamp")}
     </article>
+    ${envelopeOpen(c)}
     <section class="roadmap" aria-label="1년 로드맵">
       <p class="roadmap-title"><b>1년 = 4개 레벨</b> <span>위기 ${EVENT_ORDER.filter(t => t === "위기").length} · 기회 ${EVENT_ORDER.filter(t => t === "기회").length}</span></p>
       <ol class="plan">${EVENT_ORDER.map((t, i) => `<li class="${t === "기회" ? "chance" : "crisis"}" style="--i:${i}"><small>LEVEL ${i + 1}</small><b>${t === "기회" ? "✨ 기회" : "⚠ 위기"}</b><span>${esc(quarterLabel(i))}</span></li>`).join("")}</ol>
-      <p class="hint">1년 누적 수익으로 순위를 겨룹니다. 인건비 예산은 ${budgetOf(c)}, 분기마다 연봉 1당 ${COST_PER_SALARY}만원이 나갑니다.</p>
+      <p class="hint">통장에서 3개월치 급여를 분기마다 정산합니다. 투자 여부를 고르고, 1년 순이익으로 겨룹니다.</p>
+    </section>`;
+  if (c.funding === "lottery" && !reduceMotion()) setTimeout(() => { if (document.body.dataset.screen === "screen-news") burst(18); }, 900);
+}
+
+// 창업자금 봉투 개봉: 봉투 뚜껑이 열리고 수표가 올라옵니다 (금액은 game.js가 이미 정한 값)
+function envelopeOpen(c) {
+  const f = fundingOf(c);
+  const [icon, label] = fundParts(f);
+  return `<section class="funding-open envelope-open ${f.id}" aria-label="창업자금 봉투">
+      <div class="eo-stage" aria-hidden="true">
+        <svg class="eo-back" viewBox="0 0 160 100"><rect x="2" y="2" width="156" height="96" rx="9"/></svg>
+        <svg class="eo-flap" viewBox="0 0 160 62"><path d="M2 10 Q2 2 10 2 L150 2 Q158 2 158 10 L84 58 Q80 61 76 58 Z"/><circle class="eo-seal" cx="80" cy="46" r="9"/></svg>
+        <span class="eo-cheque"><small>${esc(icon)} ${esc(label)}</small><b>${money(initialCapital(c), false)}</b>${stamp(f.id === "lottery" ? "당첨!" : "입금", "eo-stamp")}</span>
+        <svg class="eo-front" viewBox="0 0 160 100"><path d="M2 34 L76 70 Q80 72 84 70 L158 34 L158 89 Q158 98 149 98 L11 98 Q2 98 2 89 Z"/></svg>
+      </div>
+      <div class="eo-text">
+        <p class="tag">✉️ 창업자금 봉투를 열었습니다</p>
+        <h3>${esc(f.name)} · ${money(initialCapital(c), false)}</h3>
+        <p class="eo-line">“${esc(c.fundingLine)}”</p>
+        <p class="hint">${esc(f.note)}</p>
+      </div>
     </section>`;
 }
 
@@ -2046,7 +2093,7 @@ function hireFlash(c) {
   if (!x || !pop) return null;
   pop.innerHTML = `<div class="hire-card rk-${rankNo(rank)}" role="status">
       <p class="id-strip"><span>${esc(rank)} 사원증</span><span>${esc(c.name)}</span></p>
-      <span class="hire-fig" aria-hidden="true">${chibiSvg(x)}</span><b>${esc(x.name)}</b><small>${esc(rank)} · 연봉 ${x.salary}</small>
+      <span class="hire-fig" aria-hidden="true">${chibiSvg(x)}</span><b>${esc(x.name)}</b><small>${esc(rank)} · 분기 급여 ${money(x.salary * COST_PER_SALARY, false)}</small>
       ${stamp("합격!", "hire-stamp")}
     </div>`;
   pop.hidden = false;
@@ -2105,7 +2152,7 @@ function renderInterview(index) {
       </div>`).join("") : '<p class="hint qa-empty">질문을 골라 답변을 들어 보세요. 면접 답변이 모두 진실일까요?</p>'}
       </div>
       <div class="cand-foot">
-        <span class="salary"><span aria-hidden="true">💰</span> 연봉 <b>${x.salary}</b></span>
+        <span class="salary"><span aria-hidden="true">💰</span> 분기 급여 <b>${money(x.salary * COST_PER_SALARY, false)}</b></span>
         <button class="${hired ? "secondary" : "primary"} small hire-btn" data-action="hire" data-id="${x.id}" ${!x.interviewed.length ? "disabled" : ""}>${hired ? "채용됨 ✓" : "채용"}</button>
       </div>
       ${hired ? stamp("합격!", `hire-stamp${fresh === x.id ? " fresh" : ""}`) : ""}
@@ -2119,8 +2166,8 @@ function renderInterview(index) {
   document.getElementById("interview").innerHTML = `
     <div class="tabs" role="list">${tabs}</div>
     <div class="budget-wrap">
-      <p class="spent"><span aria-hidden="true">💰</span> 인건비 <b>${used} / ${budget}</b> <small>${esc(fundingOf(c).name)}</small></p>
-      <div class="budget ${used / budget >= .9 ? "tight" : ""}" role="img" aria-label="인건비 ${used} / ${budget}">${Array.from({ length: cellsTotal }, (_, k) => `<i class="${k < used ? "on" : ""}"></i>`).join("")}</div>
+      <p class="spent"><span><span aria-hidden="true">💰</span> 분기 급여 <b>${money(used * COST_PER_SALARY, false)}</b></span><span>/ 채용 한도 ${money(budget * COST_PER_SALARY, false)}</span><small class="spent-bank">🏦 통장 ${money(cashBalance(c), false)}</small></p>
+      <div class="budget ${used / budget >= .9 ? "tight" : ""}" role="img" aria-label="분기 급여 ${money(used * COST_PER_SALARY, false)} / 채용 한도 ${money(budget * COST_PER_SALARY, false)}">${Array.from({ length: cellsTotal }, (_, k) => `<i class="${k < used ? "on" : ""}"></i>`).join("")}</div>
     </div>
     <h3 class="rank-title rk-${rankNo(rank)}"><span class="rank rk-${rankNo(rank)}">${esc(rank)}</span> 면접 <small>지시를 ${info.chars}자까지 전달 ${cells(info.chars / 10)}</small></h3>
     <div class="candidates ${entering ? "enter" : ""}">${cards}</div>
@@ -2147,6 +2194,90 @@ function hearts(n) {
 function splitIcon(name) {
   const m = /^(\S+)\s+(.+)$/.exec(String(name));
   return m && /\p{Extended_Pictographic}/u.test(m[1]) ? [m[1], m[2]] : ["⚡", String(name)];
+}
+
+// ===== 회사 통장 (돈 계산은 game.js, 여기서는 통장처럼 보여 주기만) =====
+
+// 통장 한 권: 잔액(크게) → 순이익·창업자금 → 이번 분기 출금 예정 → 쓸 수 있는 돈
+function bankCard(c, variant) {
+  const round = c.rounds[game.round];
+  const balance = cashBalance(c);
+  const profit = totalProfit(c);
+  const planned = round && !round.choice;
+  const salary = payroll(c) * COST_PER_SALARY;
+  const planRow = (label, amount, cls) => `<li class="${amount ? "" : "zero"} ${cls || ""}"><span>${label}</span><b>${amount ? money(-amount) : money(0, false)}</b></li>`;
+  return `<section class="bank-card ${balance < 0 ? "minus" : ""} ${variant || ""}" aria-label="회사 통장">
+    <div class="bank-head"><span class="bank-ico" aria-hidden="true">🏦</span><small>회사 통장</small><span class="bank-owner">${esc(c.name)}</span></div>
+    <div class="bank-main">
+      <span class="bank-label">잔액</span>
+      <strong class="bank-balance ${balance < 0 ? "neg" : ""}" data-cash-balance="${balance}">${money(balance, false)}</strong>
+    </div>
+    <p class="bank-sub"><span>순이익 <b class="${profit < 0 ? "neg" : profit > 0 ? "pos" : ""}">${money(profit, profit !== 0)}</b></span><span>받은 창업자금 ${money(initialCapital(c), false)}</span></p>
+    ${planned ? `<ul class="bank-plan" aria-label="이번 분기 말 출금 예정">
+      ${planRow("급여 예정", salary)}${planRow("투자 예정", round.investment || 0, "invest")}${planRow("회식 예정", round.powerCost || 0)}
+      <li class="bank-free ${availableCash(c) < 0 ? "neg" : ""}"><span>예정 지출을 남긴 사용 가능 금액</span><b>${money(availableCash(c), false)}</b></li>
+    </ul>` : ""}
+    ${balance < 0 ? '<p class="bank-alert"><span class="bank-alert-tag">마이너스</span> 잔액이 부족해 통장이 마이너스입니다. 새 투자와 회식은 제한되며 4분기까지 결산은 계속됩니다.</p>' : ""}
+  </section>`;
+}
+
+function chartMoney(n) {
+  const sign = n < 0 ? "−" : "";
+  const v = Math.abs(n);
+  return sign + (v >= 10000 ? `${Number((v / 10000).toFixed(2))}억` : `${v.toLocaleString()}만`);
+}
+
+// 분기별 돈의 흐름 (신문 '경제면'): 통장 잔액 꺾은선 + 분기별 수입·지출 막대 + 고른 분기의 통장 명세
+// 분기 버튼(data-finance-quarter)을 누르면 main.js가 이 안(data-finance-chart)을 financeMarkup으로 다시 그립니다.
+function financeChart(c, selected) {
+  return `<section class="card finance-chart" data-finance-chart>${financeMarkup(c, selected)}</section>`;
+}
+
+function financeMarkup(c, selected) {
+  const rows = financeHistory(c);
+  const index = Number.isInteger(selected) && selected >= 0 && selected < rows.length ? selected : rows.length - 1;
+  const values = [initialCapital(c), ...rows.map(r => r.closing)];
+  const low = Math.min(0, Math.floor(Math.min(...values) / 1000) * 1000);
+  const high = Math.max(1000, Math.ceil(Math.max(...values) / 1000) * 1000);
+  const x = i => 92 + i * 112;
+  const y = v => 22 + (high - v) / (high - low) * 156;
+  const ticks = [high, (high + low) / 2, low];
+  const maxFlow = Math.max(1, ...rows.flatMap(r => [r.income, r.expense]));
+  const row = rows[index];
+  const pts = values.map((v, i) => `${x(i)},${y(v).toFixed(1)}`);
+  const base = y(Math.max(low, Math.min(0, high))).toFixed(1);
+  return `<div class="fc-head"><h3>📊 분기별 돈의 흐름</h3><span class="fc-paper" aria-hidden="true">경제면</span></div>
+    <p class="hint">잔액에는 창업자금·긴급 용돈이 포함됩니다. 순위는 이를 제외한 순이익으로 계산해요.</p>
+    <p class="chart-label"><span aria-hidden="true">🏦</span> 통장 잔액 추이</p>
+    <svg class="cash-line" viewBox="0 0 600 222" role="img" aria-label="창업부터 분기별 통장 잔액 변화">
+      <title>${esc(values.map((v, i) => `${i ? i + "분기" : "창업"}: ${money(v, false)}`).join(", "))}</title>
+      ${ticks.map(v => `<line x1="92" y1="${y(v).toFixed(1)}" x2="${x(ROUNDS)}" y2="${y(v).toFixed(1)}" class="chart-grid"/><text class="tick" x="80" y="${(y(v) + 6).toFixed(1)}" text-anchor="end">${chartMoney(v)}</text>`).join("")}
+      ${low < 0 ? `<line x1="92" y1="${y(0).toFixed(1)}" x2="${x(ROUNDS)}" y2="${y(0).toFixed(1)}" class="chart-zero"/>` : ""}
+      ${values.length > 1 ? `<path class="cash-area" d="M${pts.join(" L")} L${x(values.length - 1)},${base} L${x(0)},${base} Z"/>` : ""}
+      <polyline points="${pts.join(" ")}" class="cash-path"/>
+      ${values.map((v, i) => `<circle class="${v < 0 ? "neg" : "pos"} ${i === index + 1 ? "sel" : ""}" cx="${x(i)}" cy="${y(v).toFixed(1)}" r="${i === index + 1 ? 10 : 7}" data-chart-closing="${v}"><title>${i ? i + "분기" : "창업"} ${money(v, false)}</title></circle>`).join("")}
+      ${Array.from({ length: ROUNDS + 1 }, (_, i) => `<text class="qx ${i === index + 1 ? "sel" : ""} ${i >= values.length ? "later" : ""}" x="${x(i)}" y="214" text-anchor="middle">${i ? i + "분기" : "창업"}</text>`).join("")}
+    </svg>
+    <p class="chart-label">수입·지출 비교 <span class="flow-legend"><i class="income" aria-hidden="true"></i>수입 <i class="expense" aria-hidden="true"></i>지출</span></p>
+    <div class="flow-bars">${Array.from({ length: ROUNDS }, (_, i) => {
+      const r = rows[i];
+      return `<div class="flow-quarter ${index === i ? "selected" : ""} ${r ? "" : "later"}" style="--i:${i}">
+        <div class="bar-pair">${r ? `<div class="flow-bar income" style="height:${(r.income / maxFlow * 100).toFixed(1)}%" title="수입 ${money(r.income, false)}"></div><div class="flow-bar expense" style="height:${(r.expense / maxFlow * 100).toFixed(1)}%" title="지출 ${money(r.expense, false)}"></div>` : '<span class="bar-later" aria-hidden="true">?</span>'}</div>
+        ${r ? `<small class="pos">+${chartMoney(r.income)}</small><small class="neg">−${chartMoney(r.expense)}</small>` : '<small>아직 결산 전</small>'}
+        <button class="secondary small" data-finance-quarter="${i}" ${!r ? "disabled" : ""} aria-pressed="${index === i}">${i + 1}분기</button></div>`;
+    }).join("")}</div>
+    ${row ? `<div class="flow-detail" aria-live="polite"><h4><span aria-hidden="true">🧾</span> ${row.quarter}분기 통장 명세</h4>
+      <table class="ledger passbook"><tbody>
+        <tr><td>기초 잔액</td><td>${money(row.opening, false)}</td></tr>
+        <tr class="in"><td>매출 입금</td><td>${money(row.round.revenue)}</td></tr>
+        <tr class="out"><td>3개월치 급여</td><td>${money(-row.round.cost)}</td></tr>
+        ${row.round.investmentCost ? `<tr class="out"><td>투자금 출금</td><td>${money(-row.round.investmentCost)}</td></tr><tr class="in"><td>투자금 회수</td><td>${money(row.round.investmentReturn)}</td></tr>` : ""}
+        ${row.round.powerCost ? `<tr class="out"><td>회식비</td><td>${money(-row.round.powerCost)}</td></tr>` : ""}
+        ${row.round.penalty ? `<tr class="out bad"><td>불이익·영업 중단 손실</td><td>${money(-row.round.penalty)}</td></tr>` : ""}
+        ${row.round.support ? `<tr class="in"><td>긴급 용돈 (순이익 제외)</td><td>${money(row.round.support)}</td></tr>` : ""}
+        <tr class="sum"><td>마감 잔액</td><td class="${row.closing < 0 ? "neg" : ""}" data-detail-closing="${row.closing}">${money(row.closing, false)}</td></tr>
+        <tr><td>이번 분기 순이익</td><td class="${row.profit < 0 ? "neg" : "pos"}">${money(row.profit)}</td></tr>
+      </tbody></table></div>` : '<p class="hint">첫 분기를 마치면 수입·지출과 통장 명세를 볼 수 있어요.</p>'}`;
 }
 
 function powerPanel(stage) {
@@ -2194,6 +2325,7 @@ function renderDecisionTools() {
 
 let seenQuarter = null;
 let seenPower = null;
+let seenInvest = null;
 
 // 새 분기가 시작될 때만 "1년차 2분기" 타이틀 카드 + WARNING/CHANCE 띠가 지나갑니다 (클릭을 막지 않음)
 function quarterPop(c, ev) {
@@ -2242,32 +2374,30 @@ function renderEvent() {
   const ev = c.events[game.round];
   const round = c.rounds[game.round];
   const activeStaff = staffOf(c);
-  const total = totalProfit(c);
   const chance = ev.type === "기회";
+  const balance = cashBalance(c);
+  const profit = totalProfit(c);
+  const box = document.getElementById("event-box");
+  // 투자를 바꾸거나 필살기를 쓰면 main.js가 renderEvent를 다시 부릅니다. 펼쳐 둔 '지난 분기 돈의 흐름'은 그대로 둡니다.
+  const foldOpen = !!box.querySelector(".finance-fold[open]") && seenInvest && seenInvest.company === c && seenInvest.round === game.round;
   document.querySelectorAll("#room").forEach(el => el.removeAttribute("id")); // 지난 분기 단톡방 기록은 그대로, 이름표만 뗌
   document.getElementById("event-heading").innerHTML = `<span class="lv">LEVEL ${game.round + 1}<small> / ${ROUNDS}</small></span><span class="lv-name">${esc(quarterLabel(game.round))}</span>`;
-  document.getElementById("profit-now").innerHTML = `<span class="hud-label">누적 수익 ${game.round ? money(total) : money(0, false)}</span>${profitChart(c)}`;
+  document.getElementById("profit-now").innerHTML = `<span class="pn-chip bank ${balance < 0 ? "neg" : ""}"><i aria-hidden="true">🏦</i>통장 잔액 <b>${money(balance, false)}</b></span>
+    <span class="pn-chip"><i aria-hidden="true">💰</i>순이익 <b class="${profit < 0 ? "neg" : profit > 0 ? "pos" : ""}">${money(profit, profit !== 0)}</b></span>`;
   const line = transmissionStaff(c);
   const quit = allCandidates(c).filter(x => x.quit).map(x => `<span class="quit-chip">📦 ${esc(x.rank)} ${esc(x.name)}</span>`);
   const chain = line.map(x => `<li class="rk-${rankNo(x.rank)}" title="${esc(x.rank)} ${esc(x.name)} · 충성심 ${x.loyalty}/10">${avatar(x)}<small>${rankInfo(x.rank).chars}</small></li>`).join("");
-  document.getElementById("event-box").innerHTML = `
+  const invested = !!round.investment;
+  const cantInvest = availableCash(c) + (round.investment || 0) < INVESTMENT_COST;
+  const gain = INVESTMENT_WIN - INVESTMENT_COST;
+  const lossBack = INVESTMENT_LOSS - INVESTMENT_COST;
+  box.innerHTML = `
     <article class="mission ${chance ? "chance" : "crisis"}">
       <p class="mission-tag"><span class="alert">${chance ? "✨ CHANCE" : "⚠ WARNING"}</span><span>이번 분기 목표</span></p>
       <h3>${esc(ev.title)}</h3>
       <p class="mission-text">${esc(ev.text)}</p>
-      <p class="goal-line"><span>🎯 성과 <b>${SUCCESS_LINE}점</b> 이상</span><span>💸 인건비 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
+      <p class="goal-line"><span>🎯 성과 <b>${SUCCESS_LINE}점</b> 이상</span><span>💸 분기 급여 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
     </article>
-    ${game.round === ROUNDS - 1 && activeStaff.length ? `<fieldset class="final-strategy">
-      <legend>🏁 마지막 분기, 어떤 승부를 걸까요?</legend>
-      <div class="strategy-grid">${FINAL_STRATEGIES.map(s => {
-        const [icon, label] = splitIcon(s.name);
-        return `<label class="strategy-option ${s.id} ${round.strategy === s.id ? "picked" : ""}">
-        <input type="radio" name="final-strategy" data-strategy="${s.id}" ${round.strategy === s.id ? "checked" : ""}>
-        <span class="st-ico" aria-hidden="true">${esc(icon)}</span>
-        <span class="st-text"><b>${esc(label)}</b><small>${esc(s.text)}</small></span></label>`;
-      }).join("")}</div>
-      <p class="hint">두 전략 모두 인건비·불이익·필살기 비용은 별도입니다. 지시를 내리기 전에 하나를 골라 주세요. 신사업 매출 범위 0~1억 4,000만원 · 안전 운영 4,000~6,000만원</p>
-    </fieldset>` : ""}
     <div class="composer">
       <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span></span>
         <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 오늘 안에 해결해. 고객에게는 솔직하게 사과하고, 원인은 내일 아침까지 보고해.">${esc(round.order)}</textarea>
@@ -2276,21 +2406,48 @@ function renderEvent() {
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
         <li class="rk-0">${avatar(null)}<small>${ORDER_MAX}</small></li>${chain}</ol></div>` : ""}
     </div>
+    <section class="money-desk ${activeStaff.length ? "" : "closed"}" aria-label="회사 통장과 이번 분기 투자">
+      ${bankCard(c)}
+      ${activeStaff.length ? `<fieldset class="invest-choice">
+        <legend><span aria-hidden="true">💸</span> 이번 분기, 돈을 굴릴까요?</legend>
+        <div class="invest-grid">
+          <label class="invest-option keep ${!invested ? "picked" : ""}">
+            <input type="radio" name="investment" data-invest="no" ${!invested ? "checked" : ""}>
+            <span class="iv-ico" aria-hidden="true">🛡️</span>
+            <span class="iv-text"><b>그대로 운영</b><small>투자금 없이 이번 업무에 집중합니다.</small></span>
+            <span class="iv-odds"><em class="even">±0원</em></span>
+          </label>
+          <label class="invest-option bet ${invested ? "picked" : ""} ${cantInvest ? "locked" : ""}">
+            <input type="radio" name="investment" data-invest="yes" ${invested ? "checked" : ""} ${cantInvest ? "disabled" : ""}>
+            <span class="iv-ico" aria-hidden="true">📈</span>
+            <span class="iv-text"><b>${money(INVESTMENT_COST, false)} 투자</b><small>성과 ${SUCCESS_LINE}점 이상이면 ${money(INVESTMENT_WIN, false)} 회수(${money(gain)}), 미달이면 ${money(INVESTMENT_LOSS, false)} 회수(${money(lossBack)}).</small></span>
+            <span class="iv-odds"><em class="pos">${SUCCESS_LINE}점↑ ${money(gain)}</em><em class="neg">미달 ${money(lossBack)}</em></span>
+            ${cantInvest ? '<span class="iv-lock">잔액 부족</span>' : ""}
+          </label>
+        </div>
+        <p class="hint">급여·회식비를 남긴 금액으로 투자합니다. 출금과 회수는 이번 분기 말에 함께 정산해요.</p>
+      </fieldset>` : ""}
+    </section>
     ${activeStaff.length ? powerPanel("before") : ""}
     ${quit.length ? `<p class="hint quit-list">퇴사: ${quit.join(" ")}</p>` : ""}
-    ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : ""}`;
+    ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : ""}
+    ${settledRounds(c).length ? `<details class="finance-fold" ${foldOpen ? "open" : ""}><summary><span aria-hidden="true">📊</span> 지난 분기 돈의 흐름 보기</summary>${financeChart(c)}</details>` : ""}`;
   const order = document.getElementById("order");
   if (order) {
     order.addEventListener("input", () => { paintOrderMeter(order.value.length); talk.slowUntil = Date.now() + 6000; talkTypingShow(""); });
     order.addEventListener("focus", () => { talk.slowUntil = Date.now() + 8000; document.body.classList.add("writing"); });
     order.addEventListener("blur", () => document.body.classList.remove("writing"));
   }
-  // 고른 전략 카드 표시 (선택 저장은 main.js가 합니다)
-  const picks = document.querySelectorAll("#event-box [data-strategy]");
-  picks.forEach(input => input.addEventListener("change", () => {
-    picks.forEach(x => x.closest(".strategy-option").classList.toggle("picked", x.checked));
-  }));
   paintOrderMeter(round.order.length);
+  // 투자를 고르면 통장이 들썩 (저장·계산은 main.js와 game.js가 합니다)
+  const amount = round.investment || 0;
+  if (seenInvest && seenInvest.company === c && seenInvest.round === game.round && seenInvest.amount !== amount) {
+    sfx(amount ? "coin" : "tap");
+    replay(box.querySelector(".bank-card"), "bump", 600);
+    replay(box.querySelector(".invest-option.picked"), "chosen", 600);
+    if (amount) { const m = office.mates.get(0); if (m) mateFx(m, "📈", 1400); }
+  }
+  seenInvest = { company: c, round: game.round, amount };
   const fresh = quarterPop(c, ev);
   if (document.body.dataset.screen === "screen-event" || fresh) {
     talkEnsure();
@@ -2493,14 +2650,15 @@ async function renderTruth() {
     ${round.power ? `<p class="hint">이번 분기 필살기: ${esc(CEO_POWERS.find(p => p.id === round.power).name)}</p>` : ""}
     <table class="ledger">
       <tr><td>기본 매출 (성과 ${r.score}점)</td><td>${money(round.baseRevenue)}</td></tr>
-      ${round.strategy && !closed ? `<tr><td>${esc(FINAL_STRATEGIES.find(s => s.id === round.strategy).name)} 매출 조정</td><td>${money(round.strategyDelta)}</td></tr>` : ""}
       <tr><td>인건비</td><td>${money(-round.cost)}</td></tr>
+      ${round.investmentCost ? `<tr><td>투자금 출금</td><td>${money(-round.investmentCost)}</td></tr><tr><td>투자금 회수</td><td>${money(round.investmentReturn)}</td></tr>` : ""}
       ${round.powerCost ? `<tr><td>회식 비용</td><td>${money(-round.powerCost)}</td></tr>` : ""}
       ${round.penalty ? `<tr class="bad"><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
-      <tr class="sum"><td>이번 분기 수익</td><td class="${round.profit < 0 ? "neg" : "pos"}"><span class="profit-count">${money(0)}</span></td></tr>
-      <tr><td>누적 수익</td><td class="${totalProfit(c) < 0 ? "neg" : "pos"}">${money(totalProfit(c))}</td></tr>
+      <tr class="sum"><td>이번 분기 순이익</td><td class="${round.profit < 0 ? "neg" : "pos"}"><span class="profit-count">${money(0)}</span></td></tr>
+      ${round.support ? `<tr class="support"><td>부모님 긴급 용돈 (순이익 제외)</td><td>${money(round.support)}</td></tr>` : ""}
+      <tr class="bank-row"><td><span aria-hidden="true">🏦</span> 통장 잔액</td><td class="${round.closingCash < 0 ? "neg" : ""}">${money(round.closingCash, false)}</td></tr>
     </table>
-    <div class="verdict-chart"><span class="hud-label">누적 수익 추이</span>${profitChart(c)}</div>
+    ${round.cost ? `<p class="payday ${round.closingCash < 0 ? "minus" : ""}"><span class="payday-ico" aria-hidden="true">💬</span><span><b>직원:</b> ${round.closingCash < 0 ? "사장님, 통장이 마이너스인데… 다음 월급도 지켜 주세요!" : "입금 확인했습니다. 충성!"}</span></p>` : ""}
     ${r.over ? `<p class="note">AI가 글자 수를 ${r.over}번 넘겨서 잘랐어요</p>` : ""}`;
   resultBox.appendChild(verdict);
   sfx("stamp");
@@ -2515,6 +2673,18 @@ async function renderTruth() {
   if (round.profit <= BIG_LOSS) shakeScreen();
   if (round.profit >= BIG_WIN) burst(26);
   renderHud();
+
+  // 판정 다음: 부모님 긴급 용돈(있으면) → 분기별 돈의 흐름 (공개 순서는 main과 같음)
+  if (round.support) {
+    const note = document.createElement("p");
+    note.className = "family-support";
+    note.innerHTML = `<span class="fs-phone" aria-hidden="true">📱</span><span class="fs-msg"><b>엄마</b>${esc(`이번이 진짜 마지막이다! 긴급 용돈 ${money(round.support)} 입금.`)}</span>`;
+    note.setAttribute("aria-label", `엄마: 이번이 진짜 마지막이다! 긴급 용돈 ${money(round.support)} 입금.`);
+    resultBox.appendChild(note);
+    sfx("coin");
+    await beat(400);
+  }
+  resultBox.insertAdjacentHTML("beforeend", financeChart(c));
 
   // 퇴사자는 상자를 들고 걸어 나갑니다
   for (const label of round.quits) {
@@ -2593,6 +2763,7 @@ function renderFinal(placed) {
     <h2 class="sr-only">1년 결산</h2>
     ${banner}
     <div class="front">
+      <div class="front-col">
       <article class="news win front-page ${profit < 0 ? "loss" : "gain"}">
         <div class="masthead"><span>1년 결산 특별호</span><b>경희경제신문</b><span>${esc(today())}</span></div>
         <p class="paper">사장님 특별호 · ${esc(c.industry)} <span>${isPractice(c) ? "연습 모드" : "ChatKHU 판정"}</span></p>
@@ -2604,15 +2775,15 @@ function renderFinal(placed) {
         <p class="ending-text">${esc(ending.text)}</p>
         <div class="front-grid">
           <div class="front-money">
-            <p class="tag">1년 누적 수익</p>
+            <p class="tag">1년 누적 수익 <small>순이익 · 순위 기준</small></p>
             <p class="score big ${profit < 0 ? "neg" : "pos"}"><span class="total-count">${money(0)}</span></p>
             <p class="stars" aria-label="별 ${finalStars(profit)}개">${[1, 2, 3].map(k => `<span class="star ${k <= finalStars(profit) ? "on" : ""}" style="--k:${k}">★</span>`).join("")}</p>
-            ${profitChart(c, true)}
+            <p class="hint">칭찬 ${c.rounds.filter(r => r.choice === "praise").length}회 · 추궁 ${c.rounds.filter(r => r.choice === "dig").length}회 · 재직 직원 ${staffOf(c).length}명</p>
           </div>
           <div class="front-company">
             ${companyTitle(c)}
-            <p class="hint">칭찬 ${c.rounds.filter(r => r.choice === "praise").length}회 · 추궁 ${c.rounds.filter(r => r.choice === "dig").length}회 · 재직 직원 ${staffOf(c).length}명</p>
           </div>
+          ${bankCard(c, "on-paper")}
         </div>
         <p class="section-title">분기별 기사</p>
         <ol class="rounds">${rows}</ol>
@@ -2623,6 +2794,8 @@ function renderFinal(placed) {
             <textarea id="ending-share" rows="5" readonly aria-label="공유할 결산 문구">${esc(endingShareText(c))}</textarea></details>
         </div>
       </article>
+      ${financeChart(c)}
+      </div>
       <div class="card awards">
         ${topLiar ? `<div class="wanted">
           <p class="wanted-head">WANTED · 1년간의 거짓말왕</p>
@@ -2784,7 +2957,7 @@ function setupUI() {
   // 첫 탭에서 소리 켜기 (브라우저 정책)
   document.addEventListener("pointerdown", () => { if (sound.on) audio(); }, { capture: true, passive: true });
   document.addEventListener("click", e => {
-    const b = e.target.closest("button, .fund, .strategy-option");
+    const b = e.target.closest("button, .fund, .invest-option");
     if (!b || b.disabled || b.id === "btn-sound") return;
     sfx(b.classList.contains("primary") || b.classList.contains("choice-btn") ? "tapBig" : "tap");
   }, true);

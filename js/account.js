@@ -12,7 +12,10 @@
   const KEY_TOKEN = "company_battle_token";
   const KEY_ID = "company_battle_id";
   const KEY_GUEST = "company_battle_guest";
-  const auth = { enabled: false, id: "", token: "", guest: false };
+  // canSave: 저장된 게임을 서버에서 제대로 불러온 뒤에만 true (못 불러왔는데 새 판을 저장하면 하던 게임을 덮어씀)
+  const auth = { enabled: false, id: "", token: "", guest: false, canSave: false };
+  const ACCOUNT_TIMEOUT_MS = 10 * 1000; // 로그인·불러오기·저장: 10초 넘게 답이 없으면 끊기
+  const START_TIMEOUT_MS = 8 * 1000;    // 처음 서버 확인: 8초 넘게 답이 없으면 로그인 없이 시작
 
   const keep = {
     get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
@@ -22,13 +25,14 @@
 
   // board-sync.js가 순위 기록을 올릴 때 이 토큰을 씁니다
   window.getAuthToken = () => (auth.enabled ? auth.token : "");
+  window.getAuthId = () => (auth.enabled ? auth.id : ""); // 앞사람 기록이 다음 사람 이름으로 올라가지 않게 (board-sync.js)
 
   async function api(path, body) {
-    const res = await fetch(base + path, {
+    const res = await fetchWithTimeout(base + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
-    });
+    }, ACCOUNT_TIMEOUT_MS);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const err = new Error(data.error || `서버 오류 (${res.status})`);
@@ -69,6 +73,8 @@
           </div>
           <p class="hint">순위표에 "닉네임(손님)"으로 올라가요. 손님은 다른 기기에서 이어하기가 안 돼요.</p>
           <p id="guest-error" class="error" role="alert"></p>
+          <p class="hint" id="offline-box" hidden>서버가 답하지 않을 때는
+            <button type="button" id="btn-offline" class="text-btn">로그인 없이 하기</button> (순위는 이 기기에만 남아요)</p>
         </div>
         <p class="auth-or">또는 계정으로 (이어하기 가능)</p>
         <div class="auth-tabs">
@@ -90,8 +96,8 @@
       </form></div>
     </section>
     <section id="screen-resume" class="screen">
-      <h2>하던 게임이 있어요</h2>
-      <p class="lead">이어서 하거나, 새 회사를 차릴 수 있어요.</p>
+      <h2 id="resume-title">하던 게임이 있어요</h2>
+      <p class="lead" id="resume-lead">이어서 하거나, 새 회사를 차릴 수 있어요.</p>
       <div class="solo"><div class="card resume-card" id="resume-box"></div></div>
       <div class="row center">
         <button id="btn-resume" class="primary">이어서 하기</button>
@@ -108,6 +114,28 @@
   userBtn.hidden = true;
   topButtons.prepend(userBtn);
 
+  // 결산 화면: 로그인한 채로 "다음 사람 차례"를 누르면 다음 사람 기록이 앞사람 아이디로 올라갑니다.
+  // 그래서 로그인 중에는 "로그아웃하고 다음 사람"(기본)과 "같은 아이디로 한 판 더"를 나눠서 보여 줍니다.
+  // (화면 개편으로 btn-restart가 없어져도 로그인·이어하기는 그대로 돌아가게, 없으면 이 부분만 건너뜁니다)
+  const restartBtn = document.getElementById("btn-restart");
+  const restartLabel = restartBtn ? restartBtn.textContent : "";
+  const nextPersonBtn = document.createElement("button");
+  nextPersonBtn.id = "btn-logout-next";
+  nextPersonBtn.className = "primary";
+  nextPersonBtn.textContent = "로그아웃하고 다음 사람";
+  nextPersonBtn.hidden = true;
+  if (restartBtn) restartBtn.before(nextPersonBtn);
+  nextPersonBtn.addEventListener("click", () => logout("다음 사장님 차례예요. 로그인하거나 손님으로 바로 시작해 주세요."));
+
+  function updateFinalButtons() {
+    if (!restartBtn) return;
+    const loggedIn = auth.enabled && !!auth.id;
+    restartBtn.textContent = !loggedIn ? restartLabel : auth.guest ? "같은 닉네임으로 한 판 더" : "같은 아이디로 한 판 더";
+    restartBtn.classList.toggle("primary", !loggedIn);
+    restartBtn.classList.toggle("secondary", loggedIn);
+    nextPersonBtn.hidden = !loggedIn;
+  }
+
   // ===== 로그인 화면 =====
 
   let mode = "login";
@@ -123,6 +151,22 @@
     errBox.textContent = "";
   }));
 
+  // 오류 문구. 서버 쪽 문제(응답 없음·접속 실패·횟수 제한·서버 오류)면 "로그인 없이 하기"도 보여 줍니다
+  function showAuthError(box, err) {
+    box.textContent = err.status ? err.message
+      : err.timeout ? `${err.message} 잠시 뒤 다시 하거나 '로그인 없이 하기'를 눌러 주세요.`
+      : "서버에 접속하지 못했어요. 인터넷 연결을 확인해 주세요.";
+    if (!err.status || err.status === 429 || err.status >= 500) document.getElementById("offline-box").hidden = false;
+  }
+
+  // 서버가 안 될 때의 탈출구: 이번에는 로그인·이어하기 없이 (새로고침하면 다시 연결)
+  document.getElementById("btn-offline").addEventListener("click", () => {
+    clearAuth();
+    auth.enabled = false;
+    startGame();
+    toast("로그인 없이 시작해요. 순위는 이 기기에만 남아요.");
+  });
+
   // 손님으로 바로 시작
   const guestErr = document.getElementById("guest-error");
   async function startAsGuest() {
@@ -136,7 +180,7 @@
       toast(`${data.id} 손님, 환영합니다!`);
       startGame();
     } catch (err) {
-      guestErr.textContent = err.status ? err.message : "서버에 접속하지 못했어요. 인터넷 연결을 확인해 주세요.";
+      showAuthError(guestErr, err);
     } finally {
       btn.disabled = false;
     }
@@ -165,7 +209,7 @@
       toast(mode === "signup" ? `환영합니다, ${data.id} 사장님!` : `${data.id} 사장님, 어서 오세요!`);
       await afterLogin();
     } catch (err) {
-      errBox.textContent = err.status ? err.message : "서버에 접속하지 못했어요. 인터넷 연결을 확인해 주세요.";
+      showAuthError(errBox, err);
     } finally {
       btn.disabled = false;
     }
@@ -179,6 +223,7 @@
     auth.id = id;
     auth.token = token;
     auth.guest = !!guest;
+    auth.canSave = false; // /me로 저장된 게임을 확인한 뒤에 켭니다 (afterLogin)
     keep.set(KEY_ID, id);
     keep.set(KEY_TOKEN, token);
     if (auth.guest) keep.set(KEY_GUEST, "1"); else keep.remove(KEY_GUEST);
@@ -190,10 +235,31 @@
     auth.id = "";
     auth.token = "";
     auth.guest = false;
+    auth.canSave = false;
     keep.remove(KEY_ID);
     keep.remove(KEY_TOKEN);
     keep.remove(KEY_GUEST);
     userBtn.hidden = true;
+  }
+
+  // 로그인 화면 보여 주기. 기다리던 ChatKHU 답이 늦게 와도 무시하게 main.js의 aiToken을 올립니다
+  // (안 그러면 늦은 답이 새 빈 회사에 적용되고, 로그인 화면을 건너뛰어 다음 화면으로 넘어갑니다)
+  function showLogin() {
+    aiToken++;
+    showScreen("screen-login");
+  }
+
+  function logout(message) {
+    const wasGuest = auth.guest;
+    const token = auth.token;
+    afterSaves(() => api("/logout", { token }).catch(() => {})); // 기다리던 저장을 먼저 보낸 뒤 로그아웃 (먼저 끊으면 그 저장이 버려짐)
+    clearAuth();
+    startGame();
+    showLogin();
+    // 다음 사람에게 앞사람 이름이 그대로 보이지 않게
+    document.getElementById("guest-name").value = "";
+    document.getElementById("login-id").value = "";
+    toast(message || (wasGuest ? "손님 플레이를 마쳤어요." : "로그아웃했어요. 하던 게임은 저장돼 있어요."));
   }
 
   // 로그아웃은 두 번 눌러야 (실수 방지)
@@ -206,31 +272,41 @@
       return;
     }
     logoutArmed = false;
-    const wasGuest = auth.guest;
-    api("/logout", { token: auth.token }).catch(() => {});
-    clearAuth();
-    startGame();
-    showScreen("screen-login");
-    toast(wasGuest ? "손님 플레이를 마쳤어요." : "로그아웃했어요. 하던 게임은 저장돼 있어요.");
+    logout();
   });
 
   // ===== 이어하기 =====
 
   let pendingSave = null;
+  let saveUnknown = false; // 서버가 바쁘거나(429) 인터넷이 끊겨 저장된 게임이 있는지 모르는 상태
+  let lastSavedAt = 0;
+  const checkpointKey = () => `company_battle_checkpoint_${auth.id.toLowerCase()}`;
 
   async function afterLogin() {
     let me;
     try {
       me = await api("/me", { token: auth.token });
+      auth.canSave = !me.guest;
     } catch (err) {
-      if (err.status === 401) { clearAuth(); showScreen("screen-login"); return; }
-      toast("저장된 게임을 불러오지 못했어요. 새로 시작합니다.");
-      me = { id: auth.id, save: null };
+      if (err.status === 401) { clearAuth(); showLogin(); return; }
+      if (!auth.guest) {
+        // 여기서 새 게임을 시작하면 첫 저장이 하던 게임을 덮어씁니다 (canSave는 false 그대로).
+        // 로그인은 그대로 두고, 다시 시도할지 새로 시작할지 사장님이 고르게 합니다.
+        renderResumeError(err);
+        showScreen("screen-resume");
+        toast("저장된 게임을 불러오지 못했어요. 잠시 후 '다시 시도'를 눌러 주세요.");
+        return;
+      }
+      me = { id: auth.id, guest: true, save: null }; // 손님은 이어하기 저장이 없으니 그대로 시작
     }
+    saveUnknown = false;
     auth.id = me.id;
     if (me.guest) auth.guest = true;
     userBtn.textContent = userLabel();
-    pendingSave = me.save && me.save.phase && me.save.company ? me.save : null;
+    let localSave = null;
+    if (auth.canSave) try { localSave = JSON.parse(keep.get(checkpointKey()) || "null"); } catch {}
+    const latest = localSave && localSave.savedAt > (me.save?.savedAt || 0) ? localSave : me.save;
+    pendingSave = latest && latest.phase && latest.company ? latest : null;
     if (pendingSave) {
       renderResume(pendingSave);
       showScreen("screen-resume");
@@ -239,18 +315,42 @@
     }
   }
 
+  function setResumeText(title, lead, button) {
+    document.getElementById("resume-title").textContent = title;
+    document.getElementById("resume-lead").textContent = lead;
+    document.getElementById("btn-resume").textContent = button;
+  }
+
+  function renderResumeError(err) {
+    pendingSave = null;
+    saveUnknown = true;
+    setResumeText("저장된 게임을 확인하지 못했어요", "서버가 잠깐 바쁘거나 인터넷이 끊겼어요. 하던 게임이 있다면 서버에 그대로 있어요.", "다시 시도");
+    document.getElementById("btn-resume").disabled = false;
+    document.getElementById("resume-box").innerHTML = `
+      <p>${esc(err.status ? err.message : err.timeout ? err.message : "서버에 접속하지 못했어요. 인터넷 연결을 확인해 주세요.")}</p>
+      <p class="hint">'새로 시작'을 누르면 저장된 게임이 있어도 지워져요.</p>`;
+  }
+
   function renderResume(s) {
+    setResumeText("하던 게임이 있어요", "이어서 하거나, 새 회사를 차릴 수 있어요.", "이어서 하기");
     const c = s.company;
     const profit = (c.rounds || []).reduce((sum, r) => sum + (typeof r.profit === "number" ? r.profit : 0), 0);
-    const where = { news: "면접 전", event: `${quarterLabel(s.round)} 지시 전`, choice: `${quarterLabel(s.round)} 보고 받음`, settled: `${quarterLabel(s.round)} 결산 끝` }[s.phase] || "";
+    const compatible = c.financeVersion === CASH_RULE_VERSION;
+    document.getElementById("btn-resume").disabled = !compatible;
+    const where = { funding: "창업자금 봉투 개봉 완료", interview: "면접 중", news: "면접 전", event: `${quarterLabel(s.round)} 지시 전`, choice: `${quarterLabel(s.round)} 보고 받음`, settled: `${quarterLabel(s.round)} 결산 끝` }[s.phase] || "";
     document.getElementById("resume-box").innerHTML = `
       ${companyTitle(c)}
       <p class="big">${esc(where)}</p>
+      ${!compatible ? '<p class="bad">이전 경제 규칙으로 저장된 게임입니다. 새 회사로 시작해 주세요.</p>' : ""}
       <p>누적 수익 <b class="${profit < 0 ? "neg" : "pos"}">${money(profit)}</b> · 저장 ${new Date(s.savedAt).toLocaleString("ko-KR")}</p>`;
   }
 
-  document.getElementById("btn-resume").addEventListener("click", () => {
-    if (pendingSave) resume(pendingSave);
+  document.getElementById("btn-resume").addEventListener("click", async () => {
+    if (pendingSave) return resume(pendingSave);
+    if (!saveUnknown) return;
+    const btn = document.getElementById("btn-resume"); // 다시 시도
+    btn.disabled = true;
+    try { await afterLogin(); } finally { if (saveUnknown) btn.disabled = false; }
   });
 
   let newArmed = false;
@@ -264,16 +364,28 @@
     newArmed = false;
     e.target.textContent = "새로 시작";
     pendingSave = null;
-    api("/save-clear", { token: auth.token }).catch(() => {});
+    // 저장을 확인 못 한 상태에서도 사장님이 두 번 눌러 고른 것이므로, 서버 저장을 지우고 이번 판부터 다시 저장합니다
+    if (saveUnknown) { saveUnknown = false; auth.canSave = !auth.guest; }
+    clearSave();
     startGame();
   });
 
   function resume(s) {
+    if (s.company.financeVersion !== CASH_RULE_VERSION) return;
     game.company = s.company;
     game.round = s.round;
     nextCandidateId = Math.max(nextCandidateId, s.nextCandidateId || 1);
+    interviewIndex = s.interviewIndex || 0;
     pendingSave = null;
     switch (s.phase) {
+      case "funding":
+        renderFound();
+        showScreen("screen-found");
+        break;
+      case "interview":
+        renderInterview(interviewIndex);
+        showScreen("screen-interview");
+        break;
       case "news":
         renderFoundingNews();
         showScreen("screen-news");
@@ -303,17 +415,79 @@
 
   // ===== 저장 시점 (기존 함수 감싸기) =====
 
-  function save(phase) {
-    if (!auth.enabled || !auth.token || auth.guest) return; // 손님은 이어하기 저장 안 함
-    const snapshot = {
-      v: 1, phase, savedAt: Date.now(), round: game.round,
-      nextCandidateId, company: game.company
-    };
-    api("/save", { token: auth.token, save: snapshot }).catch(err => {
-      if (err.status === 401) toast("로그인이 풀려서 저장하지 못했어요. 다시 로그인해 주세요.");
-      else console.warn("저장 실패", err);
-    });
+  // 이 기기 저장(checkpoint)은 매번 바로 하고, 서버 저장은 무료 한도(하루 1,000번)를 아끼려고 모아서 보냅니다.
+  //  - 다시 뽑기·다시 고르기를 막아야 하는 순간(봉투 개봉, 면접 전, 보고 받음, 결산)은 3초 간격만 지켜 바로 보냅니다.
+  //  - 면접 중·지시 쓰는 중처럼 자주 바뀌는 저장은 20초 동안 더 바뀌지 않으면 보냅니다 (계속 바뀌어도 60초에 한 번은 보냄).
+  //  - 늘 가장 마지막 모습 하나만 보내고, 지우기(/save-clear)는 보내던 저장이 끝난 뒤에 보냅니다.
+  const SAVE_GAP_MS = 3000;        // 서버는 같은 사람의 저장을 2초 안에 또 받지 않습니다
+  const SAVE_QUIET_MS = 20 * 1000;
+  const SAVE_MAX_WAIT_MS = 60 * 1000;
+  const URGENT_PHASES = ["funding", "news", "choice", "settled"];
+  const outbox = { next: null, busy: false, lastAt: 0, timer: null, after: [] };
+
+  function dueAt(job) {
+    const gap = outbox.lastAt + SAVE_GAP_MS;
+    return job.urgent ? gap : Math.max(gap, Math.min(job.touchedAt + SAVE_QUIET_MS, job.firstAt + SAVE_MAX_WAIT_MS));
   }
+
+  function flushSaves() {
+    clearTimeout(outbox.timer);
+    if (outbox.busy) return;
+    if (!outbox.next) {
+      outbox.after.splice(0).forEach(fn => fn()); // 다 보냈으면 기다리던 일(로그아웃 등)
+      return;
+    }
+    const wait = dueAt(outbox.next) - Date.now();
+    if (wait > 0) {
+      outbox.timer = setTimeout(flushSaves, wait);
+      return;
+    }
+    const job = outbox.next;
+    outbox.next = null;
+    outbox.busy = true;
+    outbox.lastAt = Date.now();
+    api(job.path, job.body)
+      .catch(err => {
+        if (err.status === 429 && !job.retried && !outbox.next) { job.retried = true; job.urgent = true; outbox.next = job; } // 너무 잦았으면 한 번만 다시
+        else if (err.status === 401 && job.body.token === auth.token) toast("로그인이 풀려서 저장하지 못했어요. 다시 로그인해 주세요.");
+        else console.warn("저장 실패", err);
+      })
+      .finally(() => { outbox.busy = false; flushSaves(); });
+  }
+
+  function queueSave(path, body, urgent) {
+    const now = Date.now();
+    const prev = outbox.next;
+    outbox.next = { path, body, urgent: urgent || !!(prev && prev.urgent), firstAt: prev ? prev.firstAt : now, touchedAt: now };
+    flushSaves();
+  }
+
+  // 기다리던 저장을 조용히 기다리지 말고 바로 보낸 뒤 fn을 부릅니다
+  function afterSaves(fn) {
+    if (outbox.next) outbox.next.urgent = true;
+    outbox.after.push(fn);
+    flushSaves();
+  }
+
+  function save(phase) {
+    if (!auth.enabled || !auth.token || auth.guest || !auth.canSave) return; // 손님은 이어하기 저장 안 함
+    const snapshot = {
+      v: 2, phase, savedAt: Math.max(Date.now(), lastSavedAt + 1), round: game.round,
+      nextCandidateId, interviewIndex, company: JSON.parse(JSON.stringify(game.company)) // 늦게 보내도 지금 모습 그대로 가게 복사
+    };
+    lastSavedAt = snapshot.savedAt;
+    keep.set(checkpointKey(), JSON.stringify(snapshot));
+    queueSave("/save", { token: auth.token, save: snapshot }, URGENT_PHASES.includes(phase));
+  }
+
+  // 저장된 게임 지우기: 기다리던 저장은 버리고, 보내던 저장이 끝난 뒤에 지웁니다 (지운 뒤에 옛 저장이 다시 써지지 않게)
+  function clearSave() {
+    if (!auth.enabled || !auth.token || auth.guest || !auth.canSave) return;
+    keep.remove(checkpointKey());
+    queueSave("/save-clear", { token: auth.token }, true);
+  }
+
+  document.addEventListener("company-state-change", e => save(e.detail.phase));
 
   function wrap(name, fn) {
     const original = window[name];
@@ -345,7 +519,9 @@
 
   wrap("startRound", original => function () {
     original.apply(this, arguments);
-    save("event");
+    // 1분기 시작은 면접(채용) 결과를 남기려고 저장합니다. 2분기부터는 바로 전 분기 결산('settled') 저장으로
+    // 똑같이 이어할 수 있어서 저장하지 않습니다 (지시를 쓰기 시작하면 main.js가 따로 저장)
+    if (game.round === 0) save("event");
   });
 
   wrap("showRoundResult", original => function () {
@@ -361,7 +537,8 @@
 
   wrap("renderFinal", original => function () {
     original.apply(this, arguments);
-    if (auth.enabled && auth.token && !auth.guest) api("/save-clear", { token: auth.token }).catch(() => {});
+    updateFinalButtons();
+    clearSave();
   });
 
   // ===== 시작: 서버가 로그인을 지원하는지 확인 =====
@@ -370,14 +547,19 @@
     const savedToken = keep.get(KEY_TOKEN);
     if (savedToken) showScreen("screen-auth-wait");
     let info = {};
+    let failed = false;
     try {
-      info = await (await fetch(base + "/")).json();
+      info = await (await fetchWithTimeout(base + "/", {}, START_TIMEOUT_MS)).json();
     } catch {
       info = {};
+      failed = true;
     }
     if (!info.accounts) {
-      // 서버에 저장소가 없거나 접속 실패: 로그인 없이 지금처럼
-      if (document.getElementById("screen-auth-wait").classList.contains("active")) startGame();
+      // 서버에 저장소가 없거나 접속 실패(8초 안에 답 없음 포함): 로그인 없이 지금처럼
+      if (document.getElementById("screen-auth-wait").classList.contains("active")) {
+        startGame();
+        if (failed) toast("팀 서버가 답하지 않아 로그인 없이 시작해요. 새로고침하면 다시 연결해요.");
+      }
       return;
     }
     auth.enabled = true;
@@ -385,7 +567,7 @@
       setAuth(keep.get(KEY_ID), savedToken, keep.get(KEY_GUEST) === "1");
       await afterLogin();
     } else {
-      showScreen("screen-login");
+      showLogin();
     }
   })();
 })();

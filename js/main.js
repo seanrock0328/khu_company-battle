@@ -4,6 +4,17 @@
 let lastPlacedAt = null;   // 방금 플레이한 기록 (순위표에서 강조)
 let interviewIndex = 0;    // 지금 면접 중인 직급 번호
 
+function checkpointGame(phase) {
+  document.dispatchEvent(new CustomEvent("company-state-change", { detail: { phase } }));
+}
+
+document.addEventListener("click", e => {
+  const btn = e.target.closest("[data-finance-quarter]");
+  if (!btn) return;
+  const chart = btn.closest("[data-finance-chart]");
+  if (chart) chart.innerHTML = financeMarkup(game.company, Number(btn.dataset.financeQuarter));
+});
+
 function startGame() {
   resetGame();
   interviewIndex = 0;
@@ -100,6 +111,7 @@ foundBox.addEventListener("input", e => {
 
 foundBox.addEventListener("change", e => {
   if (e.target.dataset.action === "fund") {
+    if (Number.isFinite(game.company.initialCash)) return;
     game.company.funding = e.target.value;
     renderFound();
   }
@@ -109,7 +121,9 @@ document.getElementById("btn-found").addEventListener("click", () => {
   const error = checkFounding(game.company);
   if (error) return toast(error);
   if (!getSeason()) setSeason(game.company.industry, game.company.emoji); // 다음 사장님도 같은 업종으로
-  makeCandidates(game.company);
+  openFunding(game.company);
+  if (!allCandidates(game.company).length) makeCandidates(game.company);
+  checkpointGame("funding");
   runAI("founding", () => {
     renderFoundingNews();
     showScreen("screen-news");
@@ -138,50 +152,67 @@ document.getElementById("interview").addEventListener("click", e => {
   switch (btn.dataset.action) {
     case "ask":
       if (askCandidate(c, rank, Number(btn.dataset.id), btn.dataset.question)) renderInterview(interviewIndex);
+      checkpointGame("interview");
       return;
     case "tab": return go(Number(btn.dataset.i));
     case "hire": {
       const error = hireCandidate(c, rank, Number(btn.dataset.id));
       if (error) return toast(error);
+      checkpointGame("interview");
       // 뽑으면 다음 직급으로 넘어갑니다
       return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
     }
     case "vacant":
       hireCandidate(c, rank, null);
+      checkpointGame("interview");
       return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
     case "prev": return go(interviewIndex - 1);
     case "next": return go(interviewIndex + 1);
-    case "done":
-      if (staffOf(c).length === 0) return toast("직원을 한 명 이상 뽑아 주세요.");
+    case "done": {
+      const error = checkStaffing(c); // 최소 인원(MIN_STAFF)은 game.js에서 정합니다
+      if (error) return toast(error);
       game.round = 0;
       c.rounds = [];
       return startRound();
+    }
   }
 });
 
 // ===== 이벤트 라운드 =====
 
 function startRound() {
-  game.company.rounds[game.round] = { order: "", result: null };
+  game.company.rounds[game.round] ||= { order: "", result: null, investment: 0 };
+  game.company.rounds[game.round].committed = false;
   renderEvent();
   document.getElementById("btn-run").textContent = staffOf(game.company).length ? "지시 내리기" : "영업 중단 분기 결산하기";
   showScreen("screen-event");
 }
 
 const eventBox = document.getElementById("event-box");
+let draftTimer;
 eventBox.addEventListener("input", e => {
   if (e.target.id !== "order") return;
   game.company.rounds[game.round].order = e.target.value;
   document.querySelector('.counter[data-for="order"]').textContent = `${e.target.value.length} / ${ORDER_MAX}`;
+  clearTimeout(draftTimer);
+  const round = game.company.rounds[game.round];
+  draftTimer = setTimeout(() => {
+    if (game.company.rounds[game.round] === round && !round.result && !round.committed) checkpointGame("event");
+  }, 400);
 });
 eventBox.addEventListener("change", e => {
-  if (e.target.dataset.strategy) setFinalStrategy(game.company, e.target.dataset.strategy);
+  if (!e.target.hasAttribute("data-invest")) return;
+  const error = setInvestment(game.company, e.target.dataset.invest === "yes");
+  if (error) toast(error);
+  else checkpointGame("event");
+  renderEvent();
 });
 eventBox.addEventListener("click", e => {
   const btn = e.target.closest("[data-power]");
   if (!btn) return;
   const error = usePower(game.company, btn.dataset.power);
   if (error) return toast(error);
+  checkpointGame("event");
   renderEvent();
   toast("필살기를 사용했어요. 이번 판의 남은 필살기는 0회입니다.");
 });
@@ -194,9 +225,10 @@ document.getElementById("btn-run").addEventListener("click", () => {
   const order = document.getElementById("order").value.trim();
   if (!order) return toast("사장님, 지시를 적어 주세요.");
   const round = game.company.rounds[game.round];
-  if (game.round === ROUNDS - 1 && !round.strategy) return toast("마지막 분기의 안전·도전 전략을 먼저 골라 주세요.");
   round.order = order;
+  round.committed = true;
   round.chain = transmissionStaff(game.company).map(x => x.id); // 직통 전화면 마지막 직원만
+  checkpointGame("event");
   runAI("event", showRoundResult);
 });
 
@@ -208,6 +240,7 @@ document.getElementById("result-box").addEventListener("click", e => {
   if (!btn || choiceBox.hidden) return;
   const error = usePower(game.company, "visit");
   if (error) return toast(error);
+  checkpointGame("choice");
   renderDecisionTools();
 });
 
@@ -282,7 +315,9 @@ let screenBeforeBoard = "screen-found";
 
 function openBoard() {
   const current = document.querySelector(".screen.active");
-  if (current && current.id !== "screen-board" && current.id !== "screen-settings") screenBeforeBoard = current.id;
+  // 설정 화면에서 왔으면 설정을 열기 전 화면으로 (예전 값이 남아 게임 중에 창업 화면이나 새 판으로 가지 않게)
+  const from = current && (current.id === "screen-settings" ? screenBeforeSettings : current.id);
+  if (from && from !== "screen-board") screenBeforeBoard = from;
   renderBoard(lastPlacedAt);
   showScreen("screen-board");
 }
@@ -290,10 +325,8 @@ function openBoard() {
 document.getElementById("btn-board").addEventListener("click", openBoard);
 document.getElementById("btn-final-board").addEventListener("click", openBoard);
 
-document.getElementById("btn-board-back").addEventListener("click", () => {
-  if (screenBeforeBoard === "screen-final") startGame();
-  else showScreen(screenBeforeBoard);
-});
+// 항상 보던 화면으로 돌아갑니다. 결산에서 왔으면 결산 화면으로 (다음 판은 결산 화면의 버튼으로 시작)
+document.getElementById("btn-board-back").addEventListener("click", () => showScreen(screenBeforeBoard));
 
 document.getElementById("season-box").addEventListener("click", async e => {
   if (e.target.id !== "btn-copy-link") return;
@@ -312,9 +345,8 @@ clearBtn.addEventListener("click", () => {
     setTimeout(() => { clearArmed = false; clearBtn.textContent = "순위표 초기화"; }, 4000);
     return;
   }
-  clearBoard();
+  clearBoard(); // 공유 순위표면 관리자 코드를 물어보고, 취소하면 아무것도 지우지 않습니다
   lastPlacedAt = null;
-  screenBeforeBoard = "screen-final"; // 돌아가면 새 판(새 업종 뽑기)부터
   clearArmed = false;
   clearBtn.textContent = "순위표 초기화";
   renderBoard(null);

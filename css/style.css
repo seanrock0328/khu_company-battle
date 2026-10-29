@@ -13,7 +13,8 @@
    4) 간격은 --s1~--s7(4/8/12/16/24/32/48)만. 숫자는 tabular-nums.
    5) 모티프: 결재 도장 = 판정·합격·거짓말·반전·퇴사 / 원고지 칸 = 글자 수(1칸 = 10자) /
       한 층 사무실 평면도 = 결재 라인(안쪽 유리벽 사장실 → 임원 → 부장 → 팀 책상 → 입구) /
-      단톡방 = 보고 / 신문 = 결산.
+      단톡방 = 보고 / 신문 = 결산 / 누런 봉투 = 창업자금 / 초록 책등 통장 = 회사 돈 /
+      신문 '경제면' = 분기별 돈의 흐름(화면마다 돈 그래프는 이것 하나만).
    6) 한 순간의 주인공은 하나: 지시를 쓸 때는 지시서, 전달·보고 때는 사무실과 단톡방,
       고를 때는 파고들기/칭찬하기 한 쌍. 나머지는 물러납니다(흐리게).
    7) 움직임: transform·opacity만. 반응은 150~600ms, 오래 도는 것은 배경 움직임뿐(탭이 숨으면 멈춤).
@@ -117,6 +118,11 @@
   --hair: #2c2334;
   --blush: #ffb2c3;
   --grid-line: #eaa59b;
+  /* 창업자금 봉투 · 회사 통장 */
+  --envelope: #f4d9a3;
+  --envelope-2: #e5bf78;
+  --envelope-ink: #5a3e12;
+  --bank-spine: var(--money);
   /* 글꼴과 단계 */
   --font-display: "Black Han Sans", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   --font-body: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
@@ -233,6 +239,9 @@
     --hair: #120e17;
     --blush: #e88da2;
     --grid-line: #8a4a4a;
+    --envelope: #6d5732;
+    --envelope-2: #59452a;
+    --envelope-ink: #f6e2b8;
   }
 }
 
@@ -306,6 +315,9 @@
   --hair: #120e17;
   --blush: #e88da2;
   --grid-line: #8a4a4a;
+  --envelope: #6d5732;
+  --envelope-2: #59452a;
+  --envelope-ink: #f6e2b8;
 }
 
 /* ===== 기본 ===== */
@@ -482,7 +494,7 @@ body.in-quarter .hud-res { margin-left: 0; }
 }
 .res i { font-style: normal; font-size: var(--fs-l); width: 24px; text-align: center; }
 .res-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
-.res-text small { color: var(--muted); font-size: var(--fs-xs); font-weight: 700; }
+.res-text small { color: var(--muted); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
 .res-text b {
   font-family: var(--font-display);
   font-weight: 400;
@@ -997,9 +1009,72 @@ input:disabled, textarea:disabled { opacity: .7; }
 .fund:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .fund-ico { font-size: var(--fs-2xl); line-height: 1.2; }
 .fund b { font-size: var(--fs-s); }
-.fund-budget { font-size: var(--fs-xs); color: var(--muted); }
-.fund-budget strong { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); color: var(--ink); }
 .fund small { color: var(--muted); line-height: 1.3; }
+
+/* 창업자금 봉투: 누런 봉투 + 위쪽 뚜껑 + 인주 봉인. 창업하면 한 번 열리고, 연 뒤에는 바꿀 수 없음 */
+.fund.envelope {
+  padding: 44px var(--s2) var(--s3);
+  background: var(--envelope);
+  border-color: var(--envelope-2);
+  color: var(--envelope-ink);
+  overflow: visible;
+}
+.fund.envelope .env-flap {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: -3px;
+  height: 34px;
+  background: var(--envelope-2);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  border-radius: var(--r) var(--r) 0 0;
+  transition: transform .25s var(--spring);
+  transform-origin: top;
+}
+.fund.envelope::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  border-radius: 50%;
+  background: var(--stamp);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--outline) 35%, transparent);
+}
+.fund.envelope b, .fund.envelope small { color: var(--envelope-ink); }
+.fund.envelope .fund-note { opacity: .85; }
+.fund-cash { display: grid; justify-items: center; line-height: 1.15; margin: 2px 0; }
+.fund-cash strong { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-l); color: var(--ink); font-variant-numeric: tabular-nums; }
+.fund-cash small { font-size: var(--fs-xs); font-weight: 700; }
+.fund.lotto .fund-cash strong { color: var(--stamp); letter-spacing: .1em; }
+.fund.envelope:hover .env-flap { transform: scaleY(.82); }
+.fund.envelope.picked { border-color: var(--outline); background: var(--envelope); box-shadow: var(--sh); transform: translateY(-3px) rotate(-1deg); }
+.fund.envelope.picked .env-flap { background: color-mix(in srgb, var(--envelope-2) 80%, var(--outline)); }
+.fund.envelope.sealed-off { cursor: default; }
+.fund.envelope.sealed-off:hover { transform: none; }
+.fund.envelope.sealed-off:not(.picked) { opacity: .4; filter: grayscale(.6); }
+.fund.envelope.sealed-off.picked { transform: none; }
+.fund.envelope.sealed-off .env-flap { transform: scaleY(-1); transform-origin: top; opacity: .7; }
+.fund.envelope.sealed-off::before { display: none; }
+.fund-hint { margin-top: var(--s3); }
+.funding-open.opened-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r);
+  background: var(--envelope);
+  color: var(--envelope-ink);
+  box-shadow: inset 0 0 0 var(--bw-s) var(--envelope-2);
+  font-size: var(--fs-s);
+}
+.funding-open.opened-note b { color: var(--ink); }
+.funding-open.opened-note small { color: var(--envelope-ink); }
+.fo-ico { font-size: var(--fs-2xl); line-height: 1; }
 .fund.picked::after {
   content: "✓";
   position: absolute;
@@ -1151,6 +1226,65 @@ input:disabled, textarea:disabled { opacity: .7; }
 .plan li.chance b { color: var(--reward); }
 .plan span { font-size: var(--fs-xs); color: var(--muted); }
 
+/* 창업자금 봉투 개봉: 봉투가 뜨고 → 뚜껑이 열리고 → 수표가 올라오고 → 입금 도장 */
+.envelope-open {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s5);
+  padding: var(--s4) var(--s5);
+  margin-bottom: var(--s4);
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-l);
+  background: var(--surface);
+  box-shadow: var(--sh);
+  animation: popIn .45s .15s var(--spring) both;
+}
+.eo-stage { position: relative; width: 180px; height: 172px; }
+.eo-stage svg { position: absolute; left: 0; width: 180px; overflow: visible; }
+.eo-stage path, .eo-stage rect { stroke: var(--outline); stroke-width: 3; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.eo-back { bottom: 0; height: 112px; z-index: 1; }
+.eo-back rect { fill: var(--envelope-2); }
+.eo-front { bottom: 0; height: 112px; z-index: 3; }
+.eo-front path { fill: var(--envelope); }
+.eo-flap { top: 60px; height: 70px; z-index: 4; transform-origin: 50% 0; animation: eoFlap .5s .55s var(--ease) both; }
+.eo-flap path { fill: var(--envelope-2); }
+.eo-seal { fill: var(--stamp); stroke: var(--outline); stroke-width: 2; }
+.eo-cheque {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 100px;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 2px;
+  height: 70px;
+  padding: var(--s1) var(--s3);
+  border-radius: var(--r-s);
+  background: var(--paper);
+  background-image: repeating-linear-gradient(0deg, transparent 0 15px, var(--line) 15px 16px);
+  box-shadow: inset 0 0 0 var(--bw-s) var(--outline);
+  animation: eoRise .65s 1s var(--spring) both;
+}
+.eo-cheque small { font-size: var(--fs-cap); font-weight: 900; color: var(--muted); }
+.eo-cheque b { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-l); line-height: 1.1; color: var(--money); font-variant-numeric: tabular-nums; }
+.eo-stamp { position: absolute; right: 6px; bottom: 6px; font-size: var(--fs-s); padding: 0 6px; animation: stampSlam .5s 1.55s var(--spring) both; }
+.eo-text .tag { font-size: var(--fs-xs); font-weight: 900; color: var(--muted); }
+.eo-text h3 { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-xl); line-height: 1.25; margin: 2px 0 var(--s2); }
+.eo-line {
+  position: relative;
+  display: inline-block;
+  padding: var(--s2) var(--s3);
+  border-radius: 4px var(--r) var(--r) var(--r);
+  background: var(--sunken);
+  font-weight: 700;
+  font-size: var(--fs-s);
+  margin-bottom: var(--s2);
+}
+.envelope-open .hint { font-weight: 700; }
+
 /* ===== 면접 ===== */
 
 #interview { scroll-margin-top: calc(var(--stick-top) + 12px); }
@@ -1174,9 +1308,11 @@ input:disabled, textarea:disabled { opacity: .7; }
 .tab small { color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .budget-wrap { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s4); flex-wrap: wrap; }
-.spent { font-size: var(--fs-s); font-weight: 700; white-space: nowrap; }
+.spent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; font-size: var(--fs-s); font-weight: 700; }
+.spent > * { white-space: nowrap; }
 .spent b { font-family: var(--font-display); font-weight: 400; font-variant-numeric: tabular-nums; font-size: var(--fs-m); }
 .spent small { color: var(--muted); }
+.spent-bank { padding: 0 8px; border-radius: 999px; background: var(--paper); box-shadow: inset 0 0 0 var(--bw-s) var(--bank-spine); color: var(--ink) !important; }
 .budget { display: flex; gap: 2px; flex: 1; min-width: 180px; }
 .budget i { flex: 1; height: 14px; border-radius: 3px; background: var(--sunken); }
 .budget i.on { background: var(--money); }
@@ -1746,8 +1882,13 @@ input:disabled, textarea:disabled { opacity: .7; }
 #event-heading { display: flex; flex-direction: column; gap: 2px; }
 #event-heading .lv { font-family: var(--font-body); font-weight: 900; font-size: var(--fs-xs); color: var(--muted); }
 #event-heading .lv-name { font-size: var(--fs-2xl); }
-.profit-now { display: grid; justify-items: end; gap: 2px; }
-.profit-now .hud-label { font-variant-numeric: tabular-nums; }
+.profit-now { display: grid; justify-items: end; gap: 4px; }
+.pn-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 6px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 var(--bw-s) var(--line); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); white-space: nowrap; }
+.pn-chip i { font-style: normal; }
+.pn-chip b { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); color: var(--ink); font-variant-numeric: tabular-nums; }
+.pn-chip b.pos { color: var(--money); }
+.pn-chip b.neg, .pn-chip.neg b { color: var(--loss); }
+.pn-chip.bank { box-shadow: inset 0 0 0 var(--bw-s) var(--bank-spine); }
 .hud-money { display: grid; line-height: 1.1; text-align: right; }
 .hud-label { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
 .hud-money b { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-l); font-variant-numeric: tabular-nums; }
@@ -1822,13 +1963,68 @@ input:disabled, textarea:disabled { opacity: .7; }
 .pw-text small { font-size: var(--fs-xs); font-weight: 500; line-height: 1.35; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .used-stamp { position: absolute; right: 6px; top: 6px; font-size: var(--fs-s); }
 
-.final-strategy { border: 0; margin: 0 0 var(--s4); padding: 0; }
-.final-strategy legend { font-family: var(--font-display); font-size: var(--fs-l); margin-bottom: var(--s2); padding: 0; }
-.strategy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-bottom: var(--s2); }
-.strategy-option {
+/* ----- 회사 통장 + 이번 분기 투자 (돈 계산은 game.js, 여기선 통장처럼 보여 주기만) ----- */
+.money-desk { container-type: inline-size; display: grid; gap: var(--s3); margin-bottom: var(--s4); }
+@container (min-width: 600px) {
+  .money-desk:not(.closed) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; }
+}
+body.writing .money-desk { opacity: .42; }
+.money-desk { transition: opacity .3s var(--ease); }
+
+/* 통장 한 권: 왼쪽 초록 책등 + 줄 친 속지 */
+.bank-card {
   position: relative;
-  display: flex;
-  gap: var(--s2);
+  padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) + 10px);
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-l);
+  background: var(--paper);
+  box-shadow: var(--sh);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.bank-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: var(--bank-spine); box-shadow: inset -2px 0 0 var(--outline); }
+.bank-card.bump { animation: bump .5s var(--spring); }
+.bank-head { display: flex; align-items: center; gap: 6px; padding-bottom: var(--s1); border-bottom: var(--bw-s) dashed var(--line); font-size: var(--fs-xs); font-weight: 900; color: var(--muted); }
+.bank-ico { font-size: var(--fs-l); line-height: 1; }
+.bank-head small { font-size: var(--fs-xs); color: var(--ink); }
+.bank-owner { margin-left: auto; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.bank-main { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); margin: var(--s2) 0 2px; }
+.bank-label { font-size: var(--fs-xs); font-weight: 900; color: var(--muted); }
+.bank-balance { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-2xl); line-height: 1.1; color: var(--ink); white-space: nowrap; }
+.bank-balance.neg { color: var(--loss); }
+.bank-sub { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px var(--s3); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
+.bank-sub b { color: var(--ink); }
+.bank-sub b.pos { color: var(--money); }
+.bank-sub b.neg { color: var(--loss); }
+.bank-plan { list-style: none; margin: var(--s2) 0 0; padding: var(--s2) 0 0; border-top: var(--bw-s) solid var(--ink); display: grid; gap: 2px; font-size: var(--fs-xs); }
+.bank-plan li { display: flex; justify-content: space-between; gap: var(--s2); padding: 1px 0; border-bottom: 1px dotted var(--line); }
+.bank-plan li b { white-space: nowrap; }
+.bank-plan li.zero { color: var(--muted); }
+.bank-plan li.zero b { font-weight: 500; }
+.bank-plan li.invest:not(.zero) { color: var(--ink); font-weight: 700; }
+.bank-plan li.invest:not(.zero) b { animation: coinPop .4s var(--spring) both; }
+.bank-plan .bank-free { margin-top: 2px; padding-top: var(--s1); border-bottom: 0; font-weight: 900; }
+.bank-plan .bank-free b { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); color: var(--money); }
+.bank-plan .bank-free.neg b { color: var(--loss); }
+.bank-alert { display: flex; align-items: flex-start; gap: var(--s2); margin-top: var(--s2); padding: var(--s2) var(--s3); border-radius: var(--r); background: var(--loss-soft); color: var(--loss); font-size: var(--fs-xs); font-weight: 700; }
+.bank-alert-tag { flex: none; padding: 0 6px; border: var(--bw-s) solid var(--stamp); border-radius: 5px; color: var(--stamp); font-family: var(--font-display); font-weight: 400; transform: rotate(-6deg); }
+.bank-card.minus { box-shadow: var(--sh), 0 0 0 4px var(--loss-soft); }
+/* 결산 신문 위에 놓인 통장 (그림자 없이 작게) */
+.bank-card.on-paper { box-shadow: none; border-width: var(--bw-s); padding: var(--s2) var(--s3) var(--s2) calc(var(--s3) + 10px); margin-top: var(--s3); }
+.bank-card.on-paper .bank-balance { font-size: var(--fs-xl); }
+.front-grid > .bank-card.on-paper { grid-column: 1 / -1; margin-top: 0; }
+
+/* 이번 분기 투자: 두 장의 선택 카드 (저장은 main.js의 data-invest) */
+.invest-choice { border: 0; margin: 0; padding: 0; min-width: 0; }
+.invest-choice legend { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-l); margin-bottom: var(--s2); padding: 0; }
+.invest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-bottom: var(--s2); }
+.invest-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 4px var(--s2);
+  min-height: 44px;
   padding: var(--s3);
   border: var(--bw) solid var(--line);
   border-radius: var(--r);
@@ -1836,13 +2032,61 @@ input:disabled, textarea:disabled { opacity: .7; }
   cursor: pointer;
   transition: transform .14s var(--spring), border-color .14s, box-shadow .14s;
 }
-.strategy-option input { position: absolute; opacity: 0; pointer-events: none; }
-.strategy-option:hover { transform: translateY(-2px); border-color: var(--outline); }
-.strategy-option.picked { border-color: var(--outline); background: var(--ceo-soft); box-shadow: var(--sh); }
-.strategy-option:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
-.st-ico { font-size: var(--fs-2xl); line-height: 1; }
-.st-text b { display: block; font-size: var(--fs-s); }
-.st-text small { color: var(--muted); line-height: 1.35; display: block; }
+.invest-option input { position: absolute; opacity: 0; pointer-events: none; }
+.invest-option:hover:not(.locked) { transform: translateY(-2px); border-color: var(--outline); }
+.invest-option:active:not(.locked) { transform: translateY(2px) scale(.98); }
+.invest-option.picked, .invest-option:has(input:checked) { border-color: var(--outline); background: var(--ceo-soft); box-shadow: var(--sh); }
+.invest-option:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+.invest-option.picked::after {
+  content: "✓";
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--money);
+  color: var(--on-dark);
+  font-weight: 900;
+  font-size: var(--fs-s);
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+.invest-option.chosen { animation: bump .45s var(--spring); }
+.invest-option.locked { cursor: not-allowed; opacity: .6; background: var(--sunken); }
+.iv-ico { font-size: var(--fs-2xl); line-height: 1; }
+.iv-text b { display: block; font-size: var(--fs-s); line-height: 1.25; }
+.iv-text small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--fs-xs); line-height: 1.35; }
+.iv-odds { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.iv-odds em { font-style: normal; padding: 1px 8px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 900; white-space: nowrap; }
+.iv-odds .pos { background: var(--money-soft); color: var(--money); }
+.iv-odds .neg { background: var(--loss-soft); color: var(--loss); }
+.iv-odds .even { background: var(--sunken); color: var(--muted); }
+.iv-lock { position: absolute; right: 8px; top: 8px; padding: 0 6px; border: var(--bw-s) solid var(--stamp); border-radius: 5px; color: var(--stamp); font-family: var(--font-display); font-size: var(--fs-xs); transform: rotate(-8deg); background: var(--surface); }
+
+/* 지난 분기 돈의 흐름 (접어 두기) */
+.finance-fold { margin-bottom: var(--s4); }
+.finance-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  padding: 0 var(--s4);
+  border: var(--bw-s) solid var(--outline);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--sh-s);
+  font-weight: 700;
+  font-size: var(--fs-s);
+  cursor: pointer;
+  list-style: none;
+}
+.finance-fold > summary::-webkit-details-marker { display: none; }
+.finance-fold > summary::after { content: "▾"; margin-left: auto; transition: transform .2s; }
+.finance-fold[open] > summary::after { transform: rotate(180deg); }
+.finance-fold[open] > summary { margin-bottom: var(--s3); }
+.finance-fold > summary:hover { transform: translateY(-1px); }
 
 .composer { padding: var(--s4); border: var(--bw) solid var(--outline); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--sh); margin-bottom: var(--s4); }
 body.writing .composer { box-shadow: var(--sh), 0 0 0 5px color-mix(in srgb, var(--rank-0) 55%, transparent); }
@@ -1998,8 +2242,90 @@ body.writing .composer { box-shadow: var(--sh), 0 0 0 5px color-mix(in srgb, var
 .ledger tr.sum td:last-child { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-2xl); }
 .profit-count { display: inline-block; }
 .profit-count.drop { animation: drop .6s var(--spring); }
-.verdict-chart { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s2); }
+.ledger tr.support td { color: var(--money); }
+.ledger tr.bank-row td { border-bottom: 0; color: var(--muted); font-weight: 700; }
+.ledger tr.bank-row td:last-child { color: var(--ink); font-family: var(--font-display); font-weight: 400; font-size: var(--fs-l); }
+.ledger tr.bank-row td.neg:last-child { color: var(--loss); }
+
+/* 월급날: 직원 한마디 (단톡방 말풍선 모양) */
+.payday { display: flex; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s2); font-size: var(--fs-s); }
+.payday-ico { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 12px; background: var(--room); font-size: var(--fs-m); }
+.payday > span:last-child { padding: var(--s2) var(--s3); border-radius: 4px var(--r) var(--r) var(--r); background: var(--bubble); color: var(--bubble-ink); box-shadow: inset 0 0 0 var(--bw-s) var(--line); font-weight: 700; }
+.payday.minus > span:last-child { background: var(--loss-soft); box-shadow: inset 0 0 0 var(--bw-s) var(--loss); }
+
+/* 부모님 긴급 용돈: 휴대폰 알림처럼 툭 */
+.family-support {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 0 var(--s4);
+  padding: var(--s3) var(--s4);
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-l);
+  background: var(--envelope);
+  color: var(--envelope-ink);
+  box-shadow: var(--sh);
+  font-size: var(--fs-s);
+  font-weight: 700;
+  animation: dealIn .45s var(--spring) both;
+}
+.fs-phone { flex: none; font-size: var(--fs-2xl); line-height: 1; animation: wiggle .25s ease-in-out 4 alternate; }
+.fs-msg b { display: block; font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); color: var(--ink); }
+
+/* ===== 분기별 돈의 흐름 = 신문 '경제면' (통장 잔액 꺾은선 + 수입·지출 막대 + 통장 명세) ===== */
+.finance-chart {
+  position: relative;
+  padding: var(--s4) var(--s5);
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-l);
+  background: var(--paper);
+  box-shadow: var(--sh);
+  animation: riseIn .45s var(--ease) both;
+  font-variant-numeric: tabular-nums;
+}
+.fc-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding-bottom: var(--s2); margin-bottom: var(--s2); border-bottom: 4px double var(--ink); }
+.fc-head h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: var(--fs-xl); line-height: 1.2; }
+.fc-paper { flex: none; padding: 2px 8px; border-radius: 5px; background: var(--ink); color: var(--bg); font-family: var(--font-display); font-size: var(--fs-xs); }
+.finance-chart > .hint { margin-bottom: var(--s2); }
+.chart-label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: var(--s3) 0 var(--s1); font-size: var(--fs-xs); font-weight: 900; color: var(--muted); }
+.cash-line { display: block; width: 100%; height: auto; overflow: visible; }
+.cash-line .chart-grid { stroke: var(--line); stroke-width: 2; stroke-dasharray: 5 7; }
+.cash-line .chart-zero { stroke: var(--loss); stroke-width: 2.5; stroke-dasharray: 8 6; }
+.cash-line .cash-area { fill: color-mix(in srgb, var(--money) 14%, transparent); }
+.cash-line .cash-path { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.cash-line circle { fill: var(--money); stroke: var(--outline); stroke-width: 3; }
+.cash-line circle.neg { fill: var(--loss); }
+.cash-line circle.sel { stroke-width: 4; }
+.cash-line text { fill: var(--muted); font-family: var(--font-body); font-size: 19px; font-weight: 700; }
+.cash-line text.qx.sel { fill: var(--ink); font-weight: 900; }
+.cash-line text.qx.later { opacity: .5; }
+.flow-legend { display: inline-flex; align-items: center; gap: 4px; margin-left: var(--s2); font-weight: 700; }
+.flow-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 2px var(--outline); }
+.finance-chart .income { background: var(--money); }
+.finance-chart .expense { background: var(--loss); }
+.flow-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); }
+.flow-quarter { display: grid; justify-items: center; align-content: start; gap: 2px; padding: var(--s2) var(--s1); border: var(--bw-s) solid var(--line); border-radius: var(--r); background: var(--surface); text-align: center; min-width: 0; }
+.flow-quarter.selected { border-color: var(--outline); background: var(--ceo-soft); box-shadow: var(--sh-s); }
+.flow-quarter.later { border-style: dashed; background: var(--sunken); }
+.bar-pair { display: flex; align-items: flex-end; justify-content: center; gap: 4px; width: 100%; height: 84px; margin-bottom: 4px; border-bottom: var(--bw-s) solid var(--ink); }
+.flow-bar { width: 32%; max-width: 22px; min-height: 2px; border-radius: 5px 5px 0 0; box-shadow: inset 0 0 0 2px var(--outline); transform-origin: 50% 100%; animation: barGrow .55s calc(.1s + var(--i, 0) * .08s) var(--spring) both; }
+.bar-later { align-self: center; font-family: var(--font-display); font-size: var(--fs-xl); color: var(--disabled-ink); }
+.flow-quarter small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); font-weight: 700; line-height: 1.25; white-space: nowrap; }
+.flow-quarter small.pos { color: var(--money); }
+.flow-quarter small.neg { color: var(--loss); }
+.flow-quarter.later small { color: var(--muted); white-space: normal; }
+.flow-quarter button { width: 100%; margin-top: var(--s1); padding: 0 4px; font-size: var(--fs-xs); }
+.flow-quarter button[aria-pressed="true"] { background: var(--rank-0); color: var(--ceo-ink); }
+.flow-detail h4 { display: flex; align-items: center; gap: 6px; margin: var(--s4) 0 var(--s1); font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); }
+.ledger.passbook { margin-bottom: 0; }
+.ledger.passbook tr.in td:last-child { color: var(--money); }
+.ledger.passbook tr.out td:last-child { color: var(--ink); }
+.ledger.passbook tr.bad td { color: var(--loss); }
+.ledger.passbook td.neg { color: var(--loss) !important; }
+.ledger.passbook td.pos { color: var(--money); }
+.ledger.passbook tr.sum td:last-child { font-size: var(--fs-xl); }
+#result-box > .finance-chart { margin-bottom: var(--s4); }
 
 .quit-scene { position: relative; display: flex; align-items: center; gap: var(--s2); height: 64px; padding: 0 var(--s3); margin-bottom: var(--s3); border-radius: var(--r); background: var(--sunken); overflow: hidden; }
 .quit-scene .door { position: absolute; right: var(--s3); font-size: var(--fs-3xl); }
@@ -2015,6 +2341,10 @@ body.writing .composer { box-shadow: var(--sh), 0 0 0 5px color-mix(in srgb, var
 #final { position: relative; }
 #final.pre .front, #final.pre .placed-wrap, #final.pre .placed { opacity: 0; }
 #final.go .front-page { animation: spinIn .7s var(--spring) both; }
+#final.pre .front-col > .finance-chart { opacity: 0; }
+#final.go .front-col > .finance-chart { animation: riseIn .5s .55s var(--ease) both; }
+.front-col { display: grid; gap: var(--s4); min-width: 0; }
+.front-col > .finance-chart { margin: 0; }
 #final.go .awards { animation: riseIn .5s .4s var(--ease) both; }
 .placed-wrap { position: relative; text-align: center; margin-bottom: var(--s4); }
 .placed-drum { font-size: var(--fs-s); font-weight: 700; color: var(--muted); }
@@ -2035,7 +2365,10 @@ body.writing .composer { box-shadow: var(--sh), 0 0 0 5px color-mix(in srgb, var
 .ending-text { font-size: var(--fs-s); margin-bottom: var(--s3); }
 .front-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--s4); padding: var(--s3) 0; border-top: var(--bw-s) solid var(--ink); border-bottom: 1px solid var(--line); margin-bottom: var(--s3); }
 .front-money .tag { font-size: var(--fs-xs); font-weight: 900; color: var(--muted); }
-.score.big { font-family: var(--font-display); font-size: var(--fs-3xl); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.front-money .tag small { font-weight: 700; margin-left: 4px; }
+.score.big { font-family: var(--font-display); font-size: var(--fs-3xl); line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.front-money { container-type: inline-size; min-width: 0; }
+.front-money .score.big { font-size: min(var(--fs-3xl), 13cqi); }
 .stars { display: flex; gap: 4px; margin: 2px 0 var(--s2); }
 .star { font-size: var(--fs-2xl); color: var(--line); line-height: 1; }
 #final.stars-on .star.on { color: var(--rank-0); -webkit-text-stroke: 1.5px var(--outline); animation: starPop .5s calc(var(--k) * .15s) var(--spring) both; }
@@ -2249,6 +2582,7 @@ main.shake { animation: shake .6s ease-in-out; }
 
 @media (max-width: 1439px) {
   .pill .pill-more { display: none; }
+  .hud-res .res.staff { display: none; }
 }
 
 @media (max-width: 1179px) {
@@ -2374,8 +2708,13 @@ main.shake { animation: shake .6s ease-in-out; }
   .title-tag span { display: block; }
   .demo { width: 100%; }
 
-  .funds { grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
-  .fund small { display: none; }
+  .funds { grid-template-columns: 1fr; gap: var(--s3); }
+  .fund.envelope { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; text-align: left; gap: 2px var(--s3); padding: 30px var(--s4) var(--s3); }
+  .fund.envelope .env-flap { height: 26px; }
+  .fund.envelope::before { top: 13px; width: 16px; height: 16px; margin-left: -8px; }
+  .fund.envelope .fund-cash { margin-left: auto; justify-items: end; }
+  .fund.envelope .fund-note { flex-basis: 100%; }
+  .fund.envelope.picked { transform: translateY(-2px); }
   .field-pair { grid-template-columns: 1fr; gap: 0; }
   .field-pair .field { margin-bottom: var(--s4); }
   .card { padding: var(--s4); }
@@ -2386,10 +2725,17 @@ main.shake { animation: shake .6s ease-in-out; }
 
   .power-grid { grid-template-columns: 1fr; }
   .power-button { min-height: 0; flex-direction: row; align-items: center; gap: var(--s3); }
-  .strategy-grid { grid-template-columns: 1fr; }
+  .invest-grid { grid-template-columns: 1fr; }
+  .profit-now .pn-chip:not(.bank) { display: none; }
+  .envelope-open { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: var(--s4); gap: var(--s3); }
+  .eo-line { text-align: left; }
+  .finance-chart { padding: var(--s3) var(--s3) var(--s4); }
+  .cash-line text { font-size: 24px; }
+  .bar-pair { height: 64px; }
+  .flow-bars { gap: 4px; }
+  .fc-head h3 { font-size: var(--fs-l); }
   .mission h3 { font-size: var(--fs-xl); }
   .quarter-head { align-items: center; }
-  .quarter-head .spark { display: none; }
   #event-heading .lv-name { font-size: var(--fs-xl); }
 
   .choice-buttons { gap: 6px; }
@@ -2512,6 +2858,10 @@ main.shake { animation: shake .6s ease-in-out; }
 @keyframes sayU2 { 0%, 63% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(.5); } 65%, 71% { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1.04); } 73%, 100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.04); } }
 @keyframes sayU1 { 0%, 72% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(.4); } 75% { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1.18); } 77%, 95% { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1.1); } 98%, 100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.1); } }
 @keyframes demoStamp { 0%, 80% { opacity: 0; transform: rotate(-12deg) scale(2.4); } 83% { opacity: 1; transform: rotate(-8deg) scale(.92); } 85%, 95% { opacity: 1; transform: rotate(-8deg) scale(1); } 98%, 100% { opacity: 0; transform: rotate(-8deg) scale(1); } }
+@keyframes eoFlap { 0% { transform: perspective(500px) rotateX(0deg); z-index: 4; } 50% { z-index: 4; } 51% { z-index: 1; } 100% { transform: perspective(500px) rotateX(180deg); z-index: 1; } }
+@keyframes eoRise { 0% { transform: translateY(0) rotate(0deg); } 100% { transform: translateY(-86px) rotate(-4deg); } }
+@keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes coinPop { 0% { opacity: 0; transform: translateY(6px) scale(.6); } 60% { opacity: 1; transform: translateY(-2px) scale(1.1); } 100% { opacity: 1; transform: none; } }
 @keyframes demoNose { 0%, 80% { transform: scaleX(1); } 86%, 95% { transform: scaleX(5); } 100% { transform: scaleX(1); } }
 
 /* 탭이 숨겨지면 배경 움직임 멈춤 */
