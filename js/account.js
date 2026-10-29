@@ -194,6 +194,7 @@
       animation: g6Stamp .42s .18s var(--g-spring) both;
     }
     #screen-login .g-lead { color: var(--g-muted); font-size: 15px; line-height: 1.6; max-width: 30em; }
+    #screen-login .g-lead > span { display: inline-block; text-wrap: balance; } /* 문장 단위로 줄바꿈 */
     #screen-login .g-lead b { color: var(--g-ink); background: linear-gradient(transparent 58%, var(--g-boss-soft) 58%); padding: 0 2px; }
 
     /* 예시: 사내 단톡방에서 지시가 내려가며 짧아짐 (사장 100자 → 부장 50자 → 사원 10자) */
@@ -257,7 +258,7 @@
     #screen-login .pass-row input { flex: 1; min-height: 54px; font-size: 17px; }
     #screen-login #btn-guest { flex: none; min-height: 54px; padding: 0 16px 0 18px; font-size: 21px; }
     #screen-login #btn-guest::after { content: "→"; font-family: var(--font-body, "Noto Sans KR", sans-serif); font-weight: 900; font-size: 20px; }
-    #screen-login .pass:has(#guest-name:not(:placeholder-shown)) #btn-guest:not(:disabled) { animation: g6Pulse 1.6s ease-in-out infinite; }
+    #screen-login .pass:has(#guest-name:not(:placeholder-shown)) #btn-guest:not(:disabled) { animation: g6Pulse 1.6s ease-in-out 3; }
     /* 좁은 휴대폰: 닉네임 칸을 넓게 (화살표 빼기 → 아주 좁으면 버튼을 아래로) */
     @container pass (max-width: 420px) { #screen-login #btn-guest { padding: 0 14px; } #screen-login #btn-guest::after { display: none; } }
     @container pass (max-width: 320px) { #screen-login .pass-row { flex-direction: column; } }
@@ -388,19 +389,22 @@
       width: 24px; height: 24px; margin: auto; border: 2px solid var(--g-stamp); border-radius: 50%;
       color: var(--g-stamp); font-size: 12px; font-weight: 900; transform: rotate(-12deg); mix-blend-mode: var(--stamp-blend, multiply);
     }
+    /* 도장: 결재란 바로 왼쪽, 머리글 밑줄에 걸쳐 쾅 (결재란·회사 이름과 겹치지 않게) */
+    #screen-resume .doc-approve { position: relative; flex: none; }
     #screen-resume .doc-stamp {
-      position: absolute; right: 10px; top: 60px; z-index: 2; display: grid; place-items: center; padding: 1px 8px;
+      position: absolute; right: calc(100% + 10px); bottom: -15px; z-index: 2; display: grid; place-items: center; padding: 1px 8px;
       border: 3px solid var(--g-stamp); border-radius: 8px; color: var(--g-stamp);
       background: rgba(255, 253, 247, .55); background: color-mix(in srgb, var(--g-paper) 60%, transparent);
       font-family: var(--g-display); font-size: 18px; line-height: 1.15; white-space: nowrap;
-      transform: rotate(-10deg); mix-blend-mode: var(--stamp-blend, multiply); pointer-events: none;
+      transform: rotate(-8deg); mix-blend-mode: var(--stamp-blend, multiply); pointer-events: none;
       animation: g6Stamp .42s .3s var(--g-spring) both;
     }
     #screen-resume .doc-stamp::before { content: "결재 대기"; }
-    #screen-resume:has(#resume-box .bad) .doc-stamp { padding: 0 14px; font-size: 24px; }
+    #screen-resume:has(#resume-box .bad) .doc-stamp { padding: 0 12px; font-size: 22px; }
     #screen-resume:has(#resume-box .bad) .doc-stamp::before { content: "반려"; }
-    #screen-resume:not(:has(#resume-box .big)) .doc-stamp { border-color: var(--g-muted); color: var(--g-muted); }
+    #screen-resume:not(:has(#resume-box .big)) .doc-stamp { padding: 0 12px; font-size: 22px; border-color: var(--g-muted); color: var(--g-muted); }
     #screen-resume:not(:has(#resume-box .big)) .doc-stamp::before { content: "보류"; }
+    @container doc (max-width: 300px) { #screen-resume .doc-name small { display: none; } #screen-resume .doc-stamp { font-size: 15px; padding: 0 6px; } }
     #screen-resume .doc-body { display: grid; gap: 12px; padding: 16px; }
     #resume-box p { margin: 0; }
     #resume-box .ctitle { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -435,7 +439,12 @@
     #screen-resume #btn-resume:not(:disabled)::after { content: "→"; font-family: var(--font-body, "Noto Sans KR", sans-serif); font-weight: 900; }
     #screen-resume:not(:has(#resume-box .big)) #btn-resume:not(:disabled)::after { content: "↻"; }
     #screen-resume #btn-new-game { min-height: 60px; padding: 6px 16px; font-family: inherit; font-size: 16px; font-weight: 700; line-height: 1.35; }
-    #screen-resume #btn-new-game.armed { border-color: var(--g-stamp); background: var(--g-stamp-soft); animation: g6Shake .32s ease-in-out; }
+    /* 이어할 수 없는 옛 저장(반려): 할 수 있는 일인 '새로 시작'을 노란 버튼으로 앞에 */
+    #screen-resume:has(#resume-box .bad) #btn-new-game { order: -1; background: var(--g-boss); color: var(--g-boss-ink); font-family: var(--g-display); font-weight: 400; font-size: 20px; }
+    #screen-resume #btn-new-game.armed, #screen-resume:has(#resume-box .bad) #btn-new-game.armed {
+      border-color: var(--g-stamp); background: var(--g-stamp-soft); color: var(--g-ink);
+      font-family: inherit; font-size: 16px; font-weight: 700; animation: g6Shake .32s ease-in-out;
+    }
 
     /* ===== 저장된 로그인 확인: 출입 카드 리더기 ===== */
     #screen-auth-wait { width: min(100%, 480px); margin-inline: auto; }
@@ -503,7 +512,14 @@
 
     /* ===== 결산 화면 (로그인 중): 다음 관람객에게 넘기는 버튼을 맨 앞에 크게 ===== */
     #btn-logout-next::before { content: "👋 "; }
-    @media (max-width: 520px) { #btn-logout-next { flex: 1 1 100%; } }
+    /* #1 디자인처럼 옆 버튼이 큰 버튼(.cta)이면 같은 크기로 */
+    #screen-final :has(> .cta) > #btn-logout-next { min-height: 60px; padding: 0 var(--s6, 32px); border-radius: var(--r-l, 18px); font-size: var(--fs-xl, 22px); }
+    @media (max-width: 759px) { #screen-final :has(> .cta) > #btn-logout-next { min-height: 56px; font-size: var(--fs-l, 18px); } }
+    /* 휴대폰: 다음 사람 버튼은 한 줄 전체, 나머지 버튼은 남은 줄을 나눠 채움 (가운데 들쭉날쭉하지 않게) */
+    @media (max-width: 520px) {
+      #btn-logout-next { flex: 1 1 100%; }
+      #screen-final :has(> #btn-logout-next:not([hidden])) > button:not(#btn-logout-next) { flex: 1 1 auto; }
+    }
 
     /* ===== 움직임 ===== */
     @keyframes g6In { from { opacity: 0; transform: translateY(10px); } }
@@ -543,7 +559,7 @@
         <div class="gate-hook">
           <p class="g-kicker"><span aria-hidden="true">🏢</span> 출근 첫날 · 정문 앞</p>
           <h2 class="g-title" id="gate-title">오늘부터 <span class="g-stamp">사장님</span>!</h2>
-          <p class="g-lead">내 지시가 사원까지 내려가면 <b>딱 10자</b>만 남아요. 이 회사, 1년 버틸 수 있을까요?</p>
+          <p class="g-lead"><span>내 지시가 사원까지 내려가면 <b>딱 10자</b>만 남아요.</span> <span>이 회사, 1년 버틸 수 있을까요?</span></p>
         </div>
         <figure class="gate-demo" aria-label="예시: 사장 지시가 부장, 사원으로 내려가며 짧아져요">
           <figcaption class="gd-head"><b>💬 사내 단톡방</b><span>지시 전달 중…</span></figcaption>
@@ -612,14 +628,14 @@
                     <label for="login-pw">비밀번호</label>
                     <span class="g-rules" id="pw-rules"><span class="g-rule" data-rule="pw">4자 이상</span></span>
                   </div>
-                  <input id="login-pw" type="password" maxlength="64" autocomplete="current-password" required placeholder="••••" aria-describedby="pw-rules">
+                  <input id="login-pw" type="password" maxlength="64" autocomplete="current-password" required placeholder="비밀번호 입력" aria-describedby="pw-rules">
                 </div>
                 <div class="g-field" id="login-pw2-wrap" hidden>
                   <div class="g-label-row">
                     <label for="login-pw2">비밀번호 확인</label>
                     <span class="g-rules" id="pw2-rules"><span class="g-rule" data-rule="same">똑같이 한 번 더</span></span>
                   </div>
-                  <input id="login-pw2" type="password" maxlength="64" autocomplete="new-password" placeholder="••••" enterkeyhint="go" aria-describedby="pw2-rules">
+                  <input id="login-pw2" type="password" maxlength="64" autocomplete="new-password" placeholder="한 번 더 입력" enterkeyhint="go" aria-describedby="pw2-rules">
                 </div>
                 <p id="login-error" class="g-error" role="alert"></p>
                 <button type="submit" id="btn-login" class="g-btn g-ink">로그인</button>
@@ -638,10 +654,12 @@
         <article class="doc" aria-labelledby="resume-title">
           <div class="doc-head">
             <p class="doc-name"><small>10자 사원 주식회사</small><b>결재 서류</b></p>
-            <div class="doc-sign" aria-hidden="true">
-              <span><i>담당</i><b>김</b></span><span><i>부장</i><b>박</b></span><span><i>사장</i><b></b></span>
+            <div class="doc-approve" aria-hidden="true">
+              <span class="doc-stamp"></span>
+              <div class="doc-sign">
+                <span><i>담당</i><b>김</b></span><span><i>부장</i><b>박</b></span><span><i>사장</i><b></b></span>
+              </div>
             </div>
-            <span class="doc-stamp" aria-hidden="true"></span>
           </div>
           <div class="doc-body" id="resume-box"></div>
         </article>
