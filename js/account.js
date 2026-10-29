@@ -245,7 +245,9 @@
     }
     #screen-login .gd-ceo .gd-bubble { background: var(--g-boss); color: var(--g-boss-ink); border-radius: var(--r, 12px) 4px var(--r, 12px) var(--r, 12px); }
     #screen-login .gd-low .gd-bubble { background: var(--g-stamp-soft); color: var(--g-ink); box-shadow: inset 0 0 0 2px var(--g-stamp); }
+    /* 글자 수 칩은 늘 말풍선 위에: 사장 말풍선이 "통" 커질 때 "100자"를 덮지 않게 */
     #screen-login .gd-limit {
+      position: relative; z-index: 1;
       flex: none; padding: 1px 7px; border-radius: 999px; background: var(--g-stamp); color: var(--g-white);
       font-size: var(--fs-xs, 12px); font-weight: 900; line-height: 1.4; white-space: nowrap;
     }
@@ -384,6 +386,13 @@
       #screen-login .gate-or { align-self: stretch; flex-direction: column; padding: 40px 0 8px; }
       #screen-login .gate-or::before, #screen-login .gate-or::after { border-top: 0; border-left: 2px dashed var(--g-line); }
     }
+    /* 가로로 눕힌 휴대폰처럼 넓지만 키가 아주 낮은 화면: 출입증·사원증을 첫 줄로 올려 닉네임 칸과 "바로 시작"이 스크롤 없이 보이게
+       (한 줄 배치에는 쓰지 않음: 키보드가 화면 높이를 줄이는 휴대폰에서 입력 중에 칸이 위로 튀지 않게) */
+    @media (max-height: 520px) {
+      @container gate (min-width: 760px) {
+        #screen-login .gate { grid-template-areas: "pass or card" "hook . demo"; }
+      }
+    }
 
     /* 들어올 때: 위에서 아래로 차례로 툭 (살짝 튕김). 큰 연출은 "사장님" 도장 하나뿐이라 카드는 기울이지 않고 곧게 */
     #screen-login.active .gate-hook { animation: g6In .32s var(--g-ease) both; }
@@ -485,6 +494,7 @@
     #screen-resume #btn-new-game.armed, #screen-resume:has(#resume-box .bad) #btn-new-game.armed {
       border-color: var(--g-stamp); background: var(--g-stamp-soft); color: var(--g-ink);
       font-family: inherit; font-size: var(--fs-m, 16px); font-weight: 700; animation: g6Shake .32s ease-in-out;
+      text-wrap: balance; /* "저장된 게임이 지워져요. / 한 번 더 누르기"로 (한 번 / 더 누르기처럼 끊기지 않게) */
     }
 
     /* ===== 저장된 로그인 확인: 출입 카드 리더기 ===== */
@@ -562,6 +572,8 @@
     /* #1 디자인처럼 옆 버튼이 큰 버튼(.cta)이면 같은 크기로 */
     #screen-final :has(> .cta) > #btn-logout-next { min-height: 60px; padding: 0 var(--s6, 32px); border-radius: var(--r-l, 18px); font-size: var(--fs-xl, 22px); }
     @media (max-width: 759px) { #screen-final :has(> .cta) > #btn-logout-next { min-height: 56px; font-size: var(--fs-l, 18px); } }
+    /* 그때 "같은 아이디로 한 판 더"는 보조 버튼이므로 한 단계 작게 (큰 버튼은 다음 사람 버튼 하나만) */
+    #screen-final :has(> #btn-logout-next:not([hidden])) > #btn-restart.cta { min-height: 52px; padding: 0 var(--s5, 24px); font-size: var(--fs-l, 18px); }
     /* 휴대폰: 다음 사람 버튼은 한 줄 전체, 나머지 버튼은 남은 줄을 나눠 채움 (가운데 들쭉날쭉하지 않게) */
     @media (max-width: 520px) {
       #btn-logout-next { flex: 1 1 100%; }
