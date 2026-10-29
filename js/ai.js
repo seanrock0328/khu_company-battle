@@ -39,16 +39,39 @@ function clearApiKey() { store.remove("chatkhu_key"); }
 function hasAI() { return !!getApiKey() || !!TEAM_SERVER_URL; }
 function aiSourceLabel() { return getApiKey() ? "내 키" : TEAM_SERVER_URL ? "팀 서버" : ""; }
 
+// ChatKHU 답변을 기다리는 최대 시간. 보통 10~60초, 팀 서버는 100초에서 먼저 끊고 알려 줍니다.
+// 이 시간이 지나면 오류 화면으로 넘어가서 다시 시도·붙여넣기·연습 모드를 고를 수 있습니다.
+const AI_TIMEOUT_MS = 110 * 1000;
+
+// 시간 제한이 있는 fetch: ms 안에 응답이 없으면 끊고 timeout 표시가 붙은 오류를 던집니다 (account.js도 씀)
+async function fetchWithTimeout(url, options, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      const err = new Error(`서버가 ${Math.round(ms / 1000)}초 동안 답하지 않았어요.`);
+      err.timeout = true;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 팀 서버를 거쳐 ChatKHU 부르기
 async function callTeamServer(prompt) {
   let res;
   try {
-    res = await fetch(TEAM_SERVER_URL, {
+    res = await fetchWithTimeout(TEAM_SERVER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, model: getModel() })
-    });
+    }, AI_TIMEOUT_MS);
   } catch (e) {
+    if (e.timeout) throw new Error(`팀 서버가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 아래 '복사·붙여넣기로 하기'나 연습 모드로 진행해 주세요.`);
     throw new Error("팀 서버에 접속하지 못했어요. 인터넷 연결을 확인하거나 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
   }
   const data = await res.json().catch(() => ({}));
@@ -64,7 +87,7 @@ async function callChatKHU(prompt) {
   if (!key) throw new Error("ChatKHU 연결이 없어요. 오른쪽 위 ChatKHU 버튼에서 키를 저장해 주세요.");
   let res;
   try {
-    res = await fetch(CHATKHU_URL, {
+    res = await fetchWithTimeout(CHATKHU_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({
@@ -72,8 +95,9 @@ async function callChatKHU(prompt) {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 8000
       })
-    });
+    }, AI_TIMEOUT_MS);
   } catch (e) {
+    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 아래 '복사·붙여넣기로 하기'나 연습 모드로 진행해 주세요.`);
     throw new Error("브라우저에서 ChatKHU에 접속하지 못했어요. 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
   }
   if (!res.ok) {

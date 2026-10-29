@@ -7,11 +7,16 @@
 // 공유 순위표·로그인 (선택): Settings → Bindings → KV namespace 를 BOARD 라는 이름으로 연결
 //   연결하지 않으면 로그인 없이, 순위표는 지금처럼 각 기기에만 저장됩니다.
 //
+//   ALLOW_FILE_ORIGIN (Variable, 선택)  팀원이 index.html 파일을 직접 열어 테스트할 때만 1. 전시·심사 때는 지워 두세요.
+//
 // 크레딧 도둑 방지 장치
 //   1. 우리 게임 주소에서 온 요청만 받음 (ALLOWED_ORIGINS)
-//   2. 같은 IP는 10분에 40번까지 (한 판에 5번 부르므로 넉넉함)
-//   3. 정해진 모델만, 출력 길이와 요청 크기 제한
-//   4. 우리 게임 요청문(표시 문구 포함)만 통과
+//   2. 횟수 제한은 용도별로 따로 셉니다. 전시장처럼 여러 명이 IP 하나를 같이 써도 AI를 많이 썼다고 가입까지 막히지 않게.
+//      AI: 같은 IP 10분에 150번 (한 판에 기본 6번, 업종 다시 뽑기 포함 최대 7번 → 약 20판)
+//      가입·로그인·손님 시작: 같은 IP 10분에 60번 / 불러오기·순위 기록 등: 같은 IP 10분에 150번 / 관리자 코드: 같은 IP 10분에 10번
+//      이어하기 저장: 한 사람이 2초에 한 번, 10분에 60번까지
+//   3. 정해진 모델만, 출력 길이와 요청 크기 제한 (게임 요청문은 실제로 최대 약 3,500자)
+//   4. 우리 게임 요청문(첫 줄 머리말)으로 시작하는 요청만 통과
 
 const CHATKHU_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/chat/completions/";
 const CHATKHU_MODELS_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/models/";
@@ -28,20 +33,37 @@ function chatkhuHeaders(key) {
 
 const ALLOWED_ORIGINS = [
   "https://seanrock0328.github.io",
-  "null",                    // 팀원이 index.html 파일을 직접 열어 테스트할 때
   "http://localhost:8000",
   "http://127.0.0.1:8000"
 ];
+// index.html 파일을 직접 열면 주소가 "null"로 옵니다. 기본은 막고, 팀원 테스트 때만 ALLOW_FILE_ORIGIN = 1 로 엽니다.
+function allowedOrigin(origin, env) {
+  if (ALLOWED_ORIGINS.includes(origin)) return origin;
+  if (origin === "null" && env.ALLOW_FILE_ORIGIN === "1") return origin;
+  return "";
+}
 
 const ALLOWED_MODELS = ["gemini-3.8-flash", "claude-sonnet-5-5", "gpt-5.6-terra", "claude-haiku-5-5", "solar-pro4"];
 const DEFAULT_MODEL = "gemini-3.8-flash";
-const GAME_MARKER = "10자 사원 주식회사";
-const MAX_PROMPT_CHARS = 20000;
+// js/ai.js의 요청문 3개(업종·창업·분기)는 모두 이 문장으로 시작합니다. ai.js 첫 줄을 바꾸면 여기도 같이 바꾸고 다시 배포하세요.
+// (tests/server.test.js가 ai.js 요청문이 이 머리말로 시작하는지 확인합니다)
+const GAME_HEADER = '너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.';
+// 실제 요청문은 직원 6명·모든 칸 최대 길이·이전 분기 3개일 때 약 3,000~3,500자라서 8,000자면 넉넉합니다.
+const MAX_PROMPT_CHARS = 8000;
 const MAX_TOKENS = 8000;
-const RATE_LIMIT = 40;               // 같은 IP가
-const RATE_WINDOW_MS = 10 * 60 * 1000; // 10분 동안
+const MAX_BODY_BYTES = 256 * 1024;      // 요청 하나의 최대 크기 (이어하기 저장은 실제로 약 20KB, 길어도 약 45KB)
+const CHATKHU_TIMEOUT_MS = 100 * 1000;  // ChatKHU가 100초 넘게 답이 없으면 끊고 알려 줌 (게임은 110초까지 기다림)
 
-const hits = new Map(); // IP → 최근 요청 시각들 (서버가 재시작되면 초기화되는 간단한 제한)
+const RATE_WINDOW_MS = 10 * 60 * 1000;  // 아래 횟수는 모두 10분 동안
+const CHAT_LIMIT = 150;     // AI: 같은 IP (한 판 최대 7번 → 약 20판. 전시장에서 모자라면 이 숫자만 올리기)
+const START_LIMIT = 60;     // 가입·로그인·손님 시작: 같은 IP (저장소 쓰기가 생기는 요청)
+const ACCOUNT_LIMIT = 150;  // 불러오기·로그아웃·저장 지우기·순위 기록: 같은 IP
+const ADMIN_LIMIT = 10;     // 관리자 코드(초기화·기록 옮기기): 같은 IP (코드 맞히기 방지)
+const SAVE_LIMIT = 60;      // 이어하기 저장: 같은 사람 (게임이 모아서 보내 보통 한 판에 약 11~20번)
+const SAVE_GAP_MS = 2000;   // 이어하기 저장: 같은 사람은 2초에 한 번까지 (KV는 같은 키에 1초에 한 번만 쓸 수 있음)
+const START_PATHS = ["/signup", "/login", "/guest"];
+
+const hits = new Map(); // "용도:IP" 또는 "save:아이디" → 최근 요청 시각들 (서버가 재시작되면 초기화되는 간단한 제한)
 
 function corsHeaders(origin) {
   return {
@@ -60,14 +82,16 @@ function reply(status, data, origin) {
   });
 }
 
-function rateLimited(ip, now) {
-  const recent = (hits.get(ip) || []).filter(t => now - t < RATE_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) {
-    hits.set(ip, recent);
+// key 하나당 10분에 limit번까지. minGapMs를 주면 바로 전 요청과 그만큼 떨어져 있어야 합니다.
+function rateLimited(key, now, limit, minGapMs = 0) {
+  const recent = (hits.get(key) || []).filter(t => now - t < RATE_WINDOW_MS);
+  const tooSoon = minGapMs > 0 && recent.length > 0 && now - recent[recent.length - 1] < minGapMs;
+  if (recent.length >= limit || tooSoon) {
+    hits.set(key, recent);
     return true;
   }
   recent.push(now);
-  hits.set(ip, recent);
+  hits.set(key, recent);
   if (hits.size > 5000) hits.clear(); // 메모리 보호
   return false;
 }
@@ -301,6 +325,10 @@ async function handleAccount(path, body, env, allowed) {
     return reply(200, { id, save: await env.BOARD.get(saveKey, "json") }, allowed);
   }
   if (path === "/save") {
+    // 무료 저장 한도(하루 1,000번) 보호: 같은 사람은 2초에 한 번, 10분에 60번까지
+    if (rateLimited(`save:${saveKey}`, Date.now(), SAVE_LIMIT, SAVE_GAP_MS)) {
+      return reply(429, { error: "저장이 너무 잦아요. 잠시 뒤 다시 저장할게요." }, allowed);
+    }
     const text = JSON.stringify(body.save ?? null);
     if (!body.save || typeof body.save !== "object") return reply(400, { error: "저장할 내용이 없어요." }, allowed);
     if (text.length > MAX_SAVE_BYTES) return reply(413, { error: "저장할 내용이 너무 커요." }, allowed);
@@ -317,18 +345,26 @@ async function handleAccount(path, body, env, allowed) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
-    const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : "";
+    const allowed = allowedOrigin(origin, env);
 
     if (request.method === "OPTIONS") {
       return allowed ? new Response(null, { status: 204, headers: corsHeaders(allowed) }) : new Response(null, { status: 403 });
     }
+    // 너무 큰 요청은 읽지 않고 거절 (브라우저는 보낼 때 크기를 함께 알려 줌)
+    if (request.method === "POST" && Number(request.headers.get("Content-Length")) > MAX_BODY_BYTES) {
+      return reply(413, { error: "보낸 내용이 너무 커요." }, allowed);
+    }
     const url = new URL(request.url);
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
     if (ACCOUNT_PATHS.includes(url.pathname)) {
       if (!env.BOARD) return reply(501, { error: "로그인 저장소가 설정되지 않았어요." }, allowed);
       if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
       if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
-      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-      if (url.pathname !== "/save" && rateLimited(ip, Date.now())) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
+      // 가입·로그인·손님 시작은 따로, 나머지는 같은 통에서 셉니다. 이어하기 저장(/save)은 사람마다 따로 셉니다 (handleAccount 안)
+      const limited = START_PATHS.includes(url.pathname)
+        ? rateLimited(`start:${ip}`, Date.now(), START_LIMIT)
+        : url.pathname !== "/save" && rateLimited(`acct:${ip}`, Date.now(), ACCOUNT_LIMIT);
+      if (limited) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
       const body = await request.json().catch(() => null);
       if (!body) return reply(400, { error: "요청 형식이 잘못됐어요." }, allowed);
       try {
@@ -340,8 +376,11 @@ export default {
 
     if (["/board", "/season", "/reset", "/import"].includes(url.pathname)) {
       if (request.method === "POST") {
-        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        if (rateLimited(ip, Date.now())) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
+        const admin = url.pathname === "/reset" || url.pathname === "/import";
+        const limited = admin
+          ? rateLimited(`admin:${ip}`, Date.now(), ADMIN_LIMIT)
+          : rateLimited(`acct:${ip}`, Date.now(), ACCOUNT_LIMIT);
+        if (limited) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
       }
       try {
         return await handleBoard(request, env, url, allowed);
@@ -369,14 +408,13 @@ export default {
           bodyStart: body
         }, allowed);
       }
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 8 }, allowed);
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, fileTest: env.ALLOW_FILE_ORIGIN === "1", version: 8 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
     if (!env.CHATKHU_KEY) return reply(500, { error: "서버에 CHATKHU_KEY가 설정되지 않았어요." }, allowed);
 
-    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-    if (rateLimited(ip, Date.now())) {
+    if (rateLimited(`chat:${ip}`, Date.now(), CHAT_LIMIT)) {
       return reply(429, { error: "잠깐 쉬었다 해 주세요. 10분 뒤 다시 할 수 있어요." }, allowed);
     }
 
@@ -387,23 +425,35 @@ export default {
       return reply(400, { error: "요청 형식이 잘못됐어요." }, allowed);
     }
     const prompt = typeof body.prompt === "string" ? body.prompt : "";
-    if (!prompt || prompt.length > MAX_PROMPT_CHARS || !prompt.includes(GAME_MARKER)) {
+    if (prompt.length > MAX_PROMPT_CHARS) {
+      return reply(400, { error: "요청문이 너무 길어요. 아래 '복사·붙여넣기로 하기'로 진행해 주세요." }, allowed);
+    }
+    if (!prompt.startsWith(GAME_HEADER)) {
       return reply(400, { error: "게임 요청문이 아니에요." }, allowed);
     }
     const model = ALLOWED_MODELS.includes(body.model) ? body.model : DEFAULT_MODEL;
 
-    let res;
+    // ChatKHU가 너무 오래 답하지 않으면 끊고, 게임이 다시 시도·붙여넣기·연습 모드를 고를 수 있게 알려 줍니다
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CHATKHU_TIMEOUT_MS);
+    let res, raw;
     try {
       res = await fetch(CHATKHU_URL, {
         method: "POST",
         headers: chatkhuHeaders(env.CHATKHU_KEY),
-        body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], max_tokens: MAX_TOKENS })
+        body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], max_tokens: MAX_TOKENS }),
+        signal: controller.signal
       });
-    } catch {
+      raw = await res.text();
+    } catch (e) {
+      if (e && e.name === "AbortError") {
+        return reply(504, { error: `ChatKHU가 ${CHATKHU_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 다른 모델을 골라 주세요.` }, allowed);
+      }
       return reply(502, { error: "중간 서버가 ChatKHU에 접속하지 못했어요." }, allowed);
+    } finally {
+      clearTimeout(timer);
     }
 
-    const raw = await res.text();
     if (!res.ok) {
       // 키가 응답에 섞여 나갈 일은 없지만, 혹시 몰라 앞부분만 전달
       return reply(res.status, { error: `ChatKHU 오류 (${res.status})`, detail: raw.slice(0, 150) }, allowed);
