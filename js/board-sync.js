@@ -146,5 +146,34 @@
     });
   }
 
+  // ===== 관리자: 이 기기에만 있는 기록을 공유 순위표로 올리기 =====
+  // 공유 순위표가 켜지기 전에 이 기기에서 한 판들(지금 규칙 기록만)을 이름 그대로 올립니다.
+  const adminRow = document.querySelector("#screen-board .admin");
+  if (adminRow) {
+    const importBtn = document.createElement("button");
+    importBtn.className = "text-btn";
+    importBtn.id = "btn-board-import";
+    importBtn.textContent = "이 기기 기록을 공유 순위표에 올리기 (관리자)";
+    importBtn.style.marginLeft = "12px";
+    adminRow.appendChild(importBtn);
+    importBtn.addEventListener("click", async () => {
+      if (!state.enabled) return toast("공유 순위표가 꺼져 있어요.");
+      await refresh();
+      const onServer = new Set(state.entries.map(e => e.at));
+      const mine = local.loadBoard().filter(e => !onServer.has(e.at));
+      if (!mine.length) return toast("올릴 기록이 없어요. 이 기기 기록은 이미 다 올라가 있어요.");
+      const code = window.prompt(`이 기기에만 있는 기록 ${mine.length}개를 공유 순위표에 올립니다. 관리자 코드를 입력하세요.`);
+      if (!code) return;
+      try {
+        const res = await api("POST", "/import", { code, entries: mine });
+        state.entries = state.entries.concat(mine);
+        renderBoard(null);
+        toast(`기록 ${res.added}개를 올렸어요.`);
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  }
+
   refresh();
 })();
