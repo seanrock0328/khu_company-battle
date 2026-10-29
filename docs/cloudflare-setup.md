@@ -76,3 +76,33 @@ const TEAM_SERVER_URL = "https://khu-company-battle.○○○.workers.dev";
 | 요청 검사 | 우리 게임 요청문만 통과 (다른 용도로 크레딧을 쓰지 못하게) |
 
 크레딧 사용량은 ChatKHU API Gateway의 사용량 화면에서 수시로 확인하세요. 이상하게 많이 쓰이면 키를 해지하고 새 키를 3번처럼 다시 넣으면 됩니다.
+
+---
+
+# 공유 순위표 켜기 (5분, 선택)
+
+켜면 컴퓨터·폰·심사위원이 **순위표 하나와 대결 업종 하나**를 같이 씁니다. 켜지 않으면 지금처럼 각 기기에만 저장됩니다.
+
+## 1. 저장소(KV) 만들기
+1. Cloudflare 왼쪽 메뉴 **Storage & Databases** → **Workers KV** (또는 KV)
+2. **Create** (Create a namespace) → 이름 `khu-board` → **Add/Create**
+
+## 2. 서버에 저장소 연결
+1. Workers & Pages → `khu-company-battle` → **Settings** → **Bindings** → **Add**
+2. **KV namespace** 선택
+3. Variable name: `BOARD` (대문자 정확히), KV namespace: `khu-board` → **Deploy** (또는 Save)
+
+## 3. 관리자 코드 넣기 (순위표 초기화용)
+1. 같은 Settings → **Variables and Secrets** → **Add**
+2. Type **Secret**, 이름 `ADMIN_CODE`, 값은 팀만 아는 암호 → **Deploy**
+3. 게임의 순위표 초기화 버튼을 누르면 이 코드를 물어봅니다. 아무나 순위표를 지우지 못하게 하는 장치입니다.
+
+## 4. 새 서버 코드 붙여넣기
+`worker/worker.js`(최신)를 **Edit code**에 통째로 붙여넣고 **Deploy**. 맨 마지막 줄 `};`까지 들어갔는지 확인.
+
+## 5. 확인
+`https://khu-company-battle.seanrock0328.workers.dev` 를 열어서 `"board":true`, `"adminCode":true`, `"version":3`이 보이면 완료.
+
+## 알아 둘 것
+- 무료 사용량: 하루 기록 저장 1,000번, 순위표 조회 수천 번 정도. 대회·전시 규모에는 충분합니다.
+- 서버를 거치지 않고 직접 기록을 조작해 보내는 것까지 완벽히 막지는 못합니다. 학교 행사용으로는 충분한 수준이고, 이상한 기록이 보이면 관리자 코드로 초기화하세요.

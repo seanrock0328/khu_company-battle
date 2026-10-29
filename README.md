@@ -16,6 +16,8 @@
 
 **순위표**: 오른쪽 위 🏆 버튼. 게임한 노트북 브라우저에 저장되므로 노트북 한 대로 돌려가며 하세요. 다른 기기에서 같은 업종으로 겨루려면 순위표 화면의 **대결 링크**로 접속합니다. 연습 모드가 섞인 판은 순위에 들어가지 않습니다. 시연 전 테스트 기록은 순위표 맨 아래 **순위표 초기화**(두 번 클릭)로 지우세요. 초기화하면 대결 업종도 새로 뽑습니다.
 
+**공유 순위표**: 팀 서버에 저장소(KV)를 연결하면 모든 기기가 순위표 하나와 대결 업종 하나를 같이 씁니다(`js/board-sync.js`). 연결 전이나 서버 오류 때는 각 기기에 저장합니다. 초기화에는 관리자 코드가 필요합니다. 설정법은 [`docs/cloudflare-setup.md`](docs/cloudflare-setup.md) 아래쪽.
+
 **ChatKHU 연결**: 팀 중간 서버(Cloudflare Worker)가 팀 키로 ChatKHU를 대신 불러서, 플레이어와 심사위원은 키 없이 플레이합니다. 설정법은 [`docs/cloudflare-setup.md`](docs/cloudflare-setup.md). 팀원이 자기 키로 테스트하려면 오른쪽 위 🔌 버튼에서 개인 키를 넣으면 됩니다.
 
 ChatKHU 쓰는 법은 [`prompts/chatkhu.md`](prompts/chatkhu.md)에 있습니다.
@@ -156,6 +158,7 @@ data/presets.js     창업 자금, MBTI, 연습 모드용 예비 데이터
 js/game.js          게임 규칙 (직급, 후보 능력치, 예산, 점수, 순위표)
 js/ai.js            ChatKHU 연결, 요청문 3종, 결과 적용, 연습 모드
 js/ui.js            화면 그리기
+js/board-sync.js    공유 순위표 연결 (팀 서버 저장소)
 js/main.js          버튼 연결
 prompts/chatkhu.md  ChatKHU 사용법과 실험 목록
 docs/ai-log.md      AI 사용 기록
