@@ -32,9 +32,11 @@ function showScreen(id) {
     });
   }
   document.body.classList.toggle("at-title", id === "screen-found" && screen.classList.contains("intro"));
+  document.body.classList.remove("writing", "choosing");
   stageFor(id);
   renderHud();
   window.scrollTo(0, 0);
+  screen.scrollTop = 0; // 데스크톱에서는 화면 패널이 따로 스크롤됩니다
 }
 
 // 화면마다 사무실·단톡방을 보여 줄지 정하고, 잡담을 켜고 끕니다
@@ -48,6 +50,8 @@ function stageFor(id) {
   if (withOffice) {
     officeSync(false);
     if (id !== "screen-final") officeEpilogue(null);
+    if (id !== "screen-interview") officeFocus(null);
+    else if (lastInterview !== null) officeFocus(Number(lastInterview) + 1); // 면접 화면에 들어오자마자 그 책상에 "면접 중"
   }
   if (id === "screen-event") ambientStart("event");
   else if (eventWait) ambientStart("wait");
@@ -425,35 +429,267 @@ function chibiSvg(person) {
       ${N ? `<g class="c-glasses"><circle cx="22.6" cy="19" r="3.3"/><circle cx="29" cy="19" r="3.3"/></g>` : ""}
       ${!E && !N ? `<path class="c-phones" d="M7.6 17.5a12.4 12.4 0 0 1 24.8 0"/><rect class="c-cup" x="5.2" y="15.6" width="4.6" height="7.4" rx="2.2"/>` : ""}
       ${ceo ? `<path class="c-crown" d="M12.6 7.2l1.8-6 4 3.6 1.6-4.4 1.6 4.4 4-3.6 1.8 6z"/>` : ""}
+      <path class="c-sweat" d="M11 8.6c1.7 2.5 2.5 4 2.5 5.1a2.5 2.5 0 0 1-5 0c0-1.1.8-2.6 2.5-5.1z"/>
     </g>
   </svg>`;
 }
 
-const DESK_SVG = `<svg class="desk-svg" viewBox="0 0 64 46" aria-hidden="true" focusable="false">
-  <rect class="d-mon" x="22" y="3" width="26" height="18" rx="3"/><rect class="d-screen" x="25" y="6" width="20" height="12" rx="1.5"/>
-  <path class="d-stand" d="M33 21h4v5h-4z"/><rect class="d-mug" x="51" y="19" width="6" height="7" rx="1.6"/>
-  <rect class="d-top" x="2" y="26" width="60" height="6" rx="2.4"/><path class="d-legs" d="M7 32h4v14H7zM53 32h4v14h-4z"/></svg>`;
+// ===== 사무실 평면도: 한 층을 위에서 비스듬히 내려다본 3/4 시점 =====
+// 좌표는 평면도 단위. 바닥의 한 점 (x, y)에 놓인 물건은 y가 클수록(입구 쪽일수록) 앞에 그려집니다.
+// 결재 라인이 그대로 공간이 됩니다: 유리벽 사장실(안쪽 구석) → 임원 → 부장 → 팀 책상 → 입구.
+// 책상이 클수록, 의자 등받이가 높을수록 높은 직급입니다. 직급 색은 이름표·옷 같은 작은 표시에만 씁니다.
 
-const PROP_SVG = {
-  shelf: `<svg viewBox="0 0 34 48" focusable="false"><rect class="p-body" x="2" y="2" width="30" height="44" rx="3"/><path class="p-line" d="M2 17h30M2 31h30"/><path class="p-book" d="M6 6h4v11H6zM11 8h4v9h-4zM18 20h4v11h-4zM23 22h4v9h-4zM7 34h4v12H7z"/></svg>`,
-  coffee: `<svg viewBox="0 0 30 50" focusable="false"><rect class="p-body" x="3" y="3" width="24" height="44" rx="4"/><rect class="p-panel" x="7" y="7" width="16" height="9" rx="2"/><path class="p-hole" d="M8 22h14v13H8z"/><rect class="p-cup" x="11" y="28" width="8" height="7" rx="1.5"/></svg>`,
-  printer: `<svg viewBox="0 0 40 46" focusable="false"><path class="p-paper" d="M11 4h18v12H11z"/><rect class="p-body" x="4" y="14" width="32" height="14" rx="3"/><path class="p-line" d="M10 22h20"/><path class="p-leg" d="M8 28h4v18H8zM28 28h4v18h-4z"/></svg>`,
-  water: `<svg viewBox="0 0 26 54" focusable="false"><path class="p-bottle" d="M7 4h12v4l3 3v12H4V11l3-3z"/><rect class="p-body" x="3" y="23" width="20" height="30" rx="3"/><rect class="p-panel" x="9" y="28" width="8" height="5" rx="1.2"/></svg>`
+const DESK_D = 26;   // 책상 윗면 깊이
+const DESK_H = 18;   // 책상 앞판 높이
+const MON_H = 16;    // 모니터가 책상 위로 올라오는 높이
+const DESK_KIND = ["ceo", "exec", "boss", "team", "team", "team", "junior"];
+const CHAIR_SIZE = { ceo: [56, 52], exec: [46, 42], boss: [42, 34], team: [36, 26], junior: [28, 10] };
+
+const PLANS = {
+  // 데스크톱·태블릿: 세로로 긴 사무실 (뒤 = 위쪽 벽, 입구 = 아래)
+  tall: {
+    W: 600, H: 780, mate: 36,
+    desks: [
+      { x: 122, y: 206, w: 150 }, { x: 330, y: 180, w: 112 }, { x: 300, y: 354, w: 124 },
+      { x: 190, y: 476, w: 104 }, { x: 410, y: 476, w: 100 }, { x: 190, y: 606, w: 94 }, { x: 410, y: 606, w: 86 }
+    ],
+    deskNode: ["K0", "S1", "S2", "S3", "S4", "S5", "S6"],
+    nodes: {
+      K0: [219, 176], K1: [168, 110], S1: [408, 150], S2: [386, 324], S3: [264, 446], S4: [338, 446], S5: [260, 576], S6: [344, 576],
+      T1: [128, 284], T2: [219, 284], T3: [300, 284], T4: [386, 284], T5: [408, 284], T6: [458, 284], T7: [506, 284],
+      M1: [128, 398], M3: [300, 398], M7: [506, 398], A3: [300, 446],
+      B1: [128, 522], B3: [300, 522], B7: [506, 522], C3: [300, 576],
+      D1: [128, 664], D3: [300, 664], D7: [506, 664], E3: [300, 752], O3: [300, 840],
+      W1: [458, 222], W2: [458, 112]
+    },
+    edges: "K0-K1 K0-T2 S1-T5 S2-T4 S3-A3 S4-A3 S5-C3 S6-C3 T1-T2 T2-T3 T3-T4 T4-T5 T5-T6 T6-T7 T6-W1 W1-W2 T1-M1 M1-B1 B1-D1 T3-M3 M3-A3 A3-B3 B3-C3 C3-D3 D3-E3 E3-O3 T7-M7 M7-B7 B7-D7 M1-M3 M3-M7 B1-B3 B3-B7 D1-D3 D3-D7",
+    spots: {
+      coffee: { x: 134, y: 412, node: "M1", left: true }, water: { x: 84, y: 534, node: "B1", left: true },
+      printer: { x: 506, y: 414, node: "M7" }, cabinet: { x: 506, y: 544, node: "B7" },
+      board: { x: 500, y: 112, node: "W2" }, window: { x: 168, y: 110, node: "K1", left: true },
+      sofa: { x: 140, y: 700, node: "D1", left: true }, door: { x: 300, y: 752, node: "E3" }, out: { x: 300, y: 840, node: "O3" }
+    },
+    items: [
+      { t: "glass", y: 262, x1: 8, x2: 236, gap: [172, 230], sign: "사장실" },
+      { t: "glass", y: 246, x1: 424, x2: 592, gap: [432, 484], sign: "회의실" },
+      { t: "table", x: 532, y: 186, w: 96 },
+      { t: "shelf", x: 36, y: 112 }, { t: "plant", x: 214, y: 100 },
+      { t: "counter", x: 62, y: 412, w: 92 }, { t: "cooler", x: 44, y: 534 },
+      { t: "printer", x: 556, y: 414 }, { t: "cabinet", x: 568, y: 548 },
+      { t: "plant", x: 28, y: 304 }, { t: "plant", x: 574, y: 312 }, { t: "plant", x: 568, y: 704 },
+      { t: "sofa", x: 70, y: 726, w: 104 }, { t: "door", x1: 262, x2: 338, y: 774 }
+    ],
+    bg: `<rect class="pl-wall" x="0" y="0" width="600" height="64"/>
+      <rect class="pl-floor" x="0" y="64" width="600" height="716"/>
+      <path class="pl-plank" d="${Array.from({ length: 23 }, (_, k) => `M8 ${94 + k * 30}H592`).join("")}"/>
+      <rect class="pl-carpet" x="8" y="64" width="228" height="198"/>
+      <rect class="pl-tile" x="424" y="64" width="168" height="182"/>
+      <rect class="pl-runner" x="14" y="272" width="572" height="24" rx="4"/>
+      <rect class="pl-runner" x="278" y="296" width="44" height="474"/>
+      <rect class="pl-mat" x="268" y="742" width="64" height="26" rx="5"/>
+      <rect class="pl-base" x="0" y="58" width="600" height="6"/>
+      <g class="pl-win"><rect x="70" y="12" width="96" height="38" rx="3"/><rect x="256" y="12" width="60" height="38" rx="3"/><rect x="332" y="12" width="60" height="38" rx="3"/></g>
+      <path class="pl-mullion" d="M118 12v38M286 12v38M362 12v38M70 31h96M256 31h60M332 31h60"/>
+      <rect class="pl-board" x="472" y="12" width="104" height="38" rx="3"/><path class="pl-scribble" d="M482 24h40M482 32q10-6 20 0t20 0M530 22l12 18M550 26h16"/>
+      <circle class="pl-clock" cx="408" cy="30" r="9"/><path class="pl-hand" d="M408 30v-6M408 30h4"/>
+      <rect class="pl-side" x="0" y="0" width="8" height="780"/><rect class="pl-side" x="592" y="0" width="8" height="780"/>
+      <rect class="pl-glass-v" x="233" y="28" width="6" height="234"/><rect class="pl-wall-v" x="421" y="28" width="6" height="218"/>
+      <rect class="pl-low" x="8" y="768" width="254" height="10"/><rect class="pl-low" x="338" y="768" width="254" height="10"/>`
+  },
+  // 휴대폰: 가로로 긴 축소 지도 (화면 폭에 딱 맞게, 소품을 줄임)
+  wide: {
+    W: 800, H: 360, mate: 52,
+    desks: [
+      { x: 100, y: 172, w: 120 }, { x: 292, y: 150, w: 96 }, { x: 440, y: 150, w: 100 },
+      { x: 236, y: 342, w: 92 }, { x: 384, y: 342, w: 88 }, { x: 530, y: 342, w: 84 }, { x: 670, y: 342, w: 76 }
+    ],
+    deskNode: ["K0", "S1", "S2", "G3", "G5", "G7", "G9"],
+    nodes: {
+      K0: [182, 138], S1: [362, 118], S2: [512, 118],
+      G0: [76, 216], G1: [120, 216], G2: [182, 216], G3: [236, 216], G4: [362, 216], G5: [384, 216], G6: [512, 216],
+      G7: [530, 216], G8: [636, 216], G9: [670, 216], G10: [736, 216], W1: [636, 136], E0: [120, 344], O0: [120, 400]
+    },
+    edges: "K0-G2 S1-G4 S2-G6 G0-G1 G1-G2 G2-G3 G3-G4 G4-G5 G5-G6 G6-G7 G7-G8 G8-G9 G9-G10 G8-W1 G1-E0 E0-O0",
+    spots: {
+      printer: { x: 76, y: 228, node: "G0", left: true }, coffee: { x: 736, y: 228, node: "G10" },
+      board: { x: 660, y: 120, node: "W1" }, door: { x: 120, y: 344, node: "E0" }, out: { x: 120, y: 400, node: "O0" }
+    },
+    items: [
+      { t: "glass", y: 204, x1: 6, x2: 206, gap: [150, 204], sign: "사장실" },
+      { t: "glass", y: 186, x1: 600, x2: 794, gap: [614, 662], sign: "" },
+      { t: "table", x: 716, y: 142, w: 92 }, { t: "plant", x: 28, y: 100 }, { t: "plant", x: 566, y: 104 },
+      { t: "printer", x: 34, y: 240 }, { t: "coffee", x: 774, y: 240 }, { t: "cooler", x: 772, y: 336 },
+      { t: "door", x1: 90, x2: 150, y: 354 }
+    ],
+    bg: `<rect class="pl-wall" x="0" y="0" width="800" height="46"/>
+      <rect class="pl-floor" x="0" y="46" width="800" height="314"/>
+      <path class="pl-plank" d="${Array.from({ length: 10 }, (_, k) => `M6 ${74 + k * 30}H794`).join("")}"/>
+      <rect class="pl-carpet" x="6" y="46" width="200" height="158"/>
+      <rect class="pl-tile" x="600" y="46" width="194" height="140"/>
+      <rect class="pl-runner" x="14" y="204" width="772" height="24" rx="4"/>
+      <rect class="pl-runner" x="106" y="228" width="28" height="122"/>
+      <rect class="pl-base" x="0" y="40" width="800" height="6"/>
+      <g class="pl-win"><rect x="40" y="8" width="96" height="28" rx="3"/><rect x="250" y="8" width="84" height="28" rx="3"/><rect x="398" y="8" width="84" height="28" rx="3"/></g>
+      <path class="pl-mullion" d="M88 8v28M292 8v28M440 8v28"/>
+      <rect class="pl-board" x="650" y="8" width="110" height="28" rx="3"/><path class="pl-scribble" d="M662 18h40M662 26q10-6 20 0t20 0M714 16l12 14"/>
+      <circle class="pl-clock" cx="540" cy="22" r="8"/><path class="pl-hand" d="M540 22v-5M540 22h4"/>
+      <rect class="pl-side" x="0" y="0" width="6" height="360"/><rect class="pl-side" x="794" y="0" width="6" height="360"/>
+      <rect class="pl-glass-v" x="203" y="12" width="6" height="192"/><rect class="pl-wall-v" x="597" y="12" width="6" height="174"/>
+      <rect class="pl-low" x="6" y="350" width="84" height="10"/><rect class="pl-low" x="150" y="350" width="644" height="10"/>`
+  }
 };
-const FLOOR_PROPS = ["", "shelf", "coffee", "printer", "water", "coffee", "printer"];
-const PROP_FX = { shelf: "📚", coffee: "☕", printer: "📄", water: "💧" };
+
+// 타이틀 데모용 작은 사무실 (사장 → 부장 → 대리 → 사원)
+const DEMO_PLAN = {
+  W: 520, H: 340, mate: 44,
+  desks: [{ x: 96, y: 152, w: 112 }, { x: 340, y: 142, w: 100 }, { x: 190, y: 320, w: 90 }, { x: 404, y: 320, w: 82 }],
+  kinds: ["ceo", "boss", "team", "junior"],
+  items: [{ t: "glass", y: 196, x1: 6, x2: 182, gap: [128, 176], sign: "" }, { t: "plant", x: 496, y: 160 }, { t: "cooler", x: 34, y: 312 }, { t: "plant", x: 496, y: 330 }],
+  bg: `<rect class="pl-wall" x="0" y="0" width="520" height="42"/>
+    <rect class="pl-floor" x="0" y="42" width="520" height="298"/>
+    <path class="pl-plank" d="${Array.from({ length: 10 }, (_, k) => `M6 ${70 + k * 30}H514`).join("")}"/>
+    <rect class="pl-carpet" x="6" y="42" width="176" height="154"/>
+    <rect class="pl-runner" x="12" y="206" width="496" height="20" rx="4"/>
+    <rect class="pl-base" x="0" y="36" width="520" height="6"/>
+    <g class="pl-win"><rect x="40" y="8" width="80" height="26" rx="3"/><rect x="250" y="8" width="70" height="26" rx="3"/><rect x="352" y="8" width="70" height="26" rx="3"/></g>
+    <path class="pl-mullion" d="M80 8v26M285 8v26M387 8v26"/>
+    <rect class="pl-side" x="0" y="0" width="6" height="340"/><rect class="pl-side" x="514" y="0" width="6" height="340"/>
+    <rect class="pl-glass-v" x="179" y="10" width="6" height="186"/>`
+};
+
+function planSeat(P, i) {
+  const d = P.desks[i];
+  return { x: d.x, y: d.y - DESK_H - DESK_D + 10 };
+}
+
+function deskSvg(kind, w) {
+  const t = MON_H + 4, H = t + DESK_D + DESK_H, mx = Math.round(w - 22);
+  const extra = {
+    ceo: `<rect class="d-gold" x="12" y="${t + 6}" width="26" height="9" rx="2"/><rect class="d-paper" x="44" y="${t + 5}" width="16" height="12" rx="1.5"/>`,
+    exec: `<rect class="d-pot" x="10" y="${t + 3}" width="13" height="11" rx="2"/><circle class="d-leaf" cx="16.5" cy="${t - 2}" r="8"/>`,
+    boss: `<rect class="d-paper" x="9" y="${t + 6}" width="18" height="13" rx="1.5"/><rect class="d-paper" x="12" y="${t + 2}" width="18" height="13" rx="1.5"/>`,
+    team: `<rect class="d-mug" x="9" y="${t + 6}" width="9" height="10" rx="2"/>`,
+    junior: `<rect class="d-paper" x="5" y="${t - 14}" width="18" height="32" rx="1.5"/><path class="d-line" d="M8 ${t - 8}h12M8 ${t - 2}h12M8 ${t + 4}h12M8 ${t + 10}h12"/>`
+  }[kind] || "";
+  return `<svg class="desk-svg" viewBox="0 0 ${w} ${H}" aria-hidden="true" focusable="false">
+    <ellipse class="d-glow" cx="${mx - 8}" cy="${t - 4}" rx="18" ry="11"/>
+    <rect class="d-top" x="1" y="${t}" width="${w - 2}" height="${DESK_D}" rx="4"/>
+    <rect class="d-front" x="1" y="${t + DESK_D - 2}" width="${w - 2}" height="${DESK_H + 1}" rx="3"/>
+    <rect class="d-kb" x="${Math.round(w / 2 - 14)}" y="${t + 8}" width="28" height="8" rx="2"/>
+    <rect class="d-mon" x="${mx - 14}" y="${t - 14}" width="28" height="19" rx="3"/>
+    <rect class="d-stand" x="${mx - 3}" y="${t + 5}" width="6" height="5"/>
+    ${extra}
+  </svg>`;
+}
+
+function chairSvg(kind) {
+  const [w, h] = CHAIR_SIZE[kind];
+  return `<svg class="chair-svg" viewBox="0 0 ${w} ${h + 16}" aria-hidden="true" focusable="false">
+    ${kind === "junior" ? "" : `<rect class="ch-back" x="2" y="2" width="${w - 4}" height="${h}" rx="${Math.min(12, Math.round(w / 3))}"/>`}
+    <rect class="ch-seat" x="3" y="${h - 2}" width="${w - 6}" height="10" rx="4"/>
+    <path class="ch-leg" d="M${w / 2} ${h + 8}v5M${w / 2 - 9} ${h + 14}h18"/>
+  </svg>`;
+}
+
+// 소품: [폭, 높이, 그림]. 바닥에 닿는 아래쪽 가운데가 (x, y)
+const PROP_ART = {
+  plant: [32, 60, `<path class="p-leaf" d="M16 36C3 32 2 14 9 7c3 8 5 15 7 29zM16 36c13-4 14-22 7-29-3 8-5 15-7 29zM16 36c-6-11-4-25 0-33 4 8 6 22 0 33z"/><path class="p-pot" d="M6 36h20l-3 22H9z"/>`],
+  cooler: [28, 64, `<path class="p-bottle" d="M8 4h12v5l4 4v14H4V13l4-4z"/><rect class="p-body" x="3" y="27" width="22" height="35" rx="3"/><rect class="p-panel" x="9" y="33" width="10" height="6" rx="1.5"/><rect class="p-cup" x="10" y="44" width="8" height="7" rx="1"/>`],
+  printer: [56, 46, `<path class="p-paper p-out" d="M16 2h24v14H16z"/><rect class="p-body" x="3" y="12" width="50" height="20" rx="4"/><rect class="p-panel" x="38" y="16" width="10" height="5" rx="1.5"/><path class="p-line" d="M12 26h32"/><rect class="p-body" x="8" y="31" width="40" height="13" rx="2"/>`],
+  cabinet: [42, 78, `<rect class="p-body" x="2" y="2" width="38" height="74" rx="3"/><path class="p-line" d="M2 27h38M2 51h38"/><path class="p-book" d="M7 7h5v20H7zM13 10h5v17h-5zM20 8h5v19h-5zM8 32h5v19H8zM15 35h5v16h-5zM26 54h5v22h-5zM9 56h5v20H9z"/>`],
+  sofa: [104, 46, `<rect class="p-sofa" x="4" y="4" width="96" height="22" rx="8"/><rect class="p-sofa2" x="2" y="20" width="100" height="18" rx="7"/><rect class="p-sofa" x="0" y="14" width="12" height="28" rx="5"/><rect class="p-sofa" x="92" y="14" width="12" height="28" rx="5"/><path class="p-leg" d="M10 40v5M94 40v5"/>`],
+  coffee: [40, 62, `<rect class="p-body" x="3" y="26" width="34" height="34" rx="3"/><rect class="p-machine" x="7" y="2" width="26" height="28" rx="4"/><rect class="p-hole" x="12" y="13" width="16" height="13" rx="1.5"/><rect class="p-cup" x="16" y="19" width="8" height="7" rx="1.5"/><g class="steam"><path d="M17 1q-3-4 0-8"/><path d="M23 1q3-4 0-8"/></g>`]
+};
+
+function propSvg(t, w) {
+  if (t === "counter") {
+    return [w, 66, `<svg viewBox="0 0 ${w} 66" aria-hidden="true" focusable="false">
+      <rect class="p-top" x="1" y="24" width="${w - 2}" height="24" rx="4"/><rect class="p-front" x="1" y="46" width="${w - 2}" height="19" rx="3"/>
+      <rect class="p-machine" x="10" y="2" width="28" height="34" rx="4"/><rect class="p-hole" x="15" y="15" width="18" height="14" rx="1.5"/><rect class="p-cup" x="20" y="22" width="8" height="7" rx="1.5"/>
+      <rect class="d-mug" x="${w - 30}" y="30" width="9" height="10" rx="2"/><rect class="d-mug" x="${w - 18}" y="32" width="9" height="10" rx="2"/>
+      <g class="steam"><path d="M21 1q-3-4 0-8"/><path d="M27 1q3-4 0-8"/></g></svg>`];
+  }
+  if (t === "table") {
+    return [w, 64, `<svg viewBox="0 0 ${w} 64" aria-hidden="true" focusable="false">
+      ${[.22, .5, .78].map(f => `<rect class="ch-back" x="${Math.round(w * f - 11)}" y="2" width="22" height="22" rx="7"/>`).join("")}
+      <rect class="p-top" x="1" y="18" width="${w - 2}" height="26" rx="12"/><rect class="p-front" x="6" y="40" width="${w - 12}" height="12" rx="5"/>
+      <path class="ch-leg" d="M${w / 2} 52v8M${w / 2 - 12} 60h24"/></svg>`];
+  }
+  const [pw, ph, art] = PROP_ART[t] || PROP_ART.plant;
+  return [pw, ph, `<svg viewBox="0 0 ${pw} ${ph}" aria-hidden="true" focusable="false">${art}</svg>`];
+}
+
+// 평면도 위 한 점에 놓는 요소의 style (단위 → CSS 변수, 그리는 순서 = y)
+function at(x, y, w, h, z) {
+  return `style="--x:${Math.round(x)};--y:${Math.round(y)};--w:${Math.round(w)};--h:${Math.round(h)};z-index:${Math.round(z)}"`;
+}
+
+function itemHtml(it) {
+  if (it.t === "glass") {
+    const H = 34, segs = [[it.x1, it.gap[0]], [it.gap[1], it.x2]].filter(([a, b]) => b - a > 2);
+    return segs.map(([a, b]) => `<span class="it glass" ${at(a, it.y - H, b - a, H, it.y)}></span>`).join("")
+      + `<span class="it door-post" ${at(it.gap[0] - 3, it.y - H - 2, 6, H + 2, it.y)}></span><span class="it door-post" ${at(it.gap[1] - 3, it.y - H - 2, 6, H + 2, it.y)}></span>`
+      + (it.sign ? `<span class="it room-sign" ${at((it.gap[0] + it.gap[1]) / 2, it.y - H / 2, 0, 0, it.y + 1)}>${esc(it.sign)}</span>` : "");
+  }
+  if (it.t === "door") {
+    return `<span class="it door-leaf" ${at(it.x1, it.y - 5, it.x2 - it.x1, 8, it.y)}></span><span class="it room-sign door-sign" ${at((it.x1 + it.x2) / 2, it.y - 16, 0, 0, it.y + 1)}>입구</span>`;
+  }
+  const [w, h, svg] = propSvg(it.t, it.w);
+  return `<span class="it prop ${it.t}" ${at(it.x - w / 2, it.y - h, w, h, it.y)}>${svg}</span>`;
+}
+
+function deskHtml(P, i, kind) {
+  const d = P.desks[i];
+  const s = planSeat(P, i);
+  const [cw, ch] = CHAIR_SIZE[kind];
+  const H = MON_H + 4 + DESK_D + DESK_H;
+  return `<span class="it chair ${kind}" data-i="${i}" ${at(s.x - cw / 2, s.y + 8 - (ch + 16), cw, ch + 16, s.y - 1)}>${chairSvg(kind)}</span>
+    <span class="it desk ${kind}" data-i="${i}" ${at(d.x - d.w / 2, d.y - H, d.w, H, d.y)}>${deskSvg(kind, d.w)}</span>
+    <span class="it plate" data-i="${i}" ${at(d.x, d.y - DESK_H / 2, 0, 0, d.y + 2)}></span>
+    <span class="it vacant" data-i="${i}" ${at(d.x, s.y - 2, 0, 0, d.y + 3)}>공석</span>
+    <span class="it desk-stamp" data-i="${i}" ${at(s.x + 4, s.y - P.mate * 1.45 - 12, 0, 0, 960)}></span>`;
+}
+
+// 걸을 길 (노드 그래프에서 가장 짧은 길)
+function planRoute(P, from, to) {
+  if (!P.graph) {
+    const g = {};
+    Object.keys(P.nodes).forEach(k => { g[k] = []; });
+    P.edges.split(" ").forEach(e => {
+      const [a, b] = e.split("-");
+      const d = Math.hypot(P.nodes[a][0] - P.nodes[b][0], P.nodes[a][1] - P.nodes[b][1]);
+      g[a].push([b, d]);
+      g[b].push([a, d]);
+    });
+    P.graph = g;
+  }
+  const dist = { [from]: 0 }, prev = {}, todo = new Set(Object.keys(P.nodes));
+  while (todo.size) {
+    let u = null;
+    todo.forEach(k => { if (dist[k] !== undefined && (u === null || dist[k] < dist[u])) u = k; });
+    if (u === null || u === to) break;
+    todo.delete(u);
+    P.graph[u].forEach(([v, d]) => {
+      if (dist[u] + d < (dist[v] ?? Infinity)) { dist[v] = dist[u] + d; prev[v] = u; }
+    });
+  }
+  const path = [to];
+  while (path[0] !== from && prev[path[0]]) path.unshift(prev[path[0]]);
+  return path[0] === from ? path.map(k => P.nodes[k]) : [P.nodes[from], P.nodes[to]];
+}
 
 // ===== 살아 있는 사무실 무대 =====
-// 층 = 직급 (위에서부터 사장실 → 사원). 직원 캐릭터는 스스로 돌아다니고, 보고·진실 공개 때는 자리로 돌아와 연기합니다.
+// 직원 캐릭터는 자기 책상에서 일하고, 복도를 따라 탕비실·프린터·회의실·동료 책상까지 걸어 다닙니다.
+// 보고·진실 공개 때는 모두 자리로 돌아와 연기합니다.
 
-const office = { company: null, el: null, floors: [], layer: null, mates: new Map(), mode: "idle", strip: false, size: "", epilogue: null, holdQuit: false };
+const office = { company: null, el: null, stage: null, plan: null, kind: "", layer: null, mates: new Map(), mode: "idle", strip: false, epilogue: null, holdQuit: false, walkers: 0, focus: null, taken: new Set() };
 
 function officeIsStrip() {
   return !!(window.matchMedia && window.matchMedia("(max-width: 759px)").matches);
 }
 
 function officeVisible() {
-  return document.body.classList.contains("with-office") && office.el && office.el.offsetWidth > 0;
+  return document.body.classList.contains("with-office") && office.el && office.el.offsetWidth > 0 && !!office.plan;
 }
 
 function officeWait(ms) {
@@ -468,30 +704,50 @@ function officeBuild(c) {
   office.company = c;
   office.el = el;
   office.epilogue = null;
+  office.plan = null;
+  office.kind = "";
+  office.walkers = 0;
+  office.taken.clear();
   el.className = "office";
   el.innerHTML = `
     <div class="office-sign"><span class="os-emoji" aria-hidden="true">${esc(c.emoji || "🏢")}</span><b class="os-name">${esc(c.name || "우리 회사")}</b><span class="os-where" id="office-where"></span></div>
-    <div class="office-floors">
-      ${FLOOR_RANKS.map((rank, i) => `<div class="floor f-${i} rk-${i}" data-floor="${i}">
-        <span class="win" aria-hidden="true"></span>
-        ${i ? `<span class="prop prop-${FLOOR_PROPS[i]}" aria-hidden="true">${PROP_SVG[FLOOR_PROPS[i]]}</span>` : ""}
-        <span class="desk" aria-hidden="true">${DESK_SVG}</span>
-        <span class="vacant" aria-hidden="true">공석</span>
-        <span class="plate"></span>
-        <span class="speech" aria-hidden="true"></span>
-        <span class="floor-stamp" aria-hidden="true"></span>
-      </div>`).join("")}
-      <span class="stairs" aria-hidden="true"></span>
-      <div class="mates" aria-hidden="true"></div>
-      <div class="fly" aria-hidden="true"></div>
-      <span class="spot" aria-hidden="true"></span>
-      <span class="lens" aria-hidden="true">🔍</span>
-    </div>
+    <div class="office-stage"></div>
     <div class="caption" aria-hidden="true"></div>`;
-  office.floors = [...el.querySelectorAll(".floor")];
-  office.layer = el.querySelector(".mates");
-  office.size = "";
+  office.stage = el.querySelector(".office-stage");
   el.onclick = skipReveal;
+}
+
+// 평면도 그리기 (휴대폰 ↔ 데스크톱이 바뀌면 다시 그림)
+function officeDraw(kind) {
+  const P = PLANS[kind];
+  office.kind = kind;
+  office.plan = P;
+  office.strip = kind === "wide";
+  office.mates.forEach(m => { m.gen++; });
+  office.mates.clear();
+  office.walkers = 0;
+  office.taken.clear();
+  const st = office.stage;
+  st.className = `office-stage plan-${kind}`;
+  st.style.setProperty("--W", P.W);
+  st.style.setProperty("--mate", P.mate);
+  st.style.aspectRatio = `${P.W} / ${P.H}`;
+  st.innerHTML = `<svg class="plan-bg" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${P.bg}</svg>
+    <div class="plan-items" aria-hidden="true">${P.items.map(itemHtml).join("")}${P.desks.map((d, i) => deskHtml(P, i, DESK_KIND[i])).join("")}</div>
+    <div class="mates" aria-hidden="true"></div>
+    <svg class="plan-fx" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false"></svg>
+    <span class="spot" aria-hidden="true"></span>
+    <div class="fly" aria-hidden="true"></div>
+    <div class="speech" aria-hidden="true"></div>
+    <span class="focus-mark" aria-hidden="true"><b>면접 중</b></span>
+    <span class="lens" aria-hidden="true">🔍</span>
+    <span class="sweep" aria-hidden="true"></span>`;
+  office.layer = st.querySelector(".mates");
+  office.el.classList.toggle("strip", office.strip);
+}
+
+function deskPart(i, part) {
+  return office.stage ? office.stage.querySelector(`.${part}[data-i="${i}"]`) : null;
 }
 
 function floorPerson(c, i) {
@@ -500,23 +756,21 @@ function floorPerson(c, i) {
   return id ? candidateById(c, id) : null;
 }
 
+// 책상 앞 이름표: 직급(작은 직급 색 표시) + 이름 / 글자칸 + 글자 수
 function plateHtml(c, i, person) {
   const rank = FLOOR_RANKS[i];
   const chars = i === 0 ? ORDER_MAX : rankInfo(rank).chars;
-  const here = i === 0 || (person && !person.quit);
+  const here = i === 0 || (person && (!person.quit || office.holdQuit));
   const name = i === 0 ? c.player || "사장님" : here ? person.name : person && person.quit ? "퇴사" : "공석";
-  const shownName = i === 0 ? name : person && (!person.quit || office.holdQuit) ? person.name : name;
-  return `<b class="rank rk-${i}">${esc(rank)}</b><span class="pn">${esc(shownName)}</span>${here && person ? `<span class="ph" title="충성심 ${person.loyalty}/10">♥${person.loyalty}</span>` : ""}
-    <span class="pl-chars">${cells(chars / 10)}<small>${chars}자</small></span>`;
+  return `<span class="pl-row"><b class="rank rk-${i}">${esc(rank)}</b><span class="pn">${esc(name)}</span></span>
+    <span class="pl-row pl-chars">${cells(chars / 10)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${person.loyalty}/10">♥${person.loyalty}</span>` : ""}</span>`;
 }
 
-// 사람이 바뀐 층만 고칩니다. animate면 새 직원은 계단에서 걸어 들어옵니다.
+// 사람이 바뀐 자리만 고칩니다. animate면 새 직원은 입구 문으로 걸어 들어옵니다.
 function officeSync(animate) {
   const c = game.company;
-  if (!office.el || office.company !== c || !office.el.firstElementChild) officeBuild(c);
+  if (!office.el || office.company !== c || !office.stage || !office.el.contains(office.stage)) officeBuild(c);
   if (!office.el) return;
-  office.strip = officeIsStrip();
-  office.el.classList.toggle("strip", office.strip);
   const sign = office.el.querySelector(".os-name");
   if (sign) sign.textContent = c.name || "우리 회사";
   const emoji = office.el.querySelector(".os-emoji");
@@ -526,49 +780,64 @@ function officeSync(animate) {
     const id = document.body.dataset.screen;
     where.textContent = id === "screen-interview" ? "면접 중" : id === "screen-final" ? "1년 결산" : c.events.length ? quarterLabel(game.round) : "";
   }
-  if (!officeVisible()) return;
-  const size = `${office.el.offsetWidth}x${office.el.offsetHeight}x${office.strip}`;
-  const moved = size !== office.size;
-  office.size = size;
+  if (!document.body.classList.contains("with-office") || !office.el.offsetWidth) return;
+  const kind = officeIsStrip() ? "wide" : "tall";
+  if (kind !== office.kind) officeDraw(kind);
   FLOOR_RANKS.forEach((rank, i) => {
-    const floor = office.floors[i];
     const person = floorPerson(c, i);
     const held = office.holdQuit && person && person.quit && office.mates.get(i) && office.mates.get(i).id === person.id;
     const here = i === 0 || (person && (!person.quit || held));
-    floor.classList.toggle("empty", !here);
-    floor.classList.toggle("left", !!(person && person.quit && !held));
-    floor.querySelector(".vacant").textContent = person && person.quit ? "퇴사" : "공석";
-    floor.querySelector(".plate").innerHTML = plateHtml(c, i, person);
+    const desk = deskPart(i, "desk");
+    const plate = deskPart(i, "plate");
+    const vacant = deskPart(i, "vacant");
+    if (desk) {
+      desk.classList.toggle("empty", !here);
+      desk.classList.toggle("left", !!(person && person.quit && !held));
+    }
+    if (vacant) {
+      vacant.textContent = person && person.quit ? "퇴사" : "공석";
+      vacant.classList.toggle("on", !here);
+      vacant.classList.toggle("quit", !!(person && person.quit && !held));
+    }
+    if (plate) {
+      plate.innerHTML = plateHtml(c, i, person);
+      plate.classList.toggle("empty", !here);
+      plate.title = `${rank} ${i === 0 ? c.player || "" : person ? person.name : "공석"} · 지시 ${i === 0 ? ORDER_MAX : rankInfo(rank).chars}자`;
+    }
     const want = i === 0 ? "ceo" : here ? person.id : null;
     const m = office.mates.get(i);
     if (m && m.id !== want) { mateRemove(m, animate); office.mates.delete(i); }
     if (want && !office.mates.get(i)) mateAdd(i, i === 0 ? null : person, animate);
     else if (want && office.mates.get(i)) office.mates.get(i).person = i === 0 ? null : person;
   });
-  if (moved) officeRelayout();
 }
 
 function officeRelayout() {
-  office.mates.forEach(m => {
-    if (m.leaving) return;
-    m.gen++;
-    const home = officeSpot(m.i, "desk");
-    mateJump(m, home.x, home.y);
-    if (office.mode === "idle") mateLife(m);
-  });
+  officeSync(false);
 }
 
-// 층 안의 자리 좌표 (사무실 바닥 기준 px)
+// 자리 좌표 (평면도 단위). kind: desk(앉는 자리) | stand(책상 옆) | door | out
 function officeSpot(i, kind) {
-  const f = office.floors[i];
-  if (!f) return { x: 0, y: 0 };
-  const W = f.offsetWidth, H = f.offsetHeight, X = f.offsetLeft, Y = f.offsetTop;
-  if (office.strip) {
-    const dx = { desk: 0, prop: 0, win: 0, stair: W * .45, door: W * .45, visit: 0, side: -W * .12 }[kind] || 0;
-    return { x: X + W / 2 + dx, y: Y + H - 22 };
-  }
-  const frac = { desk: .2, prop: .72, win: .52, stair: .92, door: .92, visit: .36, side: .3 }[kind] ?? .2;
-  return { x: X + W * frac, y: Y + H - 5 };
+  const P = office.plan;
+  if (!P) return { x: 0, y: 0 };
+  if (kind === "door" || kind === "out") return P.spots[kind];
+  if (kind === "stand") { const n = P.nodes[P.deskNode[i]]; return { x: n[0], y: n[1] }; }
+  return planSeat(P, i);
+}
+
+// 어떤 자리에서 어떤 자리로 가는 길 (자리 = 책상 번호 또는 장소 이름)
+function officePath(from, to) {
+  const P = office.plan;
+  const loc = k => typeof k === "number" ? { ...planSeat(P, k), node: P.deskNode[k] } : P.spots[k];
+  const a = loc(from), b = loc(to);
+  if (!a || !b) return [];
+  const pts = [[a.x, a.y], ...planRoute(P, a.node, b.node), [b.x, b.y]];
+  return pts.filter((p, k) => k === 0 || Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) > 1).slice(1);
+}
+
+function officeDoor() {
+  const door = office.stage && office.stage.querySelector(".door-leaf");
+  if (door) replay(door, "open", 1400);
 }
 
 function mateAdd(i, person, animate) {
@@ -577,21 +846,27 @@ function mateAdd(i, person, animate) {
   el.className = `mate rk-${i}${i === 0 ? " ceo" : ""}`;
   el.innerHTML = `<div class="mate-fig">${chibiSvg(person)}<span class="mate-box" aria-hidden="true">📦</span></div><span class="mate-fx"></span><span class="mate-say"></span>`;
   office.layer.appendChild(el);
-  const m = { i, id: person ? person.id : "ceo", person, el, gen: 0, x: 0, y: 0, busy: false, leaving: false };
+  const m = { i, id: person ? person.id : "ceo", person, el, gen: 0, x: 0, y: 0, busy: false, leaving: false, away: false };
   office.mates.set(i, m);
-  const home = officeSpot(i, "desk");
   if (animate && !reduceMotion()) {
-    const door = officeSpot(i, office.strip ? "side" : "door");
-    mateJump(m, door.x, office.strip ? door.y + 30 : door.y);
+    const out = officeSpot(i, "out");
+    mateJump(m, out.x, out.y);
+    m.away = true;
     el.classList.add("arrive");
-    mateFx(m, "👋", 1600);
+    mateFx(m, "👋", 1800);
     sfx("walk");
-    requestAnimationFrame(() => mateGo(m, home.x, home.y, 110).then(() => {
+    officeDoor();
+    const gen = m.gen;
+    requestAnimationFrame(() => mateWalk(m, officePath("out", i), 120, null, () => m.gen === gen).then(() => {
+      if (m.gen !== gen) return;
       el.classList.remove("arrive");
+      mateSit(m);
       if (office.mode === "idle") mateLife(m);
     }));
   } else {
-    mateJump(m, home.x, home.y);
+    const s = planSeat(office.plan, i);
+    mateJump(m, s.x, s.y);
+    mateSit(m);
     if (office.mode === "idle") mateLife(m);
   }
   return m;
@@ -600,28 +875,31 @@ function mateAdd(i, person, animate) {
 function mateRemove(m, animate) {
   m.gen++;
   m.leaving = true;
-  if (!animate || reduceMotion()) { m.el.remove(); return; }
-  const door = officeSpot(m.i, office.strip ? "side" : "door");
-  mateGo(m, door.x, door.y, 120).then(() => { m.el.classList.add("gone"); setTimeout(() => m.el.remove(), 400); });
+  deskOn(m.i, false);
+  if (!animate || reduceMotion() || !office.plan) { m.el.remove(); return; }
+  const gen = m.gen;
+  mateWalk(m, officePath(m.away ? "door" : m.i, "out"), 120, null, () => m.gen === gen).then(() => {
+    m.el.classList.add("gone");
+    setTimeout(() => m.el.remove(), 400);
+  });
 }
 
-// 위치는 사무실 크기에 대한 비율(cq 단위)로 저장해서, 창 크기가 바뀌어도 캐릭터가 제자리에 있습니다
+// 위치는 평면도 단위로 저장합니다. 화면 크기가 바뀌어도 CSS가 알아서 맞춥니다.
 function officeDims() {
-  const l = office.layer;
-  return { W: (l && l.offsetWidth) || 1, H: (l && l.offsetHeight) || 1 };
+  const P = office.plan || PLANS.tall;
+  return { W: P.W, H: P.H, k: office.stage && office.stage.clientWidth ? office.stage.clientWidth / P.W : 1 };
 }
 
-function mateSet(m, x, y) {
-  const { W, H } = officeDims();
-  m.fx = x / W;
-  m.fy = y / H;
-  m.el.style.setProperty("--mx", (m.fx * 100).toFixed(3));
-  m.el.style.setProperty("--my", (m.fy * 100).toFixed(3));
+function mateSet(m, x, y, z) {
+  m.x = x;
+  m.y = y;
+  m.el.style.setProperty("--mx", x.toFixed(1));
+  m.el.style.setProperty("--my", y.toFixed(1));
+  m.el.style.zIndex = String(Math.round(z ?? y));
 }
 
 function matePos(m) {
-  const { W, H } = officeDims();
-  return { x: (m.fx || 0) * W, y: (m.fy || 0) * H };
+  return { x: m.x || 0, y: m.y || 0 };
 }
 
 function mateJump(m, x, y) {
@@ -631,15 +909,65 @@ function mateJump(m, x, y) {
 }
 
 function mateGo(m, x, y, speed, waitFn) {
-  const now = matePos(m);
-  const dist = Math.hypot(x - now.x, y - now.y);
+  const dist = Math.hypot(x - m.x, y - m.y);
   if (dist < 1) return Promise.resolve();
-  const ms = Math.max(140, dist / (speed || 80) * 1000);
-  if (Math.abs(x - now.x) > 2) m.el.classList.toggle("face-left", x < now.x);
+  const ms = Math.max(160, dist / (speed || 80) * 1000);
+  if (Math.abs(x - m.x) > 2) m.el.classList.toggle("face-left", x < m.x);
   m.el.classList.add("walk");
   m.el.style.transition = `transform ${Math.round(ms)}ms linear`;
-  mateSet(m, x, y);
-  return (waitFn || officeWait)(ms).then(() => m.el.classList.remove("walk"));
+  mateSet(m, x, y, Math.max(y, m.y));
+  return (waitFn || officeWait)(ms).then(() => {
+    m.el.classList.remove("walk");
+    m.el.style.zIndex = String(Math.round(m.y));
+  });
+}
+
+// 길을 따라 걷기. live()가 false가 되면 그 자리에서 멈춥니다.
+async function mateWalk(m, pts, speed, waitFn, live) {
+  if (!pts.length) return;
+  if (!m.away) mateStand(m);
+  office.walkers++;
+  try {
+    for (const [x, y] of pts) {
+      if (live && !live()) return;
+      await mateGo(m, x, y, speed, waitFn);
+    }
+  } finally {
+    office.walkers = Math.max(0, office.walkers - 1);
+  }
+}
+
+function deskOn(i, on) {
+  const d = deskPart(i, "desk");
+  if (d) d.classList.toggle("on", !!on);
+}
+
+// 자리에 앉기 / 일어나기 (의자가 빙글)
+function mateSit(m) {
+  m.away = false;
+  m.el.classList.add("seated");
+  m.el.classList.remove("face-left");
+  const s = planSeat(office.plan, m.i);
+  if (Math.hypot(m.x - s.x, m.y - s.y) > 1) mateJump(m, s.x, s.y);
+  m.el.style.zIndex = String(Math.round(s.y));
+  deskOn(m.i, true);
+  replay(deskPart(m.i, "chair"), "swivel", 500);
+}
+
+function mateStand(m) {
+  if (m.away) return;
+  m.away = true;
+  m.el.classList.remove("seated");
+  deskOn(m.i, false);
+  replay(deskPart(m.i, "chair"), "swivel", 500);
+}
+
+function mateHome(m, speed, waitFn, live) {
+  if (!m.away) return Promise.resolve();
+  const from = m.at || m.i;
+  return mateWalk(m, officePath(from, m.i), speed || 90, waitFn, live).then(() => {
+    if (!live || live()) { m.at = null; mateSit(m); }
+  });
 }
 
 function mateFx(m, text, ms) {
@@ -653,9 +981,9 @@ function mateFx(m, text, ms) {
 }
 
 function mateSay(m, text, ms) {
-  if (!m || !m.el) return;
+  if (!m || !m.el || office.strip) return;
   const say = m.el.querySelector(".mate-say");
-  m.el.classList.toggle("say-left", (m.fx || 0) > .55);
+  m.el.classList.toggle("say-left", (m.x || 0) > office.plan.W * .6);
   const t = Array.from(String(text));
   say.textContent = t.length > 13 ? t.slice(0, 12).join("") + "…" : t.join("");
   say.classList.add("on");
@@ -669,7 +997,7 @@ function mateOf(person) {
   return null;
 }
 
-const IDLE_CLASSES = ["walk", "type", "phone", "nap", "sip", "hop", "lookup", "read", "cheer", "slump", "clap", "pack", "liar", "run"];
+const IDLE_CLASSES = ["walk", "type", "phone", "nap", "sip", "hop", "lookup", "read", "cheer", "slump", "clap", "pack", "liar", "run", "sweat", "shrug", "jump"];
 
 function mateReset(m, keep) {
   m.gen++;
@@ -677,26 +1005,30 @@ function mateReset(m, keep) {
   IDLE_CLASSES.forEach(k => { if (!keep || !keep.includes(k)) m.el.classList.remove(k); });
 }
 
-// 직원 성격(보이는 정보)으로 할 일 고르기
+// 직원 성격(보이는 정보: 능력·운·MBTI·애착·충성심)으로 할 일 고르기. 숨은 정직도는 쓰지 않습니다.
 function pickActivity(m) {
   const x = m.person;
-  if (!x) return weighted({ work: 5, pace: office.strip ? 0 : 1.4, stretch: 0.6 });
+  const P = office.plan;
+  const roam = office.walkers < (office.strip ? 2 : 3);
+  const has = k => roam && !!P.spots[k] && !office.taken.has(k);
+  if (!x) return weighted({ work: 5, window: has("window") ? 1.2 : 0, stretch: .6 });
   const mbti = String(x.mbti || "");
-  const E = mbti[0] === "E", P = mbti[3] === "P";
+  const E = mbti[0] === "E", P2 = mbti[3] === "P";
   const avoid = x.secure < 50;
-  const w = {
-    work: 2.6 + (x.skill - 5) * 0.55,
-    coffee: office.strip ? 0 : 1.1,
-    visit: office.strip ? 0 : (E ? 1.5 : 0.4) + (avoid ? 0 : 0.6),
-    phone: avoid ? 1.5 : 0.5,
-    nap: (P ? 0.9 : 0.25) + (x.skill <= 4 ? 0.7 : 0),
-    window: office.strip ? 0 : 0.6,
-    stretch: 0.6,
-    lucky: x.luck >= 7 ? 0.7 : 0.08,
+  return weighted({
+    work: 2.8 + (x.skill - 5) * .55,
+    coffee: has("coffee") ? 1.1 : 0,
+    water: has("water") ? .5 : 0,
+    printer: has("printer") ? (x.skill >= 6 ? .9 : .5) : 0,
+    board: has("board") ? (mbti[1] === "N" ? .7 : .3) : 0,
+    visit: roam ? (E ? 1.4 : .4) + (avoid ? 0 : .5) : 0,
+    phone: avoid ? 1.4 : .5,
+    nap: (P2 ? .9 : .25) + (x.skill <= 4 ? .7 : 0),
+    stretch: .6,
+    lucky: x.luck >= 7 ? .7 : .08,
     sigh: x.loyalty <= 3 ? 1.6 : 0,
-    proud: x.loyalty >= 8 ? 0.8 : 0
-  };
-  return weighted(w);
+    proud: x.loyalty >= 8 ? .8 : 0
+  });
 }
 
 function weighted(w) {
@@ -707,6 +1039,7 @@ function weighted(w) {
 }
 
 const PAIR_LINES = [["커피 한잔?", "콜 ☕"], ["회의 몇 시예요?", "방금 끝남 ㅋㅋ"], ["이거 누가 해요?", "…저요?"], ["사장님 오셨어요?", "쉿 🤫"], ["점심 뭐 먹지", "학식 ㄱ"], ["보고서 봤어요?", "아직요…"]];
+const SPOT_FX = { coffee: "☕", water: "💧", printer: "📄", board: "📊", cabinet: "📁", window: "🌤️" };
 
 async function mateLife(m) {
   if (reduceMotion() || m.leaving) return;
@@ -717,13 +1050,11 @@ async function mateLife(m) {
     if (document.hidden || !officeVisible() || m.busy) { await officeWait(1200); continue; }
     await mateAct(m, pickActivity(m), live);
     if (!live()) return;
-    await officeWait(rand(500, 1600));
+    await officeWait(rand(600, 1800));
   }
 }
 
 async function mateAct(m, act, live) {
-  const home = officeSpot(m.i, "desk");
-  const back = () => live() ? mateGo(m, home.x, home.y, 75) : null;
   switch (act) {
     case "work":
       m.el.classList.add("type");
@@ -731,53 +1062,50 @@ async function mateAct(m, act, live) {
       await officeWait(rand(2800, 6000));
       m.el.classList.remove("type");
       break;
-    case "coffee": {
-      const p = officeSpot(m.i, "prop");
-      await mateGo(m, p.x - 16, p.y, 70);
+    case "coffee": case "water": case "printer": case "board": case "window": {
+      if (office.taken.has(act)) break;
+      office.taken.add(act);
+      m.at = act;
+      try {
+      await mateWalk(m, officePath(m.i, act), 70, null, live);
       if (!live()) return;
-      m.el.classList.add("sip");
-      mateFx(m, PROP_FX[FLOOR_PROPS[m.i]] || "☕", 2200);
+      const spot = office.plan.spots[act];
+      m.el.classList.toggle("face-left", !!spot.left);
+      m.el.classList.add(act === "coffee" || act === "water" ? "sip" : "lookup");
+      mateFx(m, SPOT_FX[act] || "✨", 2200);
+      const prop = office.stage.querySelector(`.prop.${act === "water" ? "cooler" : act === "coffee" ? (office.strip ? "coffee" : "counter") : act}`);
+      if (prop) replay(prop, "use", 1600);
       await officeWait(rand(1800, 2800));
-      m.el.classList.remove("sip");
-      await back();
-      break;
-    }
-    case "window":
-    case "pace": {
-      const p = officeSpot(m.i, "win");
-      await mateGo(m, p.x, p.y, 60);
-      if (!live()) return;
-      m.el.classList.add("lookup");
-      if (act === "pace") mateFx(m, "🤔", 1500);
-      await officeWait(rand(1500, 2600));
-      m.el.classList.remove("lookup");
-      await back();
+      m.el.classList.remove("sip", "lookup");
+      } finally { office.taken.delete(act); }
+      if (live()) await mateHome(m, 75, null, live);
       break;
     }
     case "visit": {
       const j = m.i + (Math.random() < .5 ? -1 : 1);
       const other = office.mates.get(j);
-      if (j < 1 || !other || other.busy || other.leaving) break;
+      if (j < 1 || !other || other.busy || other.leaving || other.away) break;
       m.busy = true;
       other.busy = true;
-      const a = officeSpot(m.i, "stair"), b = officeSpot(j, "stair"), t = officeSpot(j, "visit");
-      await mateGo(m, a.x, a.y, 95);
-      if (live()) await mateGo(m, b.x, b.y, 55);
-      if (live()) await mateGo(m, t.x, t.y, 95);
+      const n = office.plan.nodes[office.plan.deskNode[j]];
+      m.at = null;
+      await mateWalk(m, [...officePath(m.i, j).slice(0, -1)], 85, null, live);
       if (live()) {
         const [ask, reply] = pickOne(PAIR_LINES);
-        m.el.classList.add("face-left");
-        other.el.classList.remove("face-left");
+        m.el.classList.toggle("face-left", n[0] > other.x);
+        other.el.classList.toggle("face-left", m.x < other.x);
         mateSay(m, ask, 1700);
         await officeWait(1100);
         mateSay(other, reply, 1700);
         await officeWait(1800);
+        other.el.classList.remove("face-left");
       }
-      if (live()) await mateGo(m, b.x, b.y, 95);
-      if (live()) await mateGo(m, a.x, a.y, 55);
       other.busy = false;
       m.busy = false;
-      await back();
+      if (live()) {
+        await mateWalk(m, officePath(j, m.i).slice(0), 85, null, live);
+        if (live()) mateSit(m);
+      }
       break;
     }
     case "phone":
@@ -816,15 +1144,17 @@ async function mateAct(m, act, live) {
   }
 }
 
-// 대본 모드: 모두 자리로 (보고·진실 공개·결산)
+// 대본 모드: 모두 자기 자리로 (보고·진실 공개·결산)
 function officeBusy(fast) {
   office.mode = "busy";
   office.mates.forEach(m => {
     if (m.leaving) return;
     mateReset(m, ["liar"]);
-    const h = officeSpot(m.i, "desk");
-    if (fast || reduceMotion()) mateJump(m, h.x, h.y);
-    else mateGo(m, h.x, h.y, 280);
+    m.at = null;
+    if (fast || reduceMotion() || !m.away) { mateSit(m); return; }
+    const gen = m.gen;
+    const s = planSeat(office.plan, m.i);
+    mateGo(m, s.x, s.y, 320).then(() => { if (m.gen === gen) mateSit(m); });
   });
 }
 
@@ -838,13 +1168,16 @@ function officeIdle() {
   });
 }
 
-// 새 분기 이벤트가 오면 자리로 뛰어 들어가고 ❗
-function officeRush(text) {
+// 새 분기: 카메라처럼 바닥을 쓸고 지나가는 띠 + 모두 자리로 뛰어 들어가며 ❗
+function officeRush(text, chance) {
   if (!office.el) return;
   officeBusy();
   officeClearSay();
+  const sweep = office.stage && office.stage.querySelector(".sweep");
+  if (sweep) { sweep.classList.toggle("chance", !!chance); replay(sweep, "go", 900); }
   office.mates.forEach(m => { if (!m.leaving) { m.el.classList.remove("liar"); m.el.classList.add("run"); mateFx(m, text || "❗", 1300); } });
   setTimeout(() => {
+    office.mates.forEach(m => m.el.classList.remove("run"));
     if (office.mode === "busy" && document.body.dataset.screen === "screen-event") officeIdle();
   }, 1500);
 }
@@ -857,7 +1190,6 @@ function officeGather() {
     if (m.leaving) return;
     if (m.i === 0) { mateSay(m, "지시 나갑니다!", 1800); return; }
     m.el.classList.add("lookup");
-    if (office.strip) m.el.classList.add("face-left");
     mateFx(m, "❗", 1200);
   });
   setTimeout(() => {
@@ -878,146 +1210,192 @@ function officeTyping(person, on) {
 
 function officeClearSay() {
   if (!office.el) return;
-  office.el.querySelectorAll(".speech").forEach(s => { s.className = "speech"; s.textContent = ""; });
-  office.el.querySelectorAll(".floor-stamp").forEach(s => { s.className = "floor-stamp"; s.textContent = ""; });
+  const sp = office.stage && office.stage.querySelector(".speech");
+  if (sp) sp.className = "speech";
+  office.el.querySelectorAll(".desk-stamp").forEach(s => { s.className = "it desk-stamp"; s.textContent = ""; });
   const cap = office.el.querySelector(".caption");
   if (cap) cap.classList.remove("on");
-  office.el.querySelectorAll(".floor").forEach(f => f.classList.remove("lit"));
+  officeSpot2(null);
 }
 
-// 무대 말풍선. level이 높을수록(보고가 위로 올라갈수록) 부풀어 오릅니다
+// 무대 말풍선: 말하는 사람 머리 위에 하나만. level이 높을수록(보고가 위로 올라갈수록) 부풀어 오릅니다
 function officeSay(i, text, opts) {
   if (!office.el || !officeVisible()) return;
   const o = opts || {};
   const t = Array.from(String(text || ""));
   if (office.strip) {
     const cap = office.el.querySelector(".caption");
-    const f = office.floors[i];
-    if (!cap || !f) return;
-    cap.textContent = t.length > 40 ? t.slice(0, 39).join("") + "…" : t.join("");
-    cap.className = `caption on ${o.lie ? "lie" : ""} ${o.up ? "up" : ""}`;
-    const x = f.offsetLeft + f.offsetWidth / 2;
-    cap.style.setProperty("--ax", `${Math.round(x)}px`);
+    if (!cap) return;
+    cap.textContent = t.length > 44 ? t.slice(0, 43).join("") + "…" : t.join("");
+    cap.className = `caption on ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${i === 0 ? "ceo" : ""}`;
+    const s = planSeat(office.plan, i);
+    cap.style.setProperty("--ax", `${(s.x / office.plan.W * 100).toFixed(1)}%`);
     cap.style.setProperty("--lv", o.level || 0);
     replay(cap, "pop");
     return;
   }
-  const sp = office.floors[i] && office.floors[i].querySelector(".speech");
+  const sp = office.stage.querySelector(".speech");
   if (!sp) return;
+  const P = office.plan;
+  const s = planSeat(P, i);
   sp.textContent = t.join("");
-  sp.className = `speech on ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${o.final ? "final" : ""} ${i === 0 ? "ceo" : ""}`;
+  const side = s.x < P.W * .3 ? "l" : s.x > P.W * .7 ? "r" : "c";
+  sp.className = `speech on side-${side} ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${o.final ? "final" : ""} ${i === 0 ? "ceo" : ""}`;
+  sp.style.setProperty("--sx", s.x.toFixed(0));
+  sp.style.setProperty("--sy", (s.y - P.mate * 1.45 - 4).toFixed(0));
   sp.style.setProperty("--lv", o.level || 0);
   replay(sp, "pop");
 }
 
+// 스포트라이트: 그 사람 책상만 밝게
 function officeSpot2(i) {
-  if (!office.el) return;
-  office.el.querySelectorAll(".floor").forEach((f, k) => f.classList.toggle("lit", k === i));
-  office.el.classList.toggle("spotting", i !== null && i !== undefined);
-  const spot = office.el.querySelector(".spot");
-  const f = i !== null && i !== undefined ? office.floors[i] : null;
+  if (!office.stage) return;
+  const spot = office.stage.querySelector(".spot");
+  const on = i !== null && i !== undefined && office.plan;
+  office.el.classList.toggle("spotting", !!on);
   if (!spot) return;
-  if (!f) { spot.classList.remove("on"); return; }
-  const { W, H } = officeDims();
-  spot.style.left = `${(f.offsetLeft / W * 100).toFixed(2)}%`;
-  spot.style.top = `${(f.offsetTop / H * 100).toFixed(2)}%`;
-  spot.style.width = `${(f.offsetWidth / W * 100).toFixed(2)}%`;
-  spot.style.height = `${(f.offsetHeight / H * 100).toFixed(2)}%`;
+  if (!on) { spot.classList.remove("on"); return; }
+  const s = planSeat(office.plan, i);
+  spot.style.setProperty("--px", s.x.toFixed(0));
+  spot.style.setProperty("--py", (s.y - office.plan.mate * .55).toFixed(0));
   spot.classList.add("on");
 }
 
-// 사장 지시서가 층마다 내려가며 글자칸이 떨어져 나갑니다 (직급 글자 수 한도 = 공개된 규칙)
+// 사장 지시서가 실제 결재 라인을 따라 책상에서 책상으로 날아갑니다.
+// 책상마다 그 직급의 글자 수 한도(공개된 규칙)만큼만 남고, 잘린 글자칸과 글자가 떨어져 나갑니다.
 async function officePaper(order, chain) {
   if (!office.el || !officeVisible() || !chain.length) return;
-  const fly = office.el.querySelector(".fly");
+  const P = office.plan;
+  const st = office.stage;
+  const fly = st.querySelector(".fly");
+  const fx = st.querySelector(".plan-fx");
   const letters = Array.from(String(order || ""));
   const showText = n => letters.slice(0, n).join("") + (letters.length > n ? "…" : "");
-  fly.innerHTML = `<span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(ORDER_MAX / 10)}</span><b class="fly-limit">${ORDER_MAX}자</b>`;
-  fly.querySelector(".fly-text").textContent = showText(14);
-  const place = (i, ms) => {
-    const p = officeSpot(i, "desk");
-    const { W, H } = officeDims();
-    const half = office.strip ? 30 : 78;
-    const x = Math.max(half, Math.min(W - half, p.x + (office.strip ? 0 : 70)));
-    fly.style.transition = ms ? `transform ${ms}ms cubic-bezier(.45,.05,.3,1)` : "none";
-    fly.style.setProperty("--fx", (x / W * 100).toFixed(3));
-    fly.style.setProperty("--fy", ((p.y - (office.strip ? 58 : 38)) / H * 100).toFixed(3));
-  };
-  place(0, 0);
-  void fly.offsetWidth;
+  fx.innerHTML = "";
+  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(ORDER_MAX / 10)}</span><b class="fly-limit">${ORDER_MAX}자</b></div>`;
+  fly.querySelector(".fly-text").textContent = showText(12);
+  // 데스크톱: 머리 위 / 휴대폰 지도: 몸 오른쪽 (지도 위쪽이 잘리지 않게)
+  const head = i => { const s = planSeat(P, i); return office.strip ? { x: Math.min(P.W - 50, s.x + P.mate * .95), y: s.y - P.mate * .35 } : { x: s.x + 6, y: Math.max(46, s.y - P.mate * 1.45 - 2) }; };
+  const K = () => st.clientWidth / P.W;
+  const tf = (p, sc, rot) => `translate3d(${(p.x * K()).toFixed(1)}px, ${(p.y * K()).toFixed(1)}px, 0) translate(-50%, -100%) rotate(${rot || 0}deg) scale(${sc})`;
+  let cur = head(0), scale = 1, keepChars = ORDER_MAX;
+  fly.style.transform = tf(cur, 1);
   fly.classList.add("on");
   const ceo = office.mates.get(0);
   if (ceo) { ceo.el.classList.add("hop"); setTimeout(() => ceo.el.classList.remove("hop"), 700); }
   await beat(380);
   for (const x of chain) {
     const i = rankNo(x.rank);
-    place(i, 420);
+    const to = head(i);
+    const chars = rankInfo(x.rank).chars;
+    const sc = .62 + .38 * chars / ORDER_MAX;
+    const lift = Math.min(150, 50 + Math.hypot(to.x - cur.x, to.y - cur.y) * .3);
+    const mid = { x: (cur.x + to.x) / 2, y: Math.min(cur.y, to.y) - lift };
+    const trail = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    trail.setAttribute("class", "trail");
+    trail.setAttribute("d", `M${cur.x.toFixed(0)} ${cur.y.toFixed(0)}Q${mid.x.toFixed(0)} ${mid.y.toFixed(0)} ${to.x.toFixed(0)} ${to.y.toFixed(0)}`);
+    fx.appendChild(trail);
+    requestAnimationFrame(() => trail.classList.add("on"));
     sfx("whoosh");
-    await beat(430);
-    const keep = rankInfo(x.rank).chars / 10;
+    if (!skipping && !reduceMotion() && fly.animate) {
+      const frames = [];
+      for (let n = 0; n <= 10; n++) {
+        const t = n / 10, u = 1 - t;
+        const p = { x: u * u * cur.x + 2 * u * t * mid.x + t * t * to.x, y: u * u * cur.y + 2 * u * t * mid.y + t * t * to.y };
+        frames.push({ transform: tf(p, scale + (sc - scale) * t, Math.sin(t * Math.PI) * (to.x < cur.x ? -12 : 12)) });
+      }
+      const anim = fly.animate(frames, { duration: 520, easing: "ease-in-out" });
+      fly.style.transform = tf(to, sc);
+      await beat(520);
+      anim.cancel();
+    } else {
+      fly.style.transform = tf(to, sc);
+    }
+    // 착지: 잘린 칸과 글자가 떨어짐
+    const keep = chars / 10;
     fly.querySelectorAll(".fly-cells i").forEach((cell, k) => cell.classList.toggle("drop", k >= keep));
-    fly.querySelector(".fly-limit").textContent = `✂ ${rankInfo(x.rank).chars}자`;
-    fly.querySelector(".fly-text").textContent = showText(Math.max(1, Math.round(14 * keep / 10)));
+    fly.querySelector(".fly-limit").textContent = `✂ ${chars}자`;
+    fly.querySelector(".fly-text").textContent = showText(Math.max(2, Math.round(12 * keep / 10)));
+    if (!skipping && !reduceMotion()) {
+      const cut = letters.slice(chars, keepChars).filter(ch => ch.trim());
+      cut.filter((_, k) => k % Math.max(1, Math.floor(cut.length / 4)) === 0).slice(0, 4).forEach((ch, k) => {
+        const f = document.createElement("i");
+        f.className = "fall";
+        f.textContent = ch;
+        f.style.setProperty("--fx", to.x.toFixed(0));
+        f.style.setProperty("--fy", (to.y - 8).toFixed(0));
+        f.style.setProperty("--dx", `${(k - 1.5) * 14}`);
+        f.style.setProperty("--rot", `${(k % 2 ? 1 : -1) * (30 + k * 15)}deg`);
+        st.appendChild(f);
+        setTimeout(() => f.remove(), 900);
+      });
+    }
+    keepChars = Math.min(keepChars, chars);
     replay(fly, "land");
     const m = mateOf(x);
     if (m) { m.el.classList.add("read"); setTimeout(() => m.el.classList.remove("read"), 700); }
-    await beat(340);
+    cur = to;
+    scale = sc;
+    await beat(320);
   }
   fly.classList.remove("on");
+  fx.querySelectorAll(".trail").forEach(p => p.classList.add("fade"));
+  setTimeout(() => { if (!revealing) fx.innerHTML = ""; }, 700);
+}
+
+function deskStamp(i, long, short, cls) {
+  const st = deskPart(i, "desk-stamp");
+  if (!st) return;
+  st.innerHTML = `<span class="fs-long">${esc(long)}</span><span class="fs-short">${esc(short)}</span>`;
+  st.className = `it desk-stamp stamp on ${cls || ""}`;
+  replay(st, "thud");
 }
 
 function officeLie(i, label) {
   if (!office.el) return;
   const m = office.mates.get(i);
   if (m) { m.el.classList.add("liar"); mateFx(m, "😳", 1400); }
-  const st = office.floors[i] && office.floors[i].querySelector(".floor-stamp");
-  if (st) {
-    st.innerHTML = `<span class="fs-long">${esc(label || "🤥 거짓말")}</span><span class="fs-short">🤥</span>`;
-    st.className = "floor-stamp stamp on";
-    replay(st, "thud");
-  }
-  replay(office.el, "jolt", 400);
+  deskStamp(i, label || "🤥 거짓말", "🤥");
+  replay(office.stage, "jolt", 400);
 }
 
-function officeHearts(n) {
-  const wrap = office.el && office.el.querySelector(".office-floors");
-  if (!wrap || reduceMotion()) return;
+function officeHearts(n, kind) {
+  const st = office.stage;
+  if (!st || reduceMotion() || !office.plan) return;
   const spots = [...office.mates.values()].filter(m => !m.leaving);
   for (let k = 0; k < n; k++) {
     const m = spots[k % Math.max(1, spots.length)];
     if (!m) return;
     const h = document.createElement("span");
     h.className = "heart-fx";
-    h.textContent = k % 3 ? "❤" : "👏";
-    const p = matePos(m);
-    h.style.transform = `translate3d(${(p.x + rand(-14, 14)).toFixed(0)}px, ${(p.y - 50).toFixed(0)}px, 0)`;
+    h.textContent = kind ? kind[k % kind.length] : k % 3 ? "❤" : "👏";
+    h.style.setProperty("--hx", (m.x + rand(-12, 12)).toFixed(0));
+    h.style.setProperty("--hy", (m.y - office.plan.mate * 1.4).toFixed(0));
     h.style.animationDelay = `${(k * 0.07).toFixed(2)}s`;
-    wrap.appendChild(h);
+    st.appendChild(h);
     setTimeout(() => h.remove(), 1900);
   }
 }
 
 function officeClap() {
   if (!office.el) return;
-  office.mates.forEach(m => { if (!m.leaving) m.el.classList.add("clap"); });
-  officeHearts(14);
-  setTimeout(() => office.mates.forEach(m => m.el.classList.remove("clap")), 1500);
+  office.mates.forEach(m => { if (!m.leaving && m.i) m.el.classList.add("clap", "jump"); });
+  officeHearts(Math.min(14, office.mates.size * 2));
+  setTimeout(() => office.mates.forEach(m => m.el.classList.remove("clap", "jump")), 1500);
 }
 
 function officeLens() {
-  if (!office.el || reduceMotion()) return;
-  const lens = office.el.querySelector(".lens");
-  const wrap = office.el.querySelector(".office-floors");
-  if (!lens || !wrap || !lens.animate) return;
-  const W = wrap.offsetWidth, H = wrap.offsetHeight;
-  const pts = office.strip
-    ? [[.08, .45], [.35, .55], [.62, .4], [.92, .5]]
-    : [[.2, .08], [.75, .24], [.25, .42], [.75, .6], [.25, .78], [.6, .94]];
+  if (!office.el || reduceMotion() || !office.plan) return;
+  const lens = office.stage.querySelector(".lens");
+  if (!lens || !lens.animate) return;
+  const P = office.plan;
+  const k = office.stage.clientWidth / P.W;
+  const pts = FLOOR_RANKS.map((_, i) => planSeat(P, i)).slice(1);
   lens.classList.add("on");
-  lens.animate(pts.map(([x, y]) => ({ transform: `translate3d(${(x * W).toFixed(0)}px, ${(y * H).toFixed(0)}px, 0) translate(-50%, -50%)` })),
+  lens.animate(pts.map(p => ({ transform: `translate3d(${(p.x * k).toFixed(0)}px, ${((p.y - P.mate) * k).toFixed(0)}px, 0) translate(-50%, -50%)` })),
     { duration: SUSPENSE_DELAY, easing: "ease-in-out" }).onfinish = () => lens.classList.remove("on");
-  office.mates.forEach(m => { if (!m.leaving && m.i) { m.el.classList.add("slump"); mateFx(m, "💦", 1100); } });
-  setTimeout(() => office.mates.forEach(m => m.el.classList.remove("slump")), 1200);
+  office.mates.forEach(m => { if (!m.leaving && m.i) { m.el.classList.add("slump", "sweat"); } });
+  setTimeout(() => office.mates.forEach(m => m.el.classList.remove("slump", "sweat")), 1300);
 }
 
 function officeMood(kind) {
@@ -1030,28 +1408,44 @@ function officeMood(kind) {
   setTimeout(() => office.mates.forEach(m => m.el.classList.remove(kind)), 1900);
 }
 
-// 퇴사: 상자를 들고 계단(문) 쪽으로 걸어 나갑니다
+// 퇴사: 어깨를 으쓱하고 상자를 든 채 복도를 따라 입구 문으로 천천히 걸어 나갑니다
 async function officeQuit(i) {
   const m = office.mates.get(i);
   if (!m || !officeVisible()) return;
   m.gen++;
-  m.leaving = true;
   mateReset(m);
   m.leaving = true;
-  m.el.classList.add("pack");
+  m.el.classList.add("shrug");
   mateFx(m, "😢", 1400);
-  const st = office.floors[i] && office.floors[i].querySelector(".floor-stamp");
-  if (st) { st.innerHTML = `<span class="fs-long">퇴사</span><span class="fs-short">📦</span>`; st.className = "floor-stamp stamp quit on"; replay(st, "thud"); }
+  deskStamp(i, "퇴사", "📦", "quit");
   sfx("stamp");
-  await beat(650);
-  const door = officeSpot(i, office.strip ? "side" : "door");
-  await mateGo(m, door.x, door.y, 85, beat);
+  await beat(500);
+  m.el.classList.remove("shrug");
+  m.el.classList.add("pack");
+  await beat(350);
+  officeDoor();
+  await mateWalk(m, officePath(i, "out"), 60, beat);
   m.el.classList.add("gone");
   await beat(380);
   m.el.remove();
   office.mates.delete(i);
-  const f = office.floors[i];
-  if (f) { f.classList.add("empty", "left"); f.querySelector(".vacant").textContent = "퇴사"; }
+  const vacant = deskPart(i, "vacant");
+  if (vacant) { vacant.textContent = "퇴사"; vacant.classList.add("on", "quit"); }
+  const desk = deskPart(i, "desk");
+  if (desk) desk.classList.add("empty", "left");
+}
+
+// 면접 중인 자리를 표시 (화살표 + "면접 중")
+function officeFocus(i) {
+  office.focus = i;
+  const mark = office.stage && office.stage.querySelector(".focus-mark");
+  if (!mark || !office.plan) return;
+  if (i === null || i === undefined) { mark.classList.remove("on"); office.el.querySelectorAll(".desk.focus").forEach(d => d.classList.remove("focus")); return; }
+  const d = office.plan.desks[i];
+  mark.style.setProperty("--x", d.x);
+  mark.style.setProperty("--y", (planSeat(office.plan, i).y - office.plan.mate * 1.3).toFixed(0));
+  mark.classList.add("on");
+  office.el.querySelectorAll(".desk").forEach(el => el.classList.toggle("focus", Number(el.dataset.i) === i));
 }
 
 // 결산 에필로그: party(흑자) / pack(적자) / dark(직원 없음)
@@ -1064,12 +1458,18 @@ function officeEpilogue(kind) {
   officeBusy(true);
   officeClearSay();
   office.el.classList.add(`ep-${kind}`);
+  if (kind === "dark" && office.plan) {
+    const s = planSeat(office.plan, 0);
+    office.stage.style.setProperty("--lx", `${(s.x / office.plan.W * 100).toFixed(1)}%`);
+    office.stage.style.setProperty("--ly", `${((s.y - 24) / office.plan.H * 100).toFixed(1)}%`);
+  }
   office.mates.forEach(m => {
     if (m.leaving) return;
     if (kind === "party") { m.el.classList.add("cheer"); mateFx(m, pickOne(["🎉", "🥳", "🍾", "🙌"]), 60000); }
     if (kind === "pack" && m.i) { m.el.classList.add("pack", "slump"); mateFx(m, pickOne(["😭", "📦", "😮‍💨"]), 60000); }
     if (kind === "dark" && m.i === 0) mateFx(m, "☕", 60000);
   });
+  if (kind === "party") officeHearts(12, ["🎉", "✨", "🎊"]);
 }
 
 // ===== 사내 단톡방 (실시간 잡담 + 실제 보고) =====
@@ -1345,24 +1745,42 @@ const DEMO = [
   { rank: "사원", name: "사", mbti: "ISTP", secure: 60 }
 ];
 
+// 8초짜리 반복 데모 (같은 사무실 평면도): 지시서가 사장실 → 부장 → 대리 → 사원 책상으로 날아가며 칸이 떨어지고,
+// 보고가 부풀며 되돌아오고, 부장에게 🤥 도장. 문구는 고정 (ChatKHU 호출 없음)
+function demoHtml() {
+  const P = DEMO_PLAN;
+  const cast = [{ rank: "사장", p: null }, ...DEMO.map(p => ({ rank: p.rank, p }))];
+  const H = MON_H + 4 + DESK_D + DESK_H;
+  const desks = P.desks.map((d, i) => {
+    const kind = P.kinds[i], s = planSeat(P, i), [cw, ch] = CHAIR_SIZE[kind];
+    const no = i ? rankNo(cast[i].rank) : 0;
+    return `<span class="it chair" ${at(s.x - cw / 2, s.y + 8 - (ch + 16), cw, ch + 16, s.y - 1)}>${chairSvg(kind)}</span>
+      <span class="it demo-mate rk-${no}${i === 1 ? " demo-liar" : ""}" ${at(s.x, s.y, 0, 0, s.y)}><span class="mate-fig">${chibiSvg(cast[i].p)}</span></span>
+      <span class="it desk on" ${at(d.x - d.w / 2, d.y - H, d.w, H, d.y)}>${deskSvg(kind, d.w)}</span>
+      <span class="it plate" ${at(d.x, d.y - DESK_H / 2, 0, 0, d.y + 2)}><span class="pl-row"><b class="rank rk-${no}">${esc(cast[i].rank)}</b></span></span>`;
+  }).join("");
+  const says = [
+    ["dd-0 side-l", 96, 52, "오늘 안에 고객께 사과하고 환불해 드려요"],
+    ["dd-1 side-r", 340, 42, "고객께 사과하고 환불"],
+    ["dd-2 side-c", 190, 220, "고객 환불"],
+    ["dd-3 side-c", 404, 220, "환불"],
+    ["du-3 up side-c", 404, 220, "환불했어요"],
+    ["du-2 up side-c", 190, 220, "완벽하게 처리했습니다!"],
+    ["du-1 up below", 318, 164, "대성공! 고객 감동 200%!!"]
+  ];
+  return `<div class="demo-stage" style="--W:${P.W};--mate:${P.mate}">
+    <svg class="plan-bg" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${P.bg}</svg>
+    <div class="plan-items">${P.items.map(itemHtml).join("")}${desks}</div>
+    <div class="demo-track"><div class="demo-lift"><span class="demo-paper"><span class="demo-cells">${"<i></i>".repeat(10)}</span>
+      <b class="demo-lim l0">100자</b><b class="demo-lim l1">✂ 50자</b><b class="demo-lim l2">✂ 20자</b><b class="demo-lim l3">✂ 10자</b></span></div></div>
+    ${says.map(([cls, x, y, text]) => `<span class="demo-say ${cls}" style="--x:${x};--y:${y}">${esc(text)}</span>`).join("")}
+    <span class="demo-stamp stamp" style="--x:438;--y:62">🤥 거짓말</span>
+  </div>`;
+}
+
 function renderTitle() {
   const demo = document.getElementById("title-demo");
-  if (demo && !demo.firstElementChild) {
-    // 8초짜리 반복 데모: 지시가 줄어들며 내려가고, 보고가 부풀며 올라오고, 🤥 공개 (고정 문구)
-    const floors = [{ rank: "사장", p: null, say: "오늘 안에 고객께 사과하고 환불해 드려요" }, ...DEMO.map((p, k) => ({ rank: p.rank, p, say: ["고객께 사과하고 환불", "고객 환불", "환불"][k] }))];
-    const ups = ["대성공! 고객 감동 200%!!", "완벽하게 처리했습니다!", "환불했어요"];
-    demo.innerHTML = `<div class="demo-tower">${floors.map((f, i) => `
-      <div class="demo-floor rk-${i ? rankNo(f.rank) : 0} df-${i}">
-        <span class="demo-rank rank rk-${i ? rankNo(f.rank) : 0}">${esc(f.rank)}</span>
-        <span class="demo-desk">${DESK_SVG}</span>
-        <span class="demo-mate${i === 1 ? " demo-liar" : ""}">${chibiSvg(f.p)}</span>
-        <span class="demo-down dd-${i}">${esc(f.say)}</span>
-        ${i ? `<span class="demo-up du-${i}">${esc(ups[i - 1])}</span>` : ""}
-      </div>`).join("")}
-      <span class="demo-paper"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      <span class="demo-stamp stamp">🤥 거짓말</span>
-    </div>`;
-  }
+  if (demo && !demo.firstElementChild) demo.innerHTML = demoHtml();
   const ranks = document.getElementById("title-ranks");
   if (!ranks) return;
   const top = sortedBoard().slice(0, 3);
@@ -1715,6 +2133,7 @@ function renderInterview(index) {
     </div>`;
   if (document.body.dataset.screen === "screen-interview") {
     officeSync(true);
+    officeFocus(index + 1); // 지금 면접 중인 책상에 "면접 중" 표시
     renderHud();
   }
 }
@@ -1734,7 +2153,7 @@ function powerPanel(stage) {
   const c = game.company;
   const used = c.powerUsed;
   const staff = staffOf(c);
-  return `<section class="power-panel" aria-label="사장 필살기">
+  return `<section class="power-panel ${stage}" aria-label="사장 필살기">
     <h3><span>⚡ 사장 필살기</span> <small>${used ? "남은 횟수 0 / 1" : "한 판에 한 번"}</small></h3>
     ${used ? `<p class="hint">${quarterLabel(used.round)}에 ${esc(CEO_POWERS.find(p => p.id === used.id).name)} 사용</p>` : ""}
     <div class="power-grid">${CEO_POWERS.map(p => {
@@ -1742,7 +2161,7 @@ function powerPanel(stage) {
         || (p.id === "direct" && staff.length < 2) || (p.id === "dinner" && staff.every(x => x.loyalty === LOYALTY_MAX));
       const [icon, label] = splitIcon(p.name);
       const spent = used && used.id === p.id;
-      return `<button type="button" class="secondary power-button ${spent ? "used" : ""}" data-power="${p.id}" ${disabled ? "disabled" : ""}>
+      return `<button type="button" class="secondary power-button ${spent ? "used" : ""}" data-power="${p.id}" title="${esc(p.text)}" ${disabled ? "disabled" : ""}>
         <span class="pw-ico" aria-hidden="true">${esc(icon)}</span>
         <span class="pw-text"><b>${esc(label)}</b><span class="pw-when">${esc(p.when)}</span><small>${esc(p.text)}</small></span>
         ${spent ? stamp("사용함", "used-stamp") : ""}</button>`;
@@ -1754,6 +2173,7 @@ function renderDecisionTools() {
   const round = game.company.rounds[game.round];
   const box = document.getElementById("decision-tools");
   if (!box) return;
+  document.body.classList.add("choosing"); // 고르는 동안은 파고들기/칭찬하기 한 쌍이 화면의 주인공
   box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
     <h3>📎 보고 옆에 놓인 단서</h3>
     <div class="clue-list">${cluesFor(round).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
@@ -1837,7 +2257,6 @@ function renderEvent() {
       <p class="mission-text">${esc(ev.text)}</p>
       <p class="goal-line"><span>🎯 성과 <b>${SUCCESS_LINE}점</b> 이상</span><span>💸 인건비 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
     </article>
-    ${activeStaff.length ? powerPanel("before") : ""}
     ${game.round === ROUNDS - 1 && activeStaff.length ? `<fieldset class="final-strategy">
       <legend>🏁 마지막 분기, 어떤 승부를 걸까요?</legend>
       <div class="strategy-grid">${FINAL_STRATEGIES.map(s => {
@@ -1857,12 +2276,14 @@ function renderEvent() {
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
         <li class="rk-0">${avatar(null)}<small>${ORDER_MAX}</small></li>${chain}</ol></div>` : ""}
     </div>
+    ${activeStaff.length ? powerPanel("before") : ""}
     ${quit.length ? `<p class="hint quit-list">퇴사: ${quit.join(" ")}</p>` : ""}
     ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : ""}`;
   const order = document.getElementById("order");
   if (order) {
     order.addEventListener("input", () => { paintOrderMeter(order.value.length); talk.slowUntil = Date.now() + 6000; talkTypingShow(""); });
-    order.addEventListener("focus", () => { talk.slowUntil = Date.now() + 8000; });
+    order.addEventListener("focus", () => { talk.slowUntil = Date.now() + 8000; document.body.classList.add("writing"); });
+    order.addEventListener("blur", () => document.body.classList.remove("writing"));
   }
   // 고른 전략 카드 표시 (선택 저장은 main.js가 합니다)
   const picks = document.querySelectorAll("#event-box [data-strategy]");
@@ -1877,14 +2298,14 @@ function renderEvent() {
   }
   if (fresh) {
     talkSystem(`📣 ${quarterLabel(game.round)} 시작 · ${chance ? "✨ 기회" : "⚠ 위기"}: ${ev.title}`);
-    setTimeout(() => officeRush(chance ? "✨" : "❗"), 80);
+    setTimeout(() => officeRush(chance ? "✨" : "❗", chance), 80);
   }
   // 회식을 쏘면 사무실이 들썩
   const powerKey = round.power ? `${game.round}:${round.power}` : null;
   if (powerKey && seenPower !== powerKey) {
     seenPower = powerKey;
     if (round.power === "dinner") {
-      officeHearts(10);
+      officeHearts(10, ["🍗", "❤", "🎉"]);
       office.mates.forEach(m => { if (!m.leaving) { mateFx(m, "🍗", 1800); m.el.classList.add("hop"); setTimeout(() => m.el.classList.remove("hop"), 800); } });
       const x = ambientPerson();
       if (x) talkPost({ person: x, who: `${x.rank} ${x.name}`, text: pickOne(CHAT.dinner), amb: true });
@@ -1989,6 +2410,7 @@ async function renderTruth() {
   resetSkip();
   revealing = true;
   office.holdQuit = true; // 퇴사자는 진실 공개가 끝나고 직접 걸어 나갈 때까지 자리에 둡니다
+  document.body.classList.remove("choosing");
   document.getElementById("decision-tools")?.remove();
   document.getElementById("report-wait")?.remove();
   const resultBox = document.getElementById("result-box");
@@ -2028,6 +2450,7 @@ async function renderTruth() {
     room.classList.remove("playing");
     revealUI(false);
     revealing = true;
+    setTimeout(() => { const sp = office.stage && office.stage.querySelector(".speech"); if (sp && !revealing) sp.classList.remove("on"); }, 2600);
   }
 
   const upLies = [...staff].reverse().map((x, k) => r.up[k].lie ? x : null).filter(Boolean);

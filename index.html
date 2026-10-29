@@ -179,12 +179,12 @@
         <div class="card choice">
           <p class="choice-q">보고를 받았습니다. 사장님, 어떻게 하시겠어요?</p>
           <div class="choice-buttons">
-            <button id="btn-dig" class="choice-btn dig"><span class="cb-ico" aria-hidden="true">🔍</span><span class="cb-name">파고들기</span><small>제대로 했는지 캐묻는다</small></button>
+            <button id="btn-dig" class="choice-btn dig"><span class="cb-ico" aria-hidden="true">🔍</span><span class="cb-name">파고들기</span><small>잘했으면 <b>충성심 −1</b><br>못했으면 <b>손실을 막음</b></small></button>
             <span class="vs" aria-hidden="true">VS</span>
-            <button id="btn-praise" class="choice-btn praise"><span class="cb-ico" aria-hidden="true">👏</span><span class="cb-name">칭찬하기</span><small>믿고 칭찬한다</small></button>
+            <button id="btn-praise" class="choice-btn praise"><span class="cb-ico" aria-hidden="true">👏</span><span class="cb-name">칭찬하기</span><small>잘했으면 <b>충성심 +1</b><br>못했으면 <b>−3,000만원</b></small></button>
           </div>
-          <details class="rules" open>
-            <summary>선택 규칙</summary>
+          <details class="rules">
+            <summary>선택 규칙 자세히 보기</summary>
             <ul class="rule-grid">
               <li class="rule good"><span class="rule-when">👏 칭찬 + <b>잘했으면</b></span><b class="rule-then">충성심 +1</b></li>
               <li class="rule bad"><span class="rule-when">👏 칭찬 + <b>못했으면</b></span><b class="rule-then">회사에 큰 불이익 (−3,000만원)</b></li>
