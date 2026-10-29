@@ -27,7 +27,7 @@ function companyBox(selector, i) {
 function companyTitle(c) {
   return `<div class="ctitle">
     <span class="emoji">${c.emoji}</span>
-    <div><b>${esc(c.name)}</b><small>${esc(c.industry)} · ${esc(c.label)}</small></div>
+    <div><b>${esc(c.name)}</b><small>${esc(c.industry)} · 사장 ${esc(c.player)}</small></div>
   </div>
   <p class="motto">사훈 "${esc(c.motto)}"</p>`;
 }
@@ -50,7 +50,9 @@ function renderFound(i) {
     </label>`).join("");
 
   box.innerHTML = `
-    <h3>${c.label} 사장님</h3>
+    <label class="field">사장님 닉네임 <span class="hint">(순위표에 나와요)</span>
+      <input data-field="player" maxlength="${PLAYER_MAX}" value="${esc(c.player)}" placeholder="예: 경희왕">
+    </label>
     <p class="field-label">업종 카드</p>
     <div class="industries">${cards}</div>
     <button class="text-btn" data-action="reroll" ${c.rerolled ? "disabled" : ""}>
@@ -74,7 +76,7 @@ function renderAI(mode) {
   document.getElementById("ai-title").textContent =
     isFounding ? "ChatKHU가 창업 소식을 씁니다" : "ChatKHU가 직원들을 연기합니다";
   document.getElementById("ai-lead").textContent = isFounding
-    ? "두 회사의 창업 뉴스와, 곧 닥칠 위기 카드를 ChatKHU가 만들어 줍니다."
+    ? "회사의 창업 뉴스와, 곧 닥칠 위기 카드를 ChatKHU가 만들어 줍니다."
     : "지시가 직원들을 거쳐 내려가고, 보고가 부풀려져 올라오는 과정을 ChatKHU가 연기하고 판정합니다.";
   document.getElementById("ai-request").value = isFounding ? buildFoundingRequest() : buildBattleRequest();
   document.getElementById("ai-response").value = "";
@@ -148,7 +150,7 @@ function renderHire(i) {
     </div>
     <div class="chips">${chips}</div>
     <ul class="staff">
-      <li class="ceo"><span class="rank">사장</span>나 (플레이어)</li>
+      <li class="ceo"><span class="rank">사장</span>${esc(c.player)} (나)</li>
       ${list || '<li class="empty">아직 직원이 없어요</li>'}
     </ul>
   `;
@@ -203,7 +205,7 @@ async function renderTruth() {
   await Promise.all(game.companies.map(async (c, i) => {
     const room = document.getElementById(`msg-${i}`);
     room.innerHTML = `<p class="room">📉 실제 지시 라인</p>`;
-    await addBubble(room, "사장 (나)", c.order, "ceo");
+    await addBubble(room, `사장 ${c.player} (나)`, c.order, "ceo");
     const chain = chainOf(c);
     for (let k = 0; k < chain.length; k++) {
       await addBubble(room, `${chain[k].rank} (${chain[k].persona})`, c.result.down[k], "");
@@ -216,29 +218,57 @@ async function renderTruth() {
   }));
 }
 
-// ===== 결과 3: 결산 =====
+// ===== 결과 3: 결산과 순위 =====
 
-function renderVerdict() {
-  const w = winnerIndex();
-  const cards = game.companies.map((c, i) => {
-    const r = c.result;
-    const twist = fundingTwist(c);
-    return `
-    <article class="news ${w === i ? "win" : ""}">
-      <p class="paper">경희경제신문 · 결산 <span>${r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
-      <h3>${esc(r.news)}</h3>
-      <p class="score">${r.score}<small>점</small></p>
-      <p class="reason">${esc(r.reason)}</p>
-      ${twist ? `<p class="twist ${twist.kind}">${esc(twist.text)}</p>` : ""}
-      ${r.over ? `<p class="note">AI가 글자 수를 ${r.over}번 넘겨서 잘랐어요</p>` : ""}
-      <p class="cname">${c.emoji} ${esc(c.name)}</p>
-    </article>`;
-  }).join("");
+function renderVerdict(placed) {
+  const c = game.companies[0];
+  const r = c.result;
+  const twist = fundingTwist(c);
 
-  const banner = w < 0 ? "무승부!" : `${game.companies[w].emoji} ${esc(game.companies[w].name)} 승리!`;
+  const banner = placed
+    ? `<p class="placed">${medal(placed.rank)} 전체 <b>${placed.rank}위</b> <span>/ ${placed.total}명</span></p>`
+    : `<p class="placed practice">연습 모드라 순위에 기록되지 않았어요</p>`;
+
   document.getElementById("verdict").innerHTML = `
-    <h2 class="banner">${banner}</h2>
-    <div class="companies">${cards}</div>`;
+    ${banner}
+    <div class="solo">
+      <article class="news win">
+        <p class="paper">경희경제신문 · 결산 <span>${r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
+        <h3>${esc(r.news)}</h3>
+        <p class="score">${r.score}<small>점</small></p>
+        <p class="reason">${esc(r.reason)}</p>
+        ${twist ? `<p class="twist ${twist.kind}">${esc(twist.text)}</p>` : ""}
+        ${r.over ? `<p class="note">AI가 글자 수를 ${r.over}번 넘겨서 잘랐어요</p>` : ""}
+        <p class="cname">${c.emoji} ${esc(c.name)} · 사장 ${esc(c.player)}</p>
+      </article>
+    </div>`;
+}
+
+// ===== 순위표 =====
+
+function renderBoard(highlightAt) {
+  const list = sortedBoard();
+  document.getElementById("board-lead").textContent = list.length
+    ? `지금까지 ${list.length}명이 회사를 차렸습니다. 이 노트북에 저장된 기록이에요.`
+    : "아직 기록이 없어요. 첫 번째 사장님이 되어 보세요!";
+
+  document.getElementById("board").innerHTML = list.length ? `
+    <ol class="board">
+      ${list.map((e, k) => `
+        <li class="${k < 3 ? "top" : ""} ${e.at === highlightAt ? "me" : ""}">
+          <span class="pos">${medal(k + 1) || k + 1}</span>
+          <span class="who">
+            <b>${esc(e.player)}</b>
+            <small>${e.emoji} ${esc(e.name)} · ${esc(e.industry)}</small>
+            <small class="headline">${esc(e.news)}</small>
+          </span>
+          <span class="pts">${e.score}<small>점</small></span>
+        </li>`).join("")}
+    </ol>` : "";
+}
+
+function medal(rank) {
+  return ["🥇", "🥈", "🥉"][rank - 1] || "";
 }
 
 // ===== 공통 =====

@@ -1,13 +1,13 @@
 // 담당 D: 버튼과 흐름 연결
-// 창업 → (ChatKHU) 창업 뉴스 → 채용 → 위기 → (ChatKHU) 지시 전달·보고 → 진실 공개 → 결산
+// 창업 → (ChatKHU) 창업 뉴스 → 채용 → 위기 → (ChatKHU) 지시 전달·보고 → 진실 공개 → 결산·순위
 
 let aiMode = "founding"; // ChatKHU 화면이 지금 어느 단계용인지
+let lastPlacedAt = null; // 방금 플레이한 기록 (순위표에서 강조)
 
 function startGame() {
   resetGame();
   game.companies.forEach(c => (c.cards = drawCards()));
-  renderFound(0);
-  renderFound(1);
+  game.companies.forEach((c, i) => renderFound(i));
   showScreen("screen-found");
 }
 
@@ -38,7 +38,7 @@ document.querySelectorAll(".company.found").forEach(box => {
   // 입력할 때마다 저장 (다시 그려도 지워지지 않게)
   box.addEventListener("input", e => {
     const field = e.target.dataset.field;
-    if (field === "name" || field === "motto") {
+    if (field === "player" || field === "name" || field === "motto") {
       game.companies[i][field] = e.target.value;
       if (field === "motto") box.querySelector(".counter").textContent = `${e.target.value.length} / ${MOTTO_MAX}`;
     }
@@ -145,8 +145,7 @@ function afterAI() {
 // ===== 창업 뉴스 → 채용 =====
 
 document.getElementById("btn-to-hire").addEventListener("click", () => {
-  renderHire(0);
-  renderHire(1);
+  game.companies.forEach((c, i) => renderHire(i));
   showScreen("screen-hire");
 });
 
@@ -184,7 +183,7 @@ document.querySelectorAll(".company.hire").forEach(box => {
 
 document.getElementById("btn-to-crisis").addEventListener("click", () => {
   const empty = game.companies.find(c => c.staff.length === 0);
-  if (empty) return toast(`${empty.name}: 직원을 한 명 이상 뽑아 주세요.`);
+  if (empty) return toast("직원을 한 명 이상 뽑아 주세요.");
   renderCrisisBoxes();
   document.querySelectorAll("#crisis-boxes textarea").forEach(t =>
     t.addEventListener("input", () => updateCounter(t, ORDER_MAX)));
@@ -192,9 +191,8 @@ document.getElementById("btn-to-crisis").addEventListener("click", () => {
 });
 
 document.getElementById("btn-run").addEventListener("click", () => {
-  const orders = [0, 1].map(i => document.getElementById(`order-${i}`).value.trim());
-  const missing = orders.findIndex(o => !o);
-  if (missing >= 0) return toast(`${game.companies[missing].name} 사장님, 지시를 적어 주세요.`);
+  const orders = game.companies.map((c, i) => document.getElementById(`order-${i}`).value.trim());
+  if (orders.some(o => !o)) return toast("사장님, 지시를 적어 주세요.");
   game.companies.forEach((c, i) => (c.order = orders[i]));
   aiMode = "battle";
   renderAI(aiMode);
@@ -205,6 +203,7 @@ document.getElementById("btn-run").addEventListener("click", () => {
 
 const revealBtn = document.getElementById("btn-reveal");
 const restartBtn = document.getElementById("btn-restart");
+const resultBoardBtn = document.getElementById("btn-result-board");
 
 async function showResult() {
   document.getElementById("result-title").textContent = "사장님께 보고가 올라왔습니다";
@@ -212,6 +211,7 @@ async function showResult() {
   document.getElementById("verdict").innerHTML = "";
   revealBtn.hidden = true;
   restartBtn.hidden = true;
+  resultBoardBtn.hidden = true;
   showScreen("screen-result");
   await renderReports();
   revealBtn.hidden = false;
@@ -220,11 +220,52 @@ async function showResult() {
 revealBtn.addEventListener("click", async () => {
   revealBtn.hidden = true;
   await renderTruth();
-  renderVerdict();
+  const placed = recordResult(game.companies[0]); // 연습 모드면 null
+  lastPlacedAt = placed ? placed.at : null;
+  renderVerdict(placed);
   restartBtn.hidden = false;
+  resultBoardBtn.hidden = false;
   document.getElementById("verdict").scrollIntoView({ behavior: "smooth" });
 });
 
 restartBtn.addEventListener("click", startGame);
+
+// ===== 순위표 =====
+
+let screenBeforeBoard = "screen-found";
+
+function openBoard() {
+  const current = document.querySelector(".screen.active");
+  if (current && current.id !== "screen-board") screenBeforeBoard = current.id;
+  renderBoard(lastPlacedAt);
+  showScreen("screen-board");
+}
+
+document.getElementById("btn-board").addEventListener("click", openBoard);
+resultBoardBtn.addEventListener("click", openBoard);
+
+document.getElementById("btn-board-back").addEventListener("click", () => {
+  // 결과 화면에서 왔으면 다음 사람 차례로, 아니면 하던 화면으로
+  if (screenBeforeBoard === "screen-result" && !restartBtn.hidden) startGame();
+  else showScreen(screenBeforeBoard);
+});
+
+// 초기화는 실수 방지를 위해 두 번 눌러야 합니다
+const clearBtn = document.getElementById("btn-board-clear");
+let clearArmed = false;
+clearBtn.addEventListener("click", () => {
+  if (!clearArmed) {
+    clearArmed = true;
+    clearBtn.textContent = "정말 지울까요? 한 번 더 누르면 전부 삭제돼요";
+    setTimeout(() => { clearArmed = false; clearBtn.textContent = "순위표 초기화"; }, 4000);
+    return;
+  }
+  clearBoard();
+  lastPlacedAt = null;
+  clearArmed = false;
+  clearBtn.textContent = "순위표 초기화";
+  renderBoard(null);
+  toast("순위표를 비웠어요.");
+});
 
 startGame();

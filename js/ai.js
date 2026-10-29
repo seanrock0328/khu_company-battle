@@ -76,7 +76,7 @@ function buildFoundingRequest() {
     }))
   };
   return `너는 회사 배틀 게임 "10자 사원 주식회사"의 AI 진행자다.
-아래 두 회사가 방금 창업했다. 각 회사마다 다음 두 가지를 만들어라.
+아래 회사가 방금 창업했다. 회사마다 다음 두 가지를 만들어라.
 
 1. news: 창업 소식을 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 업종, 사훈, 자금 출처를 재치 있게 녹일 것.
 2. crisis: 그 업종에서 곧 터질 위기 카드 1장. title은 15자 이내, text는 50자 이내. 웃기지만 그럴듯하게, 사장이 대응 지시를 내릴 수 있는 상황으로.
@@ -85,16 +85,16 @@ function buildFoundingRequest() {
 ${JSON.stringify(input, null, 1)}
 
 설명 없이 아래 JSON 형식만 출력하라. companies 순서는 입력과 같게.
-{"companies":[{"news":"...","crisis":{"title":"...","text":"..."}},{"news":"...","crisis":{"title":"...","text":"..."}}]}`;
+{"companies":[{"news":"...","crisis":{"title":"...","text":"..."}}]}`;
 }
 
 function applyFounding(text, model) {
   const data = parseJson(text);
   const list = data && data.companies;
-  if (!Array.isArray(list) || list.length < 2) {
-    throw new Error("companies 두 개가 들어 있지 않아요.");
+  if (!Array.isArray(list) || list.length < game.companies.length) {
+    throw new Error("결과에 회사 정보(companies)가 없어요.");
   }
-  list.slice(0, 2).forEach((r, i) => {
+  list.slice(0, game.companies.length).forEach((r, i) => {
     if (!r || !r.news || !r.crisis || !r.crisis.title || !r.crisis.text) {
       throw new Error(`${i + 1}번째 회사의 news나 crisis가 비어 있어요.`);
     }
@@ -131,13 +131,13 @@ function buildBattleRequest() {
     }))
   };
   return `너는 회사 배틀 게임 "10자 사원 주식회사"의 AI 진행자다.
-두 회사에서 사장의 지시가 직원들을 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 연기하고 판정하라.
+회사에서 사장의 지시가 직원들을 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 연기하고 판정하라.
 
 [규칙]
 1. down: staff 순서대로(높은 직급부터) 각 직원이 윗사람에게 들은 말을 자기 persona와 회사 motto대로 이해해서 아랫사람에게 전달하는 말. 개수는 staff 수와 같다. 각 직원의 chars 글자 수를 절대 넘기지 마라. 성격 때문에 지시가 자연스럽게 바뀌거나 엉뚱해질수록 재밌다.
 2. action: 맨 아래 직원이 받은 말대로 실제로 한 일 1문장 (40자 이내).
 3. up: 맨 아래 직원부터 위로 올라가며 각 직원이 윗사람에게 하는 보고. staff의 역순이며 개수는 staff 수와 같다. 위로 갈수록 실제보다 그럴듯하게 부풀려라. 각 직원의 chars를 넘기지 마라. 마지막 항목이 사장이 받는 최종 보고다.
-4. score: 사장의 원래 의도와 위기 해결에 비춰 action의 실제 결과를 0~100 정수로 판정. 엉뚱한 행동이 우연히 대박 날 수도 있다.
+4. score: 사장의 원래 의도와 위기 해결에 비춰 action의 실제 결과를 0~100 정수로 판정. 엉뚱한 행동이 우연히 대박 날 수도 있다. 여러 플레이어의 순위를 매기는 점수이니 기준을 일관되게: 위기 해결 50점, 사장 의도가 지켜진 정도 30점, 재미와 반전 20점.
 5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름을 넣고, 창업 뉴스의 후속 기사처럼.
 6. reason: 점수 이유 한 줄 (50자 이내).
 
@@ -145,14 +145,14 @@ function buildBattleRequest() {
 ${JSON.stringify(input, null, 1)}
 
 설명 없이 아래 JSON 형식만 출력하라. companies 순서는 입력과 같게.
-{"companies":[{"down":["..."],"action":"...","up":["..."],"score":0,"news":"...","reason":"..."},{"down":["..."],"action":"...","up":["..."],"score":0,"news":"...","reason":"..."}]}`;
+{"companies":[{"down":["..."],"action":"...","up":["..."],"score":0,"news":"...","reason":"..."}]}`;
 }
 
 function applyBattle(text, model) {
   const data = parseJson(text);
   const list = data && data.companies;
-  if (!Array.isArray(list) || list.length < 2) {
-    throw new Error("companies 두 개가 들어 있지 않아요.");
+  if (!Array.isArray(list) || list.length < game.companies.length) {
+    throw new Error("결과에 회사 정보(companies)가 없어요.");
   }
   const results = game.companies.map((c, i) => {
     const r = list[i] || {};

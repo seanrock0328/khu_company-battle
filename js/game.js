@@ -2,44 +2,45 @@
 // 이 파일은 화면을 직접 건드리지 않습니다. 계산만 합니다.
 
 // ===== 팀 약속: 데이터 모양 (바꾸려면 단톡방에 먼저 공유!) =====
+// 한 판에 플레이어 한 명이 회사 하나를 운영합니다. (코드는 회사 여러 개도 받을 수 있게 배열로 둠)
 // 회사 하나:
 // {
-//   name: "붕세권", industry: "붕어빵 프랜차이즈", emoji: "🐟", motto: "빠르게 실패하자",
+//   player: "닉네임", name: "붕세권", industry: "붕어빵 프랜차이즈", emoji: "🐟", motto: "빠르게 실패하자",
 //   funding: "angel", staff: [직원...], news: "창업 기사", crisis: {title, text, keywords?},
-//   order: "사장 지시", result: { down: [...], action, up: [...], news, score, reason, practice }
+//   order: "사장 지시", result: { down: [...], action, up: [...], news, score, reason, practice, model }
 // }
 // 직원 한 명: { id: 1, rank: "사원", persona: "밈 장인" }
+// 순위표 한 줄: { player, name, emoji, industry, motto, score, news, model, at }
 
 const RANKS = [
-  { name: "사장", chars: 100, cost: 0 },  // 사장은 플레이어, 회사당 1명 고정
+  { name: "사장", chars: 100, cost: 0 },  // 사장은 플레이어
   { name: "부장", chars: 50, cost: 7 },
   { name: "과장", chars: 30, cost: 4 },
   { name: "대리", chars: 20, cost: 2 },
   { name: "사원", chars: 10, cost: 1 }
 ];
 
+const PLAYER_MAX = 10;    // 닉네임 최대 글자 수
 const PERSONA_MAX = 10;   // 성격 최대 글자 수
 const MOTTO_MAX = 20;     // 사훈 최대 글자 수
 const NAME_MAX = 12;      // 회사 이름 최대 글자 수
 const ORDER_MAX = 100;    // 사장 지시 최대 글자 수
 
-function newCompany(label) {
+function newCompany() {
   return {
-    label,                // "A사" / "B사" (플레이어 구분용)
-    name: "", industry: "", emoji: "", motto: "", funding: "angel",
+    player: "", name: "", industry: "", emoji: "", motto: "", funding: "angel",
     cards: [], rerolled: false,
     staff: [], news: "", crisis: null, order: "", result: null
   };
 }
 
 const game = {
-  companies: [newCompany("A사"), newCompany("B사")],
+  companies: [newCompany()],
   nextId: 1
 };
 
 // ===== 창업 =====
 
-// 업종 카드 3장 뽑기 (두 회사가 같은 카드를 받을 수도 있음)
 function drawCards() {
   const pool = [...INDUSTRIES];
   const cards = [];
@@ -49,11 +50,11 @@ function drawCards() {
   return cards;
 }
 
-// 실패하면 이유 문자열, 성공하면 null
 function checkFounding(company) {
-  if (!company.industry) return `${company.label}: 업종 카드를 골라 주세요.`;
-  if (!company.name.trim()) return `${company.label}: 회사 이름을 지어 주세요.`;
-  if (!company.motto.trim()) return `${company.label}: 사훈을 정해 주세요.`;
+  if (!company.player.trim()) return "사장님 닉네임을 적어 주세요. 순위표에 나와요.";
+  if (!company.industry) return "업종 카드를 골라 주세요.";
+  if (!company.name.trim()) return "회사 이름을 지어 주세요.";
+  if (!company.motto.trim()) return "사훈을 정해 주세요.";
   return null;
 }
 
@@ -103,18 +104,12 @@ function chainOf(company) {
 
 // ===== 결산 =====
 
-function winnerIndex() {
-  const [a, b] = game.companies.map(c => c.result ? c.result.score : 0);
-  if (a === b) return -1;
-  return a > b ? 0 : 1;
-}
-
 // 창업 자금에 따른 대가
 function fundingTwist(company) {
   const score = company.result ? company.result.score : 0;
   if (company.funding === "parents") {
     const nags = [
-      "엄마: 그래서 그 돈으로 붕어빵을 판다고?",
+      "엄마: 그래서 그 돈으로 회사를 차렸다고?",
       "아빠: 공무원 시험은 언제 볼 거니",
       "엄마: 옆집 애는 대기업 갔다더라",
       "아빠: 회사 이름이 그게 뭐냐"
@@ -127,7 +122,49 @@ function fundingTwist(company) {
   return null;
 }
 
+// ===== 순위표 (이 노트북 브라우저에 저장) =====
+
+const BOARD_KEY = "company_battle_leaderboard";
+
+function loadBoard() {
+  try {
+    const list = JSON.parse(localStorage.getItem(BOARD_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveBoard(list) {
+  try { localStorage.setItem(BOARD_KEY, JSON.stringify(list)); } catch {}
+}
+
+// 점수 높은 순, 같으면 먼저 한 사람이 위
+function sortedBoard() {
+  return loadBoard().sort((a, b) => b.score - a.score || a.at - b.at);
+}
+
+// 이번 판을 순위표에 넣고, 몇 위인지 돌려줍니다. 연습 모드는 넣지 않습니다.
+function recordResult(company) {
+  const r = company.result;
+  if (!r || r.practice) return null;
+  const entry = {
+    player: company.player.trim(), name: company.name, emoji: company.emoji,
+    industry: company.industry, motto: company.motto,
+    score: r.score, news: r.news, model: r.model || "", at: Date.now()
+  };
+  const list = loadBoard();
+  list.push(entry);
+  saveBoard(list);
+  const sorted = sortedBoard();
+  return { rank: sorted.findIndex(e => e.at === entry.at) + 1, total: sorted.length, at: entry.at };
+}
+
+function clearBoard() {
+  saveBoard([]);
+}
+
 function resetGame() {
-  game.companies = [newCompany("A사"), newCompany("B사")];
+  game.companies = [newCompany()];
   game.nextId = 1;
 }
