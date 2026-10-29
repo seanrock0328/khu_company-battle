@@ -100,6 +100,10 @@
             <div class="ai-thought" id="ai-thought" aria-hidden="true"></div>
             <p class="ai-tip" id="ai-tip"></p>
           </div>
+          <div class="ai-fail" aria-hidden="true">
+            <span class="ai-fail-ico"><span class="ai-plug">🔌</span><span class="ai-spark">⚡</span></span>
+            <span class="stamp ai-fail-stamp">연결 실패</span>
+          </div>
           <p id="ai-status-text"></p>
           <p id="ai-error" class="error" role="alert"></p>
           <div class="row center">
@@ -131,8 +135,8 @@
           </ol>
         </details>
 
-        <div class="row center">
-          <button id="btn-practice" class="secondary">ChatKHU 없이 연습 모드로 (순위 기록 안 됨)</button>
+        <div class="row center practice-row">
+          <button id="btn-practice" class="secondary">ChatKHU 없이 연습 모드로 <small class="btn-badge">연습 기록 · 순위 제외</small></button>
         </div>
       </div>
     </section>

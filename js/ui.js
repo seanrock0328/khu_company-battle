@@ -21,6 +21,8 @@ function showScreen(id) {
   screen.classList.add("active");
   document.body.dataset.screen = id;
   if (id !== "screen-ai") stopAIWait();
+  // 순위표·설정에 다녀와서 아직 기다리는 중이면 진행 막대·시계·속마음을 다시 움직입니다
+  else if (screen.dataset.state === "busy" && !aiTimer) startAIWait();
   const step = screen.dataset.step;
   if (step) {
     let passed = true;
@@ -49,6 +51,7 @@ function stageFor(id) {
   if (withOffice) {
     officeSync(false);
     if (id !== "screen-final") officeEpilogue(null);
+    else if (finalKind && finalShownFor === game.company && !document.getElementById("final").classList.contains("pre")) officeEpilogue(finalKind);
     if (id !== "screen-interview") officeFocus(null);
     else if (lastInterview !== null) officeFocus(Number(lastInterview) + 1); // 면접 화면에 들어오자마자 그 책상에 "면접 중"
   }
@@ -102,10 +105,14 @@ function renderHud() {
 
   const staff = staffOf(c);
   const hired = HIRE_RANKS.filter(r => c.hires[r]).length;
+  const minStaff = minStaffRule();
+  // 결산 화면: '결산 발표'(숫자 올라가기·별)가 끝나기 전에는 HUD가 총액을 먼저 알려 주지 않습니다
+  const finalEl = document.getElementById("final");
+  const hideTotal = id === "screen-final" && !!finalEl && !finalEl.classList.contains("stars-on");
   let items = [];
   if (id === "screen-interview") {
     items = [
-      { ico: "👥", label: "채용", value: `${hired} / ${HIRE_RANKS.length}` },
+      { ico: "👥", label: `채용 · 최소 ${minStaff}명`, value: `${hired} / ${HIRE_RANKS.length}`, tone: hired < minStaff ? "neg" : "pos" },
       { ico: "💰", label: "분기 급여", value: money(payroll(c) * COST_PER_SALARY, false), tone: payroll(c) / budgetOf(c) >= .9 ? "neg" : "" },
       { ico: "🏦", label: "통장", value: money(cashBalance(c), false), key: "bank" }
     ];
@@ -115,13 +122,15 @@ function renderHud() {
     const avg = staff.length ? Math.round(staff.reduce((s, x) => s + x.loyalty, 0) / staff.length) : 0;
     items = [
       { ico: "🏦", label: "통장 잔액", value: money(balance, false), tone: balance < 0 ? "neg" : "", key: "bank" },
-      { ico: "💰", label: "순이익", value: money(total, total !== 0), tone: total < 0 ? "neg" : total > 0 ? "pos" : "", money: total, key: "money" },
+      hideTotal
+        ? { ico: "💰", label: "순이익", value: "???", key: "money", hidden: true }
+        : { ico: "💰", label: "순이익", value: money(total, total !== 0), tone: total < 0 ? "neg" : total > 0 ? "pos" : "", money: total, key: "money" },
       { ico: "👥", label: "직원", value: `${staff.length}명`, key: "staff" },
       { ico: "♥", label: "충성심", value: staff.length ? `${avg}/10` : "—", tone: avg && avg <= 3 ? "neg" : "", key: "heart" }
     ];
   }
   res.innerHTML = items.map(it => `<span class="res ${it.key || ""}"><i aria-hidden="true">${it.ico}</i><span class="res-text"><small>${esc(it.label)}</small><b class="${it.tone || ""}">${esc(it.value)}</b></span></span>`).join("");
-  const moneyItem = items.find(it => it.key === "money");
+  const moneyItem = items.find(it => it.key === "money" && !it.hidden);
   if (moneyItem) {
     const el = res.querySelector(".res.money b");
     const before = hudSeen.company === c ? hudSeen.money : null;
@@ -142,6 +151,20 @@ function renderHud() {
 }
 
 // ===== 연출 도구 =====
+
+// 최소 채용 인원 (규칙은 game.js의 MIN_STAFF. 없으면 4명)
+function minStaffRule() {
+  return typeof MIN_STAFF === "number" ? MIN_STAFF : 4;
+}
+
+// 연출 중 오류가 나도 게임 진행(버튼이 다시 나오는 것)은 막지 않게
+async function safely(fn) {
+  try { await fn(); } catch (e) { console.warn("연출 오류 (게임은 계속됩니다)", e); }
+}
+
+function guard(fn) {
+  try { return fn(); } catch (e) { console.warn("연출 오류 (게임은 계속됩니다)", e); }
+}
 
 function reduceMotion() {
   return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -165,9 +188,23 @@ function beat(ms) {
   });
 }
 
+// 빠르게 보기: 한 번 건너뛰었거나 첫 분기 공개를 끝까지 본 사장님은, 같은 판의 다음 공개부터 절반 속도.
+// (순서·내용은 그대로, 기다리는 시간만 짧게. 새 판을 시작하면 다시 보통 속도)
+let quickFor = null;
+
+function quick() {
+  return !!game.company && quickFor === game.company;
+}
+
+function pace(ms) {
+  return quick() ? Math.round(ms * .5) : ms;
+}
+
 function skipReveal() {
-  if (!revealing) return;
+  // 두구두구(suspense) 중에는 무시: 파고들기/칭찬하기를 두 번 누른 손가락이 진실 공개 전체를 건너뛰지 않게
+  if (!revealing || document.body.classList.contains("in-suspense")) return;
   skipping = true;
+  quickFor = game.company;
   skipWaiters.slice().forEach(f => f());
   document.querySelectorAll(".messenger.playing").forEach(r => r.classList.add("skipped"));
   const off = document.getElementById("office");
@@ -200,7 +237,7 @@ function rankChip(rank) {
   return `<span class="rank rk-${rankNo(rank)}">${esc(rank)}</span>`;
 }
 
-// 원고지 글자칸 (1칸 = 10자)
+// 원고지 글자칸 미터 (1칸 = 10자). cls에 rk-N을 주면 그 직급 색으로 채운 칸
 function cells(n, cls) {
   return `<span class="cells ${cls || ""}" aria-hidden="true">${"<i></i>".repeat(Math.max(0, n))}</span>`;
 }
@@ -647,11 +684,14 @@ function deskHtml(P, i, kind) {
   const s = planSeat(P, i);
   const [cw, ch] = CHAIR_SIZE[kind];
   const H = MON_H + 4 + DESK_D + DESK_H;
+  // 책상 도장은 머리 위, 양옆 책상은 바깥쪽으로 비켜서 앞줄 이름표와 겹치지 않게
+  const dx = s.x < P.W * .4 ? -24 : s.x > P.W * .6 ? 24 : 4;
+  // 이름표는 걸어 다니는 직원보다 항상 위 (z 900대: 직원 < 이름표 < 스포트라이트·말풍선·도장)
   return `<span class="it chair ${kind}" data-i="${i}" ${at(s.x - cw / 2, s.y + 8 - (ch + 16), cw, ch + 16, s.y - 1)}>${chairSvg(kind)}</span>
     <span class="it desk ${kind}" data-i="${i}" ${at(d.x - d.w / 2, d.y - H, d.w, H, d.y)}>${deskSvg(kind, d.w)}</span>
-    <span class="it plate" data-i="${i}" ${at(d.x, d.y - DESK_H / 2, 0, 0, d.y + 2)}></span>
+    <span class="it plate" data-i="${i}" ${at(d.x, d.y - DESK_H / 2, 0, 0, 900 + i)}></span>
     <span class="it vacant" data-i="${i}" ${at(d.x, s.y - 2, 0, 0, d.y + 3)}>공석</span>
-    <span class="it desk-stamp" data-i="${i}" ${at(s.x + 4, s.y - P.mate * 1.45 - 12, 0, 0, 960)}></span>`;
+    <span class="it desk-stamp" data-i="${i}" ${at(s.x + dx, s.y - P.mate * 1.45 - 6, 0, 0, 960)}></span>`;
 }
 
 // 걸을 길 (노드 그래프에서 가장 짧은 길)
@@ -686,7 +726,7 @@ function planRoute(P, from, to) {
 // 직원 캐릭터는 자기 책상에서 일하고, 복도를 따라 탕비실·프린터·회의실·동료 책상까지 걸어 다닙니다.
 // 보고·진실 공개 때는 모두 자리로 돌아와 연기합니다.
 
-const office = { company: null, el: null, stage: null, plan: null, kind: "", layer: null, mates: new Map(), mode: "idle", strip: false, epilogue: null, holdQuit: false, walkers: 0, focus: null, taken: new Set() };
+const office = { company: null, el: null, stage: null, plan: null, kind: "", layer: null, mates: new Map(), mode: "idle", strip: false, epilogue: null, holdQuit: false, walkers: 0, focus: null, taken: new Set(), sayAt: null };
 
 function officeIsStrip() {
   return !!(window.matchMedia && window.matchMedia("(max-width: 759px)").matches);
@@ -712,11 +752,16 @@ function officeBuild(c) {
   office.kind = "";
   office.walkers = 0;
   office.taken.clear();
+  // 지난 판의 결산 에필로그(busy)가 남으면 새 판 면접에서 직원들이 굳어 있음: 새 회사는 늘 평소 모드로 시작
+  office.mode = reduceMotion() ? "still" : "idle";
+  office.holdQuit = false;
+  office.sayAt = null;
   el.className = "office";
   el.innerHTML = `
     <div class="office-sign"><span class="os-emoji" aria-hidden="true">${esc(c.emoji || "🏢")}</span><b class="os-name">${esc(c.name || "우리 회사")}</b><span class="os-where" id="office-where"></span></div>
     <div class="office-stage"></div>
-    <div class="caption" aria-hidden="true"></div>`;
+    <div class="caption" aria-hidden="true"></div>
+    <button type="button" class="office-skip">⏩ 탭하면 바로 보기</button>`;
   office.stage = el.querySelector(".office-stage");
   el.onclick = skipReveal;
 }
@@ -765,9 +810,14 @@ function plateHtml(c, i, person) {
   const rank = FLOOR_RANKS[i];
   const chars = i === 0 ? ORDER_MAX : rankInfo(rank).chars;
   const here = i === 0 || (person && (!person.quit || office.holdQuit));
-  const name = i === 0 ? c.player || "사장님" : here ? person.name : person && person.quit ? "퇴사" : "공석";
-  return `<span class="pl-row"><b class="rank rk-${i}">${esc(rank)}</b><span class="pn">${esc(name)}</span></span>
-    <span class="pl-row pl-chars">${cells(chars / 10)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${person.loyalty}/10">♥${person.loyalty}</span>` : ""}</span>`;
+  // 퇴사자는 이름에 줄을 긋고, 빨간 '퇴사' 팻말은 의자 자리에 (공석은 이름표 하나로만 알림)
+  const gone = i !== 0 && !here && !!person && !!person.quit;
+  const name = i === 0 ? c.player || "사장님" : person ? person.name : "공석";
+  // 진실 공개가 끝날 때까지는 고르기 전의 충성심을 보여 줍니다 (♥가 먼저 바뀌면 판정을 미리 알려 주게 됨)
+  const frozen = person && office.holdQuit && office.shownLoyalty && office.shownLoyalty.has(person.id);
+  const hv = Number(frozen ? office.shownLoyalty.get(person.id) : person ? person.loyalty : 0);
+  return `<span class="pl-row"><b class="rank rk-${i}">${esc(rank)}</b><span class="pn${gone ? " gone" : ""}">${esc(name)}</span></span>
+    <span class="pl-row pl-chars">${cells(chars / 10, `rk-${i}`)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
 }
 
 // 사람이 바뀐 자리만 고칩니다. animate면 새 직원은 입구 문으로 걸어 들어옵니다.
@@ -783,6 +833,11 @@ function officeSync(animate) {
   if (where) {
     const id = document.body.dataset.screen;
     where.textContent = id === "screen-interview" ? "면접 중" : id === "screen-final" ? "1년 결산" : c.events.length ? quarterLabel(game.round) : "";
+  }
+  // 진실 공개 중이 아닐 때 본 충성심을 기억해 두었다가, 공개하는 동안에는 이름표에 그 값을 그대로 둡니다
+  if (!office.holdQuit) {
+    office.shownLoyalty = new Map();
+    FLOOR_RANKS.forEach((rank, i) => { const p = floorPerson(c, i); if (p) office.shownLoyalty.set(p.id, p.loyalty); });
   }
   if (!document.body.classList.contains("with-office") || !office.el.offsetWidth) return;
   const kind = officeIsStrip() ? "wide" : "tall";
@@ -917,6 +972,7 @@ function mateGo(m, x, y, speed, waitFn) {
   if (dist < 1) return Promise.resolve();
   const ms = Math.max(160, dist / (speed || 80) * 1000);
   if (Math.abs(x - m.x) > 2) m.el.classList.toggle("face-left", x < m.x);
+  m.el.classList.remove("saying"); // 말하다가 걷기 시작하면 이름표 아래로
   m.el.classList.add("walk");
   m.el.style.transition = `transform ${Math.round(ms)}ms linear`;
   mateSet(m, x, y, Math.max(y, m.y));
@@ -986,13 +1042,18 @@ function mateFx(m, text, ms) {
 
 function mateSay(m, text, ms) {
   if (!m || !m.el || office.strip) return;
+  // 거짓말·퇴사 도장이 찍힌 자리에서는 잡담 말풍선을 띄우지 않음 (도장·이름표를 가리지 않게)
+  const st = deskPart(m.i, "desk-stamp");
+  if (!m.away && st && st.classList.contains("on")) return;
   const say = m.el.querySelector(".mate-say");
   m.el.classList.toggle("say-left", (m.x || 0) > office.plan.W * .6);
   const t = Array.from(String(text));
   say.textContent = t.length > 13 ? t.slice(0, 12).join("") + "…" : t.join("");
   say.classList.add("on");
+  // 자리에 앉아 말할 때만 이름표 위로. 걸어 다니거나 남의 책상에 가 있는 직원은 이름표 아래 그대로 (이름표 글자를 가리지 않게)
+  m.el.classList.toggle("saying", !m.away && !m.el.classList.contains("walk"));
   clearTimeout(m.sayTimer);
-  m.sayTimer = setTimeout(() => say.classList.remove("on"), ms || 2200);
+  m.sayTimer = setTimeout(() => { say.classList.remove("on"); m.el.classList.remove("saying"); }, ms || 2200);
 }
 
 function mateOf(person) {
@@ -1212,10 +1273,20 @@ function officeTyping(person, on) {
   if (on) mateFx(m, "💬", 900);
 }
 
+// 무대 말풍선만 걷기 (책상 도장·자막은 그대로)
+let truthSayToken = 0;
+function officeHideSay() {
+  const sp = office.stage && office.stage.querySelector(".speech");
+  if (sp) sp.classList.remove("on");
+  office.sayAt = null;
+}
+
 function officeClearSay() {
   if (!office.el) return;
   const sp = office.stage && office.stage.querySelector(".speech");
   if (sp) sp.className = "speech";
+  office.sayAt = null;
+  truthSayToken++; // 지난 진실 공개가 걸어 둔 '말풍선 걷기' 타이머가 새 보고 말풍선을 지우지 않게
   office.el.querySelectorAll(".desk-stamp").forEach(s => { s.className = "it desk-stamp"; s.textContent = ""; });
   const cap = office.el.querySelector(".caption");
   if (cap) cap.classList.remove("on");
@@ -1231,7 +1302,7 @@ function officeSay(i, text, opts) {
     const cap = office.el.querySelector(".caption");
     if (!cap) return;
     cap.textContent = t.length > 44 ? t.slice(0, 43).join("") + "…" : t.join("");
-    cap.className = `caption on ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${i === 0 ? "ceo" : ""}`;
+    cap.className = `caption on ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${o.paper ? "paper" : i === 0 ? "ceo" : ""} ${o.final ? "final" : ""}`;
     const s = planSeat(office.plan, i);
     cap.style.setProperty("--ax", `${(s.x / office.plan.W * 100).toFixed(1)}%`);
     cap.style.setProperty("--lv", o.level || 0);
@@ -1243,12 +1314,80 @@ function officeSay(i, text, opts) {
   const P = office.plan;
   const s = planSeat(P, i);
   sp.textContent = t.join("");
-  const side = s.x < P.W * .3 ? "l" : s.x > P.W * .7 ? "r" : "c";
-  sp.className = `speech on side-${side} ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${o.final ? "final" : ""} ${i === 0 ? "ceo" : ""}`;
-  sp.style.setProperty("--sx", s.x.toFixed(0));
-  sp.style.setProperty("--sy", (s.y - P.mate * 1.45 - 4).toFixed(0));
+  const base = `speech ${o.lie ? "lie" : ""} ${o.up ? "up" : ""} ${o.final ? "final" : ""} ${i === 0 ? "ceo" : ""}`;
+  sp.className = base;
   sp.style.setProperty("--lv", o.level || 0);
+  const spot = speechSpot(sp, i, P, s);
+  sp.className = `${base} on${spot.below ? " below" : ""}`;
+  sp.style.setProperty("--sx", spot.x.toFixed(1));
+  sp.style.setProperty("--sy", spot.y.toFixed(1));
+  sp.style.setProperty("--tx", "0px");
+  sp.style.setProperty("--to", `${spot.origin.toFixed(1)}px`);
+  office.sayAt = i;
   replay(sp, "pop");
+}
+
+// 무대 말풍선 자리 고르기: 말하는 사람 머리 위(기본) 또는 자기 책상 아래에서,
+// 말풍선이 그 사람 위를 지나도록 좌우로 밀어 보며 다른 책상 이름표·책상 도장·사람을 가장 덜 가리는 곳.
+// (맨 아래 줄 직원이 말할 때 바로 윗줄 이름표를 덮던 문제) 반환값의 x·y는 평면도 단위, origin은 px
+function speechSpot(sp, i, P, s) {
+  const st = office.stage;
+  const SW = st.clientWidth, SH = st.clientHeight;
+  const u = SW / P.W;
+  const w = sp.offsetWidth, h = sp.offsetHeight;
+  const sx = s.x * u;
+  const head = (s.y - P.mate * 1.45 - 4) * u;
+  if (!u || !w || !h) return { x: s.x, y: s.y - P.mate * 1.45 - 4, below: false, origin: 0 };
+  const fallback = { x: (sx - w / 2) / u, y: head / u, below: false, origin: w / 2 };
+  const k = 1 + (Number(sp.style.getPropertyValue("--lv")) || 0) * .05;
+  const obs = [];
+  const box = (el, wt) => {
+    if (!el || !el.offsetWidth) return;
+    const cx = Number(el.style.getPropertyValue("--x")) * u, cy = Number(el.style.getPropertyValue("--y")) * u;
+    if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+    const hw = el.offsetWidth / 2 + 3, hh = el.offsetHeight / 2 + 3; // 그림자 몫 3px 여유
+    obs.push([cx - hw, cy - hh, cx + hw, cy + hh, wt]);
+  };
+  // 이름표·도장은 조금만 덮어도 크게 벌점 (글자가 가려지면 안 됨), 사람은 가볍게
+  st.querySelectorAll(".it.plate").forEach(el => { if (Number(el.dataset.i) !== i) box(el, 6); });
+  st.querySelectorAll(".it.desk-stamp.on").forEach(el => { if (Number(el.dataset.i) !== i) box(el, 6); });
+  office.mates.forEach(m => {
+    if (m.i === i || !m.el.isConnected || !Number.isFinite(m.x) || !Number.isFinite(m.y)) return;
+    const mw = P.mate * u;
+    obs.push([m.x * u - mw / 2, (m.y - P.mate * 1.45) * u, m.x * u + mw / 2, m.y * u, .3]);
+  });
+  const own = deskPart(i, "plate");
+  const under = own && own.offsetWidth ? Number(own.style.getPropertyValue("--y")) * u + own.offsetHeight / 2 + 2 : P.desks[i].y * u + 2;
+  const hit = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const lo = sx - w + 18, hi = sx - 18;
+  const want = Math.min(Math.max(sx, w * k / 2 + 4), SW - w * k / 2 - 4); // 화면 안에서 가장 가운데에 가까운 자리
+  const side = P.mate * u * .6;                   // 옆자리: 얼굴 바로 옆
+  const faceMid = (s.y - P.mate * 1.05) * u;
+  // 후보: [왼쪽 끝 L, 말풍선 아래 끝(머리 위·옆) 또는 위 끝(책상 아래), 아래 기준?, 벌점 비율]
+  const cand = [];
+  for (let n = 0; n <= 14; n++) {
+    const L = hi <= lo ? sx - w / 2 : lo + (hi - lo) * n / 14;
+    cand.push([L, head, false, 0], [L, under, true, .08]);
+  }
+  // 옆자리 후보는 무대 밖으로 나가면 안쪽으로 밀어 넣음 (글자가 잘리는 것보다 자기 얼굴을 조금 덮는 편이 나음)
+  const fit = L => {
+    const r0 = sx - (sx - L) * k, r2 = sx + (L + w - sx) * k;
+    return r2 > SW - 2 ? L - (r2 - SW + 2) / k : r0 < 2 ? L + (2 - r0) / k : L;
+  };
+  cand.push([fit(sx + side), faceMid + h * k / 2, false, .05], [fit(sx - side - w), faceMid + h * k / 2, false, .05]);
+  // 말하는 사람 자기 얼굴도 가리지 않게 (옆자리 후보가 밀려 들어왔을 때)
+  obs.push([sx - P.mate * u * .45, (s.y - P.mate * 1.45) * u, sx + P.mate * u * .45, (s.y - P.mate * .6) * u, 2]);
+  let best = null;
+  cand.forEach(([L, y, below, cost]) => {
+    const r = [sx - (sx - L) * k, below ? y : y - h * k, sx + (L + w - sx) * k, below ? y + h * k : y];
+    const area = (r[2] - r[0]) * (r[3] - r[1]);
+    const inside = Math.max(0, Math.min(r[2], SW) - Math.max(r[0], 0)) * Math.max(0, Math.min(r[3], SH) - Math.max(r[1], 0));
+    let score = (area - inside) * 10 + area * cost + Math.abs((r[0] + r[2]) / 2 - want) * h * .04;
+    obs.forEach(o => { score += hit(r, o) * o[4]; });
+    if (!best || score < best.score) best = { score, L, y, below };
+  });
+  if (!best) return fallback;
+  return { x: best.L / u, y: best.y / u, below: best.below, origin: sx - best.L };
 }
 
 // 스포트라이트: 그 사람 책상만 밝게
@@ -1283,11 +1422,15 @@ async function officePaper(order, chain) {
   const K = () => st.clientWidth / P.W;
   const tf = (p, sc, rot) => `translate3d(${(p.x * K()).toFixed(1)}px, ${(p.y * K()).toFixed(1)}px, 0) translate(-50%, -100%) rotate(${rot || 0}deg) scale(${sc})`;
   let cur = head(0), scale = 1, keepChars = ORDER_MAX;
+  const hop = pace(520);
   fly.style.transform = tf(cur, 1);
+  fly.style.setProperty("--pk", "1"); // 종이는 작아져도 "✂ N자" 꼬리표·글자는 13px 그대로 (CSS에서 1/--pk로 되돌림)
   fly.classList.add("on");
+  // 휴대폰 지도에서는 지시서가 작아 글자가 안 보이니, 지도 아래 자막으로 "지시 → 잘린 지시"를 보여 줍니다
+  if (office.strip) officeSay(0, `📄 ${ORDER_MAX}자 · ${showText(ORDER_MAX)}`, { paper: true });
   const ceo = office.mates.get(0);
   if (ceo) { ceo.el.classList.add("hop"); setTimeout(() => ceo.el.classList.remove("hop"), 700); }
-  await beat(380);
+  await beat(pace(380));
   for (const x of chain) {
     const i = rankNo(x.rank);
     const to = head(i);
@@ -1301,6 +1444,8 @@ async function officePaper(order, chain) {
     fx.appendChild(trail);
     requestAnimationFrame(() => trail.classList.add("on"));
     sfx("whoosh");
+    // 날아가는 동안 종이는 scale → sc로 줄어듦: 미리 sc 기준으로 되돌려 두면 꼬리표는 늘 13px 이상
+    fly.style.setProperty("--pk", sc.toFixed(3));
     if (!skipping && !reduceMotion() && fly.animate) {
       const frames = [];
       for (let n = 0; n <= 10; n++) {
@@ -1308,9 +1453,9 @@ async function officePaper(order, chain) {
         const p = { x: u * u * cur.x + 2 * u * t * mid.x + t * t * to.x, y: u * u * cur.y + 2 * u * t * mid.y + t * t * to.y };
         frames.push({ transform: tf(p, scale + (sc - scale) * t, Math.sin(t * Math.PI) * (to.x < cur.x ? -12 : 12)) });
       }
-      const anim = fly.animate(frames, { duration: 520, easing: "ease-in-out" });
+      const anim = fly.animate(frames, { duration: hop, easing: "ease-in-out" });
       fly.style.transform = tf(to, sc);
-      await beat(520);
+      await beat(hop);
       anim.cancel();
     } else {
       fly.style.transform = tf(to, sc);
@@ -1335,12 +1480,13 @@ async function officePaper(order, chain) {
       });
     }
     keepChars = Math.min(keepChars, chars);
+    if (office.strip) officeSay(i, `✂ ${x.rank} ${keepChars}자 · ${showText(keepChars)}`, { paper: true });
     replay(fly, "land");
     const m = mateOf(x);
     if (m) { m.el.classList.add("read"); setTimeout(() => m.el.classList.remove("read"), 700); }
     cur = to;
     scale = sc;
-    await beat(320);
+    await beat(pace(320));
   }
   fly.classList.remove("on");
   fx.querySelectorAll(".trail").forEach(p => p.classList.add("fade"));
@@ -1350,6 +1496,7 @@ async function officePaper(order, chain) {
 function deskStamp(i, long, short, cls) {
   const st = deskPart(i, "desk-stamp");
   if (!st) return;
+  clearTimeout(st.fadeTimer);
   st.innerHTML = `<span class="fs-long">${esc(long)}</span><span class="fs-short">${esc(short)}</span>`;
   st.className = `it desk-stamp stamp on ${cls || ""}`;
   replay(st, "thud");
@@ -1359,8 +1506,41 @@ function officeLie(i, label) {
   if (!office.el) return;
   const m = office.mates.get(i);
   if (m) { m.el.classList.add("liar"); mateFx(m, "😳", 1400); }
-  deskStamp(i, label || "🤥 거짓말", "🤥");
+  deskStamp(i, label || "🤥 거짓말", "🤥", "lie");
   replay(office.stage, "jolt", 400);
+}
+
+// 거짓말 도장은 그 순간에만 쾅 (빨간 도장이 여러 개 쌓이지 않게). 퇴사 도장은 그대로 둡니다.
+// 누가 거짓말했는지는 직원의 긴 코(liar)와 단톡방 🤥 도장에 남습니다.
+function officeUnstamp() {
+  if (!office.el) return;
+  office.el.querySelectorAll(".desk-stamp.on.lie").forEach(st => {
+    st.classList.add("fade");
+    clearTimeout(st.fadeTimer);
+    st.fadeTimer = setTimeout(() => {
+      if (!st.classList.contains("lie") || !st.classList.contains("fade")) return;
+      st.className = "it desk-stamp";
+      st.textContent = "";
+    }, 320);
+  });
+}
+
+// 보고를 부풀린 직원 도장: 한 명씩 차례로 (1.2초씩 보이고 사라짐). 진실 공개를 기다리게 하지는 않음
+let lieSeq = 0;
+function officeLieOneByOne(list, label) {
+  const seq = ++lieSeq;
+  const gap = pace(1200), lead = pace(500);
+  list.forEach((i, k) => setTimeout(() => guard(() => {
+    if (seq !== lieSeq || !office.el) return;
+    const m = office.mates.get(i);
+    const st = deskPart(i, "desk-stamp");
+    if (!m || m.leaving || (st && st.classList.contains("quit"))) return;
+    if (office.sayAt === i) { const sp = office.stage && office.stage.querySelector(".speech"); if (sp) sp.classList.remove("on"); }
+    officeUnstamp();
+    officeLie(i, label);
+    if (k === 0) sfx("lie");
+  }), lead + k * gap));
+  setTimeout(() => { if (seq === lieSeq) guard(officeUnstamp); }, lead + list.length * gap);
 }
 
 function officeHearts(n, kind) {
@@ -1388,8 +1568,9 @@ function officeClap() {
   setTimeout(() => office.mates.forEach(m => m.el.classList.remove("clap", "jump")), 1500);
 }
 
-function officeLens() {
+function officeLens(ms) {
   if (!office.el || reduceMotion() || !office.plan) return;
+  const dur = ms || SUSPENSE_DELAY;
   const lens = office.stage.querySelector(".lens");
   if (!lens || !lens.animate) return;
   const P = office.plan;
@@ -1397,9 +1578,9 @@ function officeLens() {
   const pts = FLOOR_RANKS.map((_, i) => planSeat(P, i)).slice(1);
   lens.classList.add("on");
   lens.animate(pts.map(p => ({ transform: `translate3d(${(p.x * k).toFixed(0)}px, ${((p.y - P.mate) * k).toFixed(0)}px, 0) translate(-50%, -50%)` })),
-    { duration: SUSPENSE_DELAY, easing: "ease-in-out" }).onfinish = () => lens.classList.remove("on");
+    { duration: dur, easing: "ease-in-out" }).onfinish = () => lens.classList.remove("on");
   office.mates.forEach(m => { if (!m.leaving && m.i) { m.el.classList.add("slump", "sweat"); } });
-  setTimeout(() => office.mates.forEach(m => m.el.classList.remove("slump", "sweat")), 1300);
+  setTimeout(() => office.mates.forEach(m => m.el.classList.remove("slump", "sweat")), dur + 200);
 }
 
 function officeMood(kind) {
@@ -1412,31 +1593,39 @@ function officeMood(kind) {
   setTimeout(() => office.mates.forEach(m => m.el.classList.remove(kind)), 1900);
 }
 
-// 퇴사: 어깨를 으쓱하고 상자를 든 채 복도를 따라 입구 문으로 천천히 걸어 나갑니다
+// 퇴사: 어깨를 으쓱하고 상자를 든 채 복도를 따라 입구 문으로 걸어 나갑니다.
+// 어느 층에서든 걷는 시간은 2.4초 안쪽 (여러 명이면 renderTruth가 동시에 내보냄). 움직임 줄이기면 도장만 찍고 바로 비움.
 async function officeQuit(i) {
   const m = office.mates.get(i);
   if (!m || !officeVisible()) return;
   m.gen++;
   mateReset(m);
   m.leaving = true;
-  m.el.classList.add("shrug");
-  mateFx(m, "😢", 1400);
   deskStamp(i, "퇴사", "📦", "quit");
   sfx("stamp");
-  await beat(500);
+  const finish = () => {
+    m.el.remove();
+    if (office.mates.get(i) === m) office.mates.delete(i);
+    const vacant = deskPart(i, "vacant");
+    if (vacant) { vacant.textContent = "퇴사"; vacant.classList.add("on", "quit"); }
+    const desk = deskPart(i, "desk");
+    if (desk) desk.classList.add("empty", "left");
+  };
+  if (reduceMotion() || skipping) return finish();
+  m.el.classList.add("shrug");
+  mateFx(m, "😢", 1400);
+  await beat(450);
   m.el.classList.remove("shrug");
   m.el.classList.add("pack");
-  await beat(350);
+  await beat(300);
   officeDoor();
-  await mateWalk(m, officePath(i, "out"), 60, beat);
+  const path = officePath(i, "out");
+  let len = 0, prev = [m.x, m.y];
+  path.forEach(p => { len += Math.hypot(p[0] - prev[0], p[1] - prev[1]); prev = p; });
+  await mateWalk(m, path, Math.max(110, len / 2.4), beat);
   m.el.classList.add("gone");
-  await beat(380);
-  m.el.remove();
-  office.mates.delete(i);
-  const vacant = deskPart(i, "vacant");
-  if (vacant) { vacant.textContent = "퇴사"; vacant.classList.add("on", "quit"); }
-  const desk = deskPart(i, "desk");
-  if (desk) desk.classList.add("empty", "left");
+  await beat(350);
+  finish();
 }
 
 // 면접 중인 자리를 표시 (화살표 + "면접 중")
@@ -1447,7 +1636,8 @@ function officeFocus(i) {
   if (i === null || i === undefined) { mark.classList.remove("on"); office.el.querySelectorAll(".desk.focus").forEach(d => d.classList.remove("focus")); return; }
   const d = office.plan.desks[i];
   mark.style.setProperty("--x", d.x);
-  mark.style.setProperty("--y", (planSeat(office.plan, i).y - office.plan.mate * 1.3).toFixed(0));
+  // 휴대폰 지도의 윗줄 책상은 표시가 지도 위로 잘리지 않게 아래로
+  mark.style.setProperty("--y", Math.max(office.strip ? 78 : 0, planSeat(office.plan, i).y - office.plan.mate * 1.3).toFixed(0));
   mark.classList.add("on");
   office.el.querySelectorAll(".desk").forEach(el => el.classList.toggle("focus", Number(el.dataset.i) === i));
 }
@@ -1567,10 +1757,10 @@ function talkOpen(open) {
 function msgNode(o) {
   const div = document.createElement("div");
   const me = o.kind === "ceo";
-  div.className = `msg ${o.kind || ""}${o.amb ? " amb" : ""}`;
+  div.className = `msg ${o.kind || ""}${o.cls ? " " + o.cls : ""}${o.amb ? " amb" : ""}`;
   if (o.amb) div.setAttribute("aria-hidden", "true");
   div.innerHTML = `${me ? "" : avatar(o.person)}<div class="msg-body">
-      <div class="who">${esc(o.who)}${o.kind === "lie" ? " 🤥" : ""}</div>
+      <div class="who">${esc(o.who)}${o.tag ? ` <span class="cut-tag">${esc(o.tag)}</span>` : ""}</div>
       <div class="line"><div class="bubble">${esc(o.text)}${o.kind === "lie" ? stamp("🤥 거짓말", "lie-stamp") : ""}</div>
         <span class="meta">${o.unread ? `<b class="unread">${Number(o.unread)}</b>` : ""}<time>${esc(clockNow())}</time></span></div>
       ${o.react ? `<div class="reacts" aria-label="반응"></div>` : ""}
@@ -1672,7 +1862,8 @@ function ambientStop() {
 function ambientSchedule(first) {
   clearTimeout(talk.timer);
   if (!talk.kind) return;
-  if (first) talk.burst = 3;
+  // 분기 시작·지시 쓰는 중(slowUntil)에는 한꺼번에 몰아치지 않음: 그 순간의 주인공은 미션과 지시서
+  if (first) talk.burst = Date.now() < talk.slowUntil ? 0 : 3;
   const base = talk.burst > 0 ? 1300 : talk.kind === "wait" ? 2300 : talk.kind === "after" ? 1500 : 3600;
   const slow = Date.now() < talk.slowUntil ? 3 : 1;
   talk.timer = setTimeout(ambientTick, (first ? 700 : rand(base, base * 1.6)) * slow);
@@ -1784,6 +1975,7 @@ function demoHtml() {
 
 function renderTitle() {
   const demo = document.getElementById("title-demo");
+  // 공유 순위표(board-sync)가 늦게 도착해도 부스 대기 화면의 명예의 전당이 따라오게 (setupUI가 15초마다 다시 부름)
   if (demo && !demo.firstElementChild) demo.innerHTML = demoHtml();
   const ranks = document.getElementById("title-ranks");
   if (!ranks) return;
@@ -1894,6 +2086,7 @@ function renderFoundPreview() {
 
 let aiKind = "event";
 let aiTimer = null;
+let aiStarted = 0; // 이번 ChatKHU 요청을 보낸 시각 (순위표에 다녀와도 기다린 시간이 이어지게)
 
 function renderAIScreen(step) {
   aiKind = Object.keys(AI_STEPS).find(k => AI_STEPS[k] === step) || "event";
@@ -1929,8 +2122,8 @@ function setAIState(state, message) {
   document.getElementById("btn-ai-connect").hidden = state !== "nokey";
   document.getElementById("btn-practice").disabled = state === "busy";
   document.getElementById("screen-ai").dataset.state = state;
-  if (state === "error") document.getElementById("manual-box").open = true;
-  if (state === "busy") startAIWait();
+  // 실패해도 복사·붙여넣기 안내는 접어 둡니다: 바로 아래 '다시 시도'와 '연습 모드'가 먼저 보이게
+  if (state === "busy") { aiStarted = Date.now(); startAIWait(); }
   else stopAIWait();
 }
 
@@ -1999,7 +2192,7 @@ function startAIWait() {
   const tip = document.getElementById("ai-tip");
   const lines = aiThoughts();
   const tips = aiTips();
-  const started = Date.now();
+  const started = aiStarted || Date.now();
   const offset = game.round || 0;
   let tick = 0;
   const step = () => {
@@ -2163,20 +2356,28 @@ function renderInterview(index) {
 
   const cellsTotal = Math.max(budget, used);
   const last = index === HIRE_RANKS.length - 1;
+  // PR #14 규칙 (검사는 main.js·game.js가 '면접 끝'에서 함): 최소 MIN_STAFF명, 빈자리는 나머지까지
+  const minStaff = minStaffRule();
+  const maxVacant = Math.max(0, HIRE_RANKS.length - minStaff);
+  const hiredNow = staffOf(c).length;
+  const short = Math.max(0, minStaff - hiredNow);
   document.getElementById("interview").innerHTML = `
+    <p class="hire-rule"><span class="hr-tag">채용 규칙</span><span>최소 <b>${minStaff}명</b> 채용 · 빈자리는 <b>${maxVacant}자리</b>까지</span></p>
     <div class="tabs" role="list">${tabs}</div>
     <div class="budget-wrap">
+      <p class="hire-count ${short ? "short" : "ok"}" aria-live="polite"><span aria-hidden="true">👥</span> 채용 <b>${hiredNow}</b> / ${HIRE_RANKS.length}명 <small>· 최소 ${minStaff}명${short ? "" : " ✓"}</small></p>
       <p class="spent"><span><span aria-hidden="true">💰</span> 분기 급여 <b>${money(used * COST_PER_SALARY, false)}</b></span><span>/ 채용 한도 ${money(budget * COST_PER_SALARY, false)}</span><small class="spent-bank">🏦 통장 ${money(cashBalance(c), false)}</small></p>
       <div class="budget ${used / budget >= .9 ? "tight" : ""}" role="img" aria-label="분기 급여 ${money(used * COST_PER_SALARY, false)} / 채용 한도 ${money(budget * COST_PER_SALARY, false)}">${Array.from({ length: cellsTotal }, (_, k) => `<i class="${k < used ? "on" : ""}"></i>`).join("")}</div>
     </div>
-    <h3 class="rank-title rk-${rankNo(rank)}"><span class="rank rk-${rankNo(rank)}">${esc(rank)}</span> 면접 <small>지시를 ${info.chars}자까지 전달 ${cells(info.chars / 10)}</small></h3>
+    <h3 class="rank-title rk-${rankNo(rank)}"><span class="rank rk-${rankNo(rank)}">${esc(rank)}</span> 면접 <small>지시를 ${info.chars}자까지 전달 ${cells(info.chars / 10, `rk-${rankNo(rank)}`)}</small></h3>
     <div class="candidates ${entering ? "enter" : ""}">${cards}</div>
     <div class="interview-nav">
-      <button class="text-btn" data-action="vacant">이 자리는 비워 두기 (지시가 건너뜀)</button>
+      <button class="text-btn" data-action="vacant">이 자리는 비워 두기 (최대 ${maxVacant}자리, 지시가 건너뜀)</button>
       <div class="row">
         ${index > 0 ? `<button class="secondary" data-action="prev">← ${esc(HIRE_RANKS[index - 1])}</button>` : ""}
-        <button class="primary" data-action="${last ? "done" : "next"}">${last ? "면접 끝, 업무 시작" : `${esc(HIRE_RANKS[index + 1])} 면접 →`}</button>
+        <button class="primary ${last && short ? "not-ready" : ""}" data-action="${last ? "done" : "next"}" ${last && short ? 'aria-describedby="hire-short"' : ""}>${last ? "면접 끝, 업무 시작" : `${esc(HIRE_RANKS[index + 1])} 면접 →`}</button>
       </div>
+      ${last && short ? `<p class="hire-short" id="hire-short">⚠ 직원이 ${short}명 더 있어야 업무를 시작할 수 있어요 (지금 ${hiredNow}명)</p>` : ""}
     </div>`;
   if (document.body.dataset.screen === "screen-interview") {
     officeSync(true);
@@ -2227,6 +2428,28 @@ function chartMoney(n) {
   return sign + (v >= 10000 ? `${Number((v / 10000).toFixed(2))}억` : `${v.toLocaleString()}만`);
 }
 
+// 이번 분기 돈이 왜 이렇게 됐는지 한눈에: 손실이면 가장 큰 지출, 이익이면 가장 큰 수입 (계산은 game.js가 이미 끝낸 값)
+// key: rev 매출 · cost 인건비 · inv 투자 손익(출금+회수) · power 회식비 · pen 불이익
+function moneyReason(round) {
+  if (!round || typeof round.profit !== "number") return null;
+  const items = [
+    { key: "rev", label: "매출", v: round.revenue ?? round.baseRevenue ?? 0 },
+    { key: "cost", label: "인건비", v: -(round.cost || 0) },
+    { key: "inv", label: "투자 손익", v: (round.investmentReturn || 0) - (round.investmentCost || 0) },
+    { key: "power", label: "회식비", v: -(round.powerCost || 0) },
+    { key: "pen", label: round.choice === "closed" ? "영업 중단 손실" : "칭찬 실패 불이익", v: -(round.penalty || 0) }
+  ];
+  const loss = round.profit < 0;
+  const pool = items.filter(x => loss ? x.v < 0 : x.v > 0);
+  if (!pool.length) return null;
+  const top = pool.reduce((best, x) => (Math.abs(x.v) > Math.abs(best.v) ? x : best));
+  return { ...top, loss };
+}
+
+function reasonLine(reason) {
+  return reason ? `<p class="why-line ${reason.loss ? "neg" : "pos"}"><span class="why-tag">핵심</span><span>이번 분기 가장 큰 ${reason.loss ? "지출" : "수입"}</span><b>${esc(reason.label)} ${money(reason.v)}</b></p>` : "";
+}
+
 // 분기별 돈의 흐름 (신문 '경제면'): 통장 잔액 꺾은선 + 분기별 수입·지출 막대 + 고른 분기의 통장 명세
 // 분기 버튼(data-finance-quarter)을 누르면 main.js가 이 안(data-finance-chart)을 financeMarkup으로 다시 그립니다.
 function financeChart(c, selected) {
@@ -2244,6 +2467,8 @@ function financeMarkup(c, selected) {
   const ticks = [high, (high + low) / 2, low];
   const maxFlow = Math.max(1, ...rows.flatMap(r => [r.income, r.expense]));
   const row = rows[index];
+  const reason = row ? moneyReason(row.round) : null;
+  const top = key => reason && reason.key === key ? " top" : "";
   const pts = values.map((v, i) => `${x(i)},${y(v).toFixed(1)}`);
   const base = y(Math.max(low, Math.min(0, high))).toFixed(1);
   return `<div class="fc-head"><h3>📊 분기별 돈의 흐름</h3><span class="fc-paper" aria-hidden="true">경제면</span></div>
@@ -2267,13 +2492,14 @@ function financeMarkup(c, selected) {
         <button class="secondary small" data-finance-quarter="${i}" ${!r ? "disabled" : ""} aria-pressed="${index === i}">${i + 1}분기</button></div>`;
     }).join("")}</div>
     ${row ? `<div class="flow-detail" aria-live="polite"><h4><span aria-hidden="true">🧾</span> ${row.quarter}분기 통장 명세</h4>
+      ${reasonLine(reason)}
       <table class="ledger passbook"><tbody>
         <tr><td>기초 잔액</td><td>${money(row.opening, false)}</td></tr>
-        <tr class="in"><td>매출 입금</td><td>${money(row.round.revenue)}</td></tr>
-        <tr class="out"><td>3개월치 급여</td><td>${money(-row.round.cost)}</td></tr>
-        ${row.round.investmentCost ? `<tr class="out"><td>투자금 출금</td><td>${money(-row.round.investmentCost)}</td></tr><tr class="in"><td>투자금 회수</td><td>${money(row.round.investmentReturn)}</td></tr>` : ""}
-        ${row.round.powerCost ? `<tr class="out"><td>회식비</td><td>${money(-row.round.powerCost)}</td></tr>` : ""}
-        ${row.round.penalty ? `<tr class="out bad"><td>불이익·영업 중단 손실</td><td>${money(-row.round.penalty)}</td></tr>` : ""}
+        <tr class="in${top("rev")}"><td>매출 입금</td><td>${money(row.round.revenue)}</td></tr>
+        <tr class="out${top("cost")}"><td>3개월치 급여</td><td>${money(-row.round.cost)}</td></tr>
+        ${row.round.investmentCost ? `<tr class="out${top("inv")}"><td>투자금 출금</td><td>${money(-row.round.investmentCost)}</td></tr><tr class="in${top("inv")}"><td>투자금 회수</td><td>${money(row.round.investmentReturn)}</td></tr>` : ""}
+        ${row.round.powerCost ? `<tr class="out${top("power")}"><td>회식비</td><td>${money(-row.round.powerCost)}</td></tr>` : ""}
+        ${row.round.penalty ? `<tr class="out bad${top("pen")}"><td>불이익·영업 중단 손실</td><td>${money(-row.round.penalty)}</td></tr>` : ""}
         ${row.round.support ? `<tr class="in"><td>긴급 용돈 (순이익 제외)</td><td>${money(row.round.support)}</td></tr>` : ""}
         <tr class="sum"><td>마감 잔액</td><td class="${row.closing < 0 ? "neg" : ""}" data-detail-closing="${row.closing}">${money(row.closing, false)}</td></tr>
         <tr><td>이번 분기 순이익</td><td class="${row.profit < 0 ? "neg" : "pos"}">${money(row.profit)}</td></tr>
@@ -2369,6 +2595,23 @@ function paintOrderMeter(len) {
   meter.classList.toggle("full", len >= ORDER_MAX);
 }
 
+// 휴대폰에서 지시서(#order)가 아래 큰 버튼(지시 내리기)에 가려 있으면, 지시서 아래 끝이 버튼 위에 오도록 패널만 스크롤.
+// 포커스는 주지 않음(키보드가 저절로 뜨지 않게). 사장님이 이미 스크롤했거나 쓰는 중이면 건드리지 않음
+function showOrderAboveDock() {
+  if (!officeIsStrip()) return;
+  const panel = document.getElementById("screen-event");
+  const order = document.getElementById("order");
+  const dock = panel && panel.querySelector(".cta-dock");
+  if (!panel || !panel.classList.contains("active") || !order || order.disabled || !dock) return;
+  if (document.activeElement === order || panel.scrollTop > 4 || panel.scrollHeight <= panel.clientHeight) return;
+  const tr = order.getBoundingClientRect(), dr = dock.getBoundingClientRect(), pr = panel.getBoundingClientRect();
+  const need = tr.bottom + 8 - dr.top;
+  if (need <= 0) return;
+  const comp = order.closest(".composer") || order;
+  const by = Math.min(need, Math.max(0, comp.getBoundingClientRect().top - pr.top - 8));
+  if (by > 0) panel.scrollBy({ top: by, behavior: reduceMotion() ? "auto" : "smooth" });
+}
+
 function renderEvent() {
   const c = game.company;
   const ev = c.events[game.round];
@@ -2383,7 +2626,8 @@ function renderEvent() {
   document.querySelectorAll("#room").forEach(el => el.removeAttribute("id")); // 지난 분기 단톡방 기록은 그대로, 이름표만 뗌
   document.getElementById("event-heading").innerHTML = `<span class="lv">LEVEL ${game.round + 1}<small> / ${ROUNDS}</small></span><span class="lv-name">${esc(quarterLabel(game.round))}</span>`;
   document.getElementById("profit-now").innerHTML = `<span class="pn-chip bank ${balance < 0 ? "neg" : ""}"><i aria-hidden="true">🏦</i>통장 잔액 <b>${money(balance, false)}</b></span>
-    <span class="pn-chip"><i aria-hidden="true">💰</i>순이익 <b class="${profit < 0 ? "neg" : profit > 0 ? "pos" : ""}">${money(profit, profit !== 0)}</b></span>`;
+    <span class="pn-chip"><i aria-hidden="true">💰</i>순이익 <b class="${profit < 0 ? "neg" : profit > 0 ? "pos" : ""}">${money(profit, profit !== 0)}</b></span>
+    ${settledRounds(c).length ? `<span class="pn-spark" title="분기별 누적 순이익">${profitChart(c)}</span>` : ""}`;
   const line = transmissionStaff(c);
   const quit = allCandidates(c).filter(x => x.quit).map(x => `<span class="quit-chip">📦 ${esc(x.rank)} ${esc(x.name)}</span>`);
   const chain = line.map(x => `<li class="rk-${rankNo(x.rank)}" title="${esc(x.rank)} ${esc(x.name)} · 충성심 ${x.loyalty}/10">${avatar(x)}<small>${rankInfo(x.rank).chars}</small></li>`).join("");
@@ -2406,8 +2650,7 @@ function renderEvent() {
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
         <li class="rk-0">${avatar(null)}<small>${ORDER_MAX}</small></li>${chain}</ol></div>` : ""}
     </div>
-    <section class="money-desk ${activeStaff.length ? "" : "closed"}" aria-label="회사 통장과 이번 분기 투자">
-      ${bankCard(c)}
+    <section class="money-desk ${activeStaff.length ? "" : "closed"}" aria-label="이번 분기 투자와 회사 통장">
       ${activeStaff.length ? `<fieldset class="invest-choice">
         <legend><span aria-hidden="true">💸</span> 이번 분기, 돈을 굴릴까요?</legend>
         <div class="invest-grid">
@@ -2427,6 +2670,7 @@ function renderEvent() {
         </div>
         <p class="hint">급여·회식비를 남긴 금액으로 투자합니다. 출금과 회수는 이번 분기 말에 함께 정산해요.</p>
       </fieldset>` : ""}
+      ${bankCard(c)}
     </section>
     ${activeStaff.length ? powerPanel("before") : ""}
     ${quit.length ? `<p class="hint quit-list">퇴사: ${quit.join(" ")}</p>` : ""}
@@ -2454,8 +2698,13 @@ function renderEvent() {
     officeSync(false);
   }
   if (fresh) {
+    // 분기 첫 화면의 주인공은 미션과 지시서: 단톡방 잡담은 몇 초 동안 천천히
+    talk.slowUntil = Date.now() + 8000;
+    talk.burst = 0;
     talkSystem(`📣 ${quarterLabel(game.round)} 시작 · ${chance ? "✨ 기회" : "⚠ 위기"}: ${ev.title}`);
     setTimeout(() => officeRush(chance ? "✨" : "❗", chance), 80);
+    // 짧은 휴대폰 화면: 타이틀 카드가 걷히면 지시서가 큰 버튼 위로 보이게 패널을 살짝 올림
+    setTimeout(() => guard(showOrderAboveDock), reduceMotion() ? 950 : 2150);
   }
   // 회식을 쏘면 사무실이 들썩
   const powerKey = round.power ? `${game.round}:${round.power}` : null;
@@ -2500,6 +2749,32 @@ function revealUI(on) {
   if (on) talkTypingShow("");
 }
 
+// 판정·숫자·퇴사 연출이 이어지는 동안에도 "탭하면 바로 보기"가 보이게 (단톡방 시트가 닫혀 있으면 사무실 위 칩으로)
+function revealTail(on) {
+  document.body.classList.toggle("reveal-tail", !!on);
+  const skip = document.getElementById("talk-skip");
+  if (skip) skip.hidden = !on;
+}
+
+// 읽을 시간: 글이 길수록 조금 더 (언제든 탭하면 건너뜀)
+function readMs(text, base, per, cap) {
+  return Math.min(cap, base + Array.from(String(text || "")).length * per);
+}
+
+function reportMsg(up, r, k) {
+  const isFinal = k === up.length - 1;
+  return { person: up[k], who: `${up[k].rank} ${up[k].name}${isFinal ? " → 사장님께" : ""}`, text: r.up[k].say, kind: isFinal ? "final" : "" };
+}
+
+// 진실 공개 한 줄. 마지막 직원(가장 짧은 글자 수)은 크게 + "✂ N자" 꼬리표
+function truthMsg(staff, r, k) {
+  const last = k === staff.length - 1;
+  return {
+    person: staff[k], who: `${staff[k].rank} ${staff[k].name}`, text: r.down[k].say, kind: r.down[k].lie ? "lie" : "",
+    cls: last ? "last" : "", tag: last ? `✂ ${rankInfo(staff[k].rank).chars}자` : ""
+  };
+}
+
 async function renderReports() {
   const c = game.company;
   const round = c.rounds[game.round];
@@ -2515,31 +2790,47 @@ async function renderReports() {
   document.getElementById("report-wait").onclick = skipReveal;
   talkEnsure();
   ambientStop();
-  officeSync(false);
-  if (talk.posted !== roundKey()) talkOrder(round.order);
+  guard(() => {
+    officeSync(false);
+    if (talk.posted !== roundKey()) talkOrder(round.order);
+  });
   const room = talkRoom("📈 보고 라인", up.length + 1);
   room.onclick = skipReveal;
   revealUI(true);
-  officeBusy();
-  officeClearSay();
-  await beat(320);
-  await officePaper(round.order, chain);
-  for (let k = 0; k < up.length; k++) {
-    const isFinal = k === up.length - 1;
-    const fl = rankNo(up[k].rank);
-    await addBubble(room, `${up[k].rank} ${up[k].name}${isFinal ? " → 사장님께" : ""}`, r.up[k].say, isFinal ? "final" : "", up[k],
-      () => officeSay(fl, r.up[k].say, { level: k, up: true, final: isFinal }));
+  let shown = 0;
+  // 연출이 어디서 멈춰도 보고는 모두 보이고, main.js가 기다리는 선택 버튼은 반드시 나옵니다
+  try {
+    officeBusy();
+    officeClearSay();
+    await beat(pace(320));
+    await officePaper(round.order, chain);
+    for (let k = 0; k < up.length; k++) {
+      const msg = reportMsg(up, r, k);
+      const fl = rankNo(up[k].rank);
+      await addBubble(room, msg.who, msg.text, msg.kind, msg.person, () => {
+        shown = k + 1;
+        officeSay(fl, msg.text, { level: k, up: true, final: msg.kind === "final" });
+      }, { hold: readMs(msg.text, 420, 14, 1200) });
+    }
+  } catch (e) {
+    console.warn("보고 연출 오류 (남은 보고를 한꺼번에 보여 줍니다)", e);
+    for (let k = shown; k < up.length; k++) room.appendChild(msgNode(reportMsg(up, r, k)));
+    talkScroll(true);
+  } finally {
+    room.classList.remove("playing");
+    const fly = office.stage && office.stage.querySelector(".fly");
+    if (fly) fly.classList.remove("on");
+    revealUI(false);
+    document.getElementById("report-wait")?.remove();
   }
-  room.classList.remove("playing");
-  revealUI(false);
-  document.getElementById("report-wait")?.remove();
   renderDecisionTools();
 }
 
-// 파고들기/칭찬하기를 누른 직후 1초 남짓 두구두구 (탭하면 바로 넘어감)
+// 파고들기/칭찬하기를 누른 직후 1초 남짓 두구두구.
+// 이 겹침 화면을 탭하면 두구두구만 끝납니다 (진실 공개 전체를 건너뛰지 않음). 0.4초 안의 두 번째 탭(더블 탭)은 무시.
 async function suspense(choice) {
   const box = document.getElementById("suspense");
-  if (!box || skipping) return;
+  if (!box) return;
   const dig = choice === "dig";
   box.innerHTML = `<div class="suspense-card ${dig ? "dig" : "praise"}">
       <span class="suspense-ico" aria-hidden="true">${dig ? "🔍" : "👏"}</span>
@@ -2548,15 +2839,95 @@ async function suspense(choice) {
       <small>탭하면 바로 공개</small>
     </div>`;
   box.hidden = false;
-  box.onclick = skipReveal;
   revealing = true;
   document.body.classList.add("in-suspense");
-  officeBusy(true);
-  if (dig) officeLens(); else officeClap();
-  sfx("drum", SUSPENSE_DELAY);
-  await beat(reduceMotion() ? 500 : SUSPENSE_DELAY);
+  const t0 = performance.now();
+  let tapped = () => {};
+  const tap = new Promise(resolve => { tapped = resolve; });
+  box.onclick = () => { if (performance.now() - t0 > 400) tapped(); };
+  // 두 번째 공개부터는 두구두구도 짧게 (0.6초)
+  const ms = reduceMotion() ? 500 : quick() ? 600 : SUSPENSE_DELAY;
+  guard(() => {
+    officeBusy(true);
+    if (dig) officeLens(ms); else officeClap();
+    sfx("drum", ms);
+  });
+  await Promise.race([wait(ms), tap]);
   box.hidden = true;
+  box.onclick = null;
   document.body.classList.remove("in-suspense");
+}
+
+// 실제 지시 라인: 사장 → 직원들. 한 줄씩 읽을 시간을 주고, 거짓말은 흔들리며 도장 쾅
+async function truthLine(c, round, r, staff) {
+  let room = document.getElementById("room");
+  if (!room || !room.closest("#talk")) room = talkRoom("📉 실제 지시 라인", staff.length + 1);
+  else room.insertAdjacentHTML("beforeend", roomHead("📉 진실 공개 · 실제 지시 라인", staff.length + 1));
+  room.classList.add("truth", "playing");
+  room.classList.remove("skipped");
+  room.onclick = skipReveal;
+  revealUI(true);
+  let shown = -1; // -1 = 사장 지시도 아직
+  try {
+    officeBusy(true);
+    officeClearSay();
+    officeSpot2(0);
+    await addBubble(room, `사장 ${c.player} (나)`, round.order, "ceo", null, () => {
+      shown = 0;
+      officeSay(0, round.order, {});
+    }, { hold: readMs(round.order, 500, 12, 1500) });
+    for (let k = 0; k < staff.length; k++) {
+      const msg = truthMsg(staff, r, k);
+      const fl = rankNo(staff[k].rank);
+      const lie = msg.kind === "lie";
+      const last = k === staff.length - 1;
+      officeSpot2(fl);
+      guard(officeUnstamp); // 앞사람 거짓말 도장은 다음 사람이 말할 때 걷힘 (도장은 늘 한 개만)
+      await addBubble(room, msg.who, msg.text, msg.kind, msg.person, () => {
+        shown = k + 1;
+        // 마지막 한 줄(가장 웃긴 줄) 동안은 다른 직원 머리 위 이모지를 숨겨 말풍선·이름표만 또렷하게
+        if (last) guard(() => {
+          office.el.classList.add("hush");
+          office.mates.forEach(m => m.el.classList.toggle("on-air", m.i === fl));
+        });
+        officeSay(fl, msg.text, { lie, final: last });
+        if (lie) officeLie(fl, "🤥 거짓말");
+      }, { cls: msg.cls, tag: msg.tag, hold: readMs(msg.text, 650, 28, 2000) + (last ? 700 : 0) });
+    }
+  } catch (e) {
+    console.warn("진실 공개 연출 오류 (남은 줄을 한꺼번에 보여 줍니다)", e);
+    if (shown < 0) { room.appendChild(msgNode({ who: `사장 ${c.player} (나)`, text: round.order, kind: "ceo" })); shown = 0; }
+    for (let k = shown; k < staff.length; k++) room.appendChild(msgNode(truthMsg(staff, r, k)));
+    talkScroll(true);
+  }
+  guard(() => {
+    officeSpot2(null);
+    officeUnstamp();
+    if (office.el) office.el.classList.remove("hush");
+    office.mates.forEach(m => m.el.classList.remove("on-air"));
+  });
+  room.classList.remove("playing");
+}
+
+// 사장님 지시 → 마지막 직원이 들은 말 (캡처해서 자랑하고 싶은 한 장)
+function telephoneCard(round, r, staff) {
+  const k = staff.length - 1;
+  if (k < 0 || !r.down[k]) return "";
+  const x = staff[k];
+  const say = String(r.down[k].say || "");
+  return `<div class="telephone" role="group" aria-label="사장님 지시와 마지막 직원이 들은 말 비교">
+      <p class="tel-head"><span aria-hidden="true">📞</span> 사장님 지시 → 마지막 직원이 들은 말</p>
+      <div class="tel-row ceo">
+        <span class="tel-who">${avatar(null)}<b>사장님 지시</b><small>${Number(Array.from(String(round.order)).length)}자</small></span>
+        <p class="tel-text">${esc(round.order)}</p>
+      </div>
+      <p class="tel-arrow" aria-hidden="true"><span>⬇</span> ${Number(staff.length)}명을 거쳐 ✂ ${Number(rankInfo(x.rank).chars)}자로</p>
+      <div class="tel-row last rk-${rankNo(x.rank)} ${r.down[k].lie ? "lie" : ""}">
+        <span class="tel-who">${avatar(x)}<b>${esc(x.rank)} ${esc(x.name)}</b><small>${Number(Array.from(say).length)}자</small></span>
+        <p class="tel-text">${esc(say)}</p>
+        ${r.down[k].lie ? stamp("🤥 거짓말", "tel-stamp") : ""}
+      </div>
+    </div>`;
 }
 
 async function renderTruth() {
@@ -2574,131 +2945,140 @@ async function renderTruth() {
   const staff = round.chain.map(id => candidateById(c, id)); // 이번 분기에 있던 직원 (퇴사자 포함)
   document.getElementById("result-title").textContent = closed ? "🚪 직원 부재로 영업을 중단했습니다" : round.choice === "dig" ? "🔍 파고들어 보니…" : "👏 칭찬했습니다. 그런데 진실은…";
   document.getElementById("result-lead").textContent = closed ? "직원이 없어 이번 이벤트를 수행하지 못했습니다. 4분기까지 결산은 이어집니다." : "🤥 표시는 일부러 말을 바꾸거나 거짓말한 직원입니다.";
-  talkEnsure();
-  ambientStop();
-  officeSync(false);
-  if (!closed) await suspense(round.choice);
+  // 연출(사무실·단톡방·소리·숫자)은 하나하나 감싸서, 어디서 오류가 나도 판정·장부는 그려지고 main.js의 다음 버튼은 나옵니다
+  try {
+    guard(() => { talkEnsure(); ambientStop(); officeSync(false); });
+    if (!closed) await safely(() => suspense(round.choice));
 
-  let room = document.getElementById("room");
-  if (closed) {
-    if (room) room.hidden = true;
-    talkSystem(`🚪 ${quarterLabel(game.round)} · 직원이 아무도 없어 단톡방이 조용합니다`);
-  } else {
-    if (!room || !room.closest("#talk")) room = talkRoom("📉 실제 지시 라인", staff.length + 1);
-    else room.insertAdjacentHTML("beforeend", roomHead("📉 진실 공개 · 실제 지시 라인", staff.length + 1));
-    room.classList.add("truth", "playing");
-    room.classList.remove("skipped");
-    room.onclick = skipReveal;
-    revealUI(true);
-    officeBusy(true);
-    officeClearSay();
-    officeSpot2(0);
-    await addBubble(room, `사장 ${c.player} (나)`, round.order, "ceo", null, () => officeSay(0, round.order, {}));
-    for (let k = 0; k < staff.length; k++) {
-      const fl = rankNo(staff[k].rank);
-      const lie = !!r.down[k].lie;
-      officeSpot2(fl);
-      await addBubble(room, `${staff[k].rank} ${staff[k].name}`, r.down[k].say, lie ? "lie" : "", staff[k], () => {
-        officeSay(fl, r.down[k].say, { lie });
-        if (lie) officeLie(fl, "🤥 거짓말");
-      });
+    if (closed) {
+      const room = document.getElementById("room");
+      if (room) room.hidden = true;
+      talkSystem(`🚪 ${quarterLabel(game.round)} · 직원이 아무도 없어 단톡방이 조용합니다`);
+    } else {
+      await safely(() => truthLine(c, round, r, staff));
     }
-    officeSpot2(null);
-    room.classList.remove("playing");
     revealUI(false);
-    revealing = true;
-    setTimeout(() => { const sp = office.stage && office.stage.querySelector(".speech"); if (sp && !revealing) sp.classList.remove("on"); }, 2600);
-  }
+    revealing = true; // 판정·숫자·퇴사도 탭하면 바로
+    revealTail(true);
+    // 마지막 말풍선은 잠깐 더 읽게 두었다가 걷음 (퇴사자가 걸어 나가느라 공개가 길어져도 이름표 위에 남지 않게)
+    const sayToken = ++truthSayToken;
+    setTimeout(() => { if (sayToken === truthSayToken) guard(officeHideSay); }, pace(2600));
 
-  const upLies = [...staff].reverse().map((x, k) => r.up[k].lie ? x : null).filter(Boolean);
-  const finalLie = !closed && r.up.length && r.up[r.up.length - 1].lie;
-  const box = document.createElement("div");
-  box.className = "action";
-  box.innerHTML = `
-    <p class="tag">실제로 한 일</p><p>${esc(r.action)}</p>
-    ${!closed ? `<p class="tag">사장님이 받은 보고</p><p class="got-report">"${esc(r.up[r.up.length - 1].say)}"${finalLie ? stamp("반전", "twist-stamp") : ""}</p>` : ""}
-    ${upLies.length ? `<p class="tag">보고를 부풀린 직원</p><p>🤥 ${upLies.map(x => esc(x.name)).join(", ")}</p>` : ""}
-    ${round.choice === "dig" ? `<p class="tag">🔍 파고들어 알아낸 것</p><p>${esc(r.audit)}</p>` : ""}
-    ${!closed ? allHonestNote(r) : ""}`;
-  resultBox.appendChild(box);
-  if (upLies.length) {
-    upLies.forEach(x => officeLie(rankNo(x.rank), "🤥 거짓 보고"));
-    sfx("lie");
-  }
-  if (finalLie) sfx("stamp");
-  if (!skipping && !reduceMotion()) box.scrollIntoView({ behavior: "smooth", block: "start" });
-  await beat(closed ? 0 : 500);
+    const upLies = [...staff].reverse().map((x, k) => r.up[k] && r.up[k].lie ? x : null).filter(Boolean);
+    const finalLie = !closed && r.up.length && r.up[r.up.length - 1].lie;
+    const box = document.createElement("div");
+    box.className = "action";
+    box.innerHTML = `
+      ${!closed ? telephoneCard(round, r, staff) : ""}
+      <p class="tag">실제로 한 일</p><p>${esc(r.action)}</p>
+      ${!closed ? `<p class="tag">사장님이 받은 보고</p><p class="got-report">"${esc(r.up[r.up.length - 1].say)}"${finalLie ? stamp("반전", "twist-stamp") : ""}</p>` : ""}
+      ${upLies.length ? `<p class="tag">보고를 부풀린 직원</p><p>🤥 ${upLies.map(x => esc(x.name)).join(", ")}</p>` : ""}
+      ${round.choice === "dig" ? `<p class="tag">🔍 파고들어 알아낸 것</p><p>${esc(r.audit)}</p>` : ""}
+      ${!closed ? allHonestNote(r) : ""}`;
+    resultBox.appendChild(box);
+    guard(() => {
+      if (upLies.length) officeLieOneByOne(upLies.map(x => rankNo(x.rank)), "🤥 거짓 보고");
+      if (finalLie) sfx("stamp");
+      if (!skipping && !reduceMotion()) box.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    await beat(closed ? 0 : pace(500));
 
-  const verdict = document.createElement("article");
-  verdict.className = `news verdict ${round.success ? "good" : "bad"}`;
-  verdict.innerHTML = `
-    <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
-    <h3>${esc(r.news)}</h3>
-    <div class="verdict-row">
-      ${stamp(closed ? "휴업" : round.success ? "승인" : "반려", `verdict-stamp ${round.success ? "ok" : "no"}`)}
-      <p class="outcome ${round.success ? "good" : "bad"}">${round.success ? "✅ 잘 수행함" : "❌ 수행 실패"} <small>성과 <b class="score-count">0</b>점 · ${esc(r.reason)}</small></p>
-    </div>
-    <p class="choice-result ${round.penalty ? "bad" : round.choice === "dig" && round.success ? "warn" : "good"}">
-      ${closed ? "🚪 영업 중단" : round.choice === "dig" ? "🔍 파고들기" : "👏 칭찬하기"} → ${esc(round.loyaltyNote)}</p>
-    ${round.quits.length ? `<div class="quit-scene" role="img" aria-label="${esc(round.quits.join(", "))} 퇴사">
-        <span class="door" aria-hidden="true">🚪</span>
-        ${round.quits.map((q, k) => `<span class="walker" style="--i:${k}" aria-hidden="true"><span class="box">📦</span><span class="person">🚶</span></span>`).join("")}
-        <span class="quit-name">📦 ${round.quits.length}명이 짐을 쌌습니다</span>
-        ${stamp("퇴사", "quit-stamp")}
-      </div>` : ""}
-    ${round.quits.length ? `<p class="choice-result bad">🚪 충성심이 바닥난 ${round.quits.map(esc).join(", ")}이(가) 퇴사했습니다</p>` : ""}
-    ${round.power ? `<p class="hint">이번 분기 필살기: ${esc(CEO_POWERS.find(p => p.id === round.power).name)}</p>` : ""}
-    <table class="ledger">
-      <tr><td>기본 매출 (성과 ${r.score}점)</td><td>${money(round.baseRevenue)}</td></tr>
-      <tr><td>인건비</td><td>${money(-round.cost)}</td></tr>
-      ${round.investmentCost ? `<tr><td>투자금 출금</td><td>${money(-round.investmentCost)}</td></tr><tr><td>투자금 회수</td><td>${money(round.investmentReturn)}</td></tr>` : ""}
-      ${round.powerCost ? `<tr><td>회식 비용</td><td>${money(-round.powerCost)}</td></tr>` : ""}
-      ${round.penalty ? `<tr class="bad"><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
-      <tr class="sum"><td>이번 분기 순이익</td><td class="${round.profit < 0 ? "neg" : "pos"}"><span class="profit-count">${money(0)}</span></td></tr>
-      ${round.support ? `<tr class="support"><td>부모님 긴급 용돈 (순이익 제외)</td><td>${money(round.support)}</td></tr>` : ""}
-      <tr class="bank-row"><td><span aria-hidden="true">🏦</span> 통장 잔액</td><td class="${round.closingCash < 0 ? "neg" : ""}">${money(round.closingCash, false)}</td></tr>
-    </table>
-    ${round.cost ? `<p class="payday ${round.closingCash < 0 ? "minus" : ""}"><span class="payday-ico" aria-hidden="true">💬</span><span><b>직원:</b> ${round.closingCash < 0 ? "사장님, 통장이 마이너스인데… 다음 월급도 지켜 주세요!" : "입금 확인했습니다. 충성!"}</span></p>` : ""}
-    ${r.over ? `<p class="note">AI가 글자 수를 ${r.over}번 넘겨서 잘랐어요</p>` : ""}`;
-  resultBox.appendChild(verdict);
-  sfx("stamp");
-  if (!skipping && !reduceMotion()) setTimeout(() => verdict.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  if (!closed) officeMood(round.success ? "cheer" : "slump");
+    // 장부: 이번 분기 돈의 가장 큰 이유(손실이면 가장 큰 지출, 이익이면 가장 큰 수입)에 형광펜
+    const reason = moneyReason(round);
+    const cls = (key, base) => {
+      const list = [base, reason && reason.key === key ? "top" : ""].filter(Boolean).join(" ");
+      return list ? ` class="${list}"` : "";
+    };
+    const verdict = document.createElement("article");
+    verdict.className = `news verdict ${round.success ? "good" : "bad"}`;
+    verdict.innerHTML = `
+      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
+      <h3>${esc(r.news)}</h3>
+      <div class="verdict-row">
+        ${stamp(closed ? "휴업" : round.success ? "승인" : "반려", `verdict-stamp ${round.success ? "ok" : "no"}`)}
+        <p class="outcome ${round.success ? "good" : "bad"}">${round.success ? "✅ 잘 수행함" : "❌ 수행 실패"} <small>성과 <b class="score-count">0</b>점 · ${esc(r.reason)}</small></p>
+      </div>
+      <p class="choice-result ${round.penalty ? "bad" : round.choice === "dig" && round.success ? "warn" : "good"}">
+        ${closed ? "🚪 영업 중단" : round.choice === "dig" ? "🔍 파고들기" : "👏 칭찬하기"} → ${esc(round.loyaltyNote)}</p>
+      ${round.quits.length ? `<div class="quit-scene" role="img" aria-label="${esc(round.quits.join(", "))} 퇴사">
+          <span class="door" aria-hidden="true">🚪</span>
+          ${round.quits.map((q, k) => `<span class="walker" style="--i:${k}" aria-hidden="true"><span class="box">📦</span><span class="person">🚶</span></span>`).join("")}
+          <span class="quit-name">📦 ${round.quits.length}명이 짐을 쌌습니다</span>
+          ${stamp("퇴사", "quit-stamp")}
+        </div>` : ""}
+      ${round.quits.length ? `<p class="choice-result bad">🚪 충성심이 바닥난 ${round.quits.map(esc).join(", ")}이(가) 퇴사했습니다</p>` : ""}
+      ${round.power ? `<p class="hint">이번 분기 필살기: ${esc(CEO_POWERS.find(p => p.id === round.power).name)}</p>` : ""}
+      ${reasonLine(reason)}
+      <table class="ledger">
+        <tr${cls("rev")}><td>기본 매출 (성과 ${r.score}점)</td><td>${money(round.baseRevenue)}</td></tr>
+        <tr${cls("cost")}><td>인건비</td><td>${money(-round.cost)}</td></tr>
+        ${round.investmentCost ? `<tr${cls("inv")}><td>투자금 출금</td><td>${money(-round.investmentCost)}</td></tr><tr${cls("inv")}><td>투자금 회수</td><td>${money(round.investmentReturn)}</td></tr>` : ""}
+        ${round.powerCost ? `<tr${cls("power")}><td>회식 비용</td><td>${money(-round.powerCost)}</td></tr>` : ""}
+        ${round.penalty ? `<tr${cls("pen", "bad")}><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
+        <tr class="sum"><td>이번 분기 순이익</td><td class="${round.profit < 0 ? "neg" : "pos"}"><span class="profit-count">${money(0)}</span></td></tr>
+        ${round.support ? `<tr class="support"><td>부모님 긴급 용돈 (순이익 제외)</td><td>${money(round.support)}</td></tr>` : ""}
+        <tr class="bank-row"><td><span aria-hidden="true">🏦</span> 통장 잔액</td><td class="${round.closingCash < 0 ? "neg" : ""}">${money(round.closingCash, false)}</td></tr>
+      </table>
+      ${round.cost ? `<p class="payday ${round.closingCash < 0 ? "minus" : ""}"><span class="payday-ico" aria-hidden="true">💬</span><span><b>직원:</b> ${round.closingCash < 0 ? "사장님, 통장이 마이너스인데… 다음 월급도 지켜 주세요!" : "입금 확인했습니다. 충성!"}</span></p>` : ""}
+      ${r.over ? `<p class="note">AI가 글자 수를 ${Number(r.over)}번 넘겨서 잘랐어요</p>` : ""}`;
+    resultBox.appendChild(verdict);
+    guard(() => {
+      sfx("stamp");
+      if (!skipping && !reduceMotion()) setTimeout(() => verdict.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+      if (!closed) officeMood(round.success ? "cheer" : "slump");
+    });
 
-  await countUp(verdict.querySelector(".score-count"), r.score, 600, v => String(Math.round(v)));
-  const profitEl = verdict.querySelector(".profit-count");
-  await countUp(profitEl, round.profit, 900);
-  if (round.profit < 0) { replay(profitEl, "drop"); sfx("fail"); }
-  else sfx("coin");
-  if (round.profit <= BIG_LOSS) shakeScreen();
-  if (round.profit >= BIG_WIN) burst(26);
-  renderHud();
+    const scoreEl = verdict.querySelector(".score-count");
+    const profitEl = verdict.querySelector(".profit-count");
+    await safely(async () => {
+      await countUp(scoreEl, r.score, pace(600), v => String(Math.round(v)));
+      await countUp(profitEl, round.profit, pace(900));
+      if (round.profit < 0) { replay(profitEl, "drop"); sfx("fail"); }
+      else sfx("coin");
+      if (round.profit <= BIG_LOSS) shakeScreen();
+      if (round.profit >= BIG_WIN) burst(26);
+    });
+    if (scoreEl) scoreEl.textContent = String(r.score);
+    if (profitEl) profitEl.textContent = money(round.profit);
+    guard(renderHud);
 
-  // 판정 다음: 부모님 긴급 용돈(있으면) → 분기별 돈의 흐름 (공개 순서는 main과 같음)
-  if (round.support) {
-    const note = document.createElement("p");
-    note.className = "family-support";
-    note.innerHTML = `<span class="fs-phone" aria-hidden="true">📱</span><span class="fs-msg"><b>엄마</b>${esc(`이번이 진짜 마지막이다! 긴급 용돈 ${money(round.support)} 입금.`)}</span>`;
-    note.setAttribute("aria-label", `엄마: 이번이 진짜 마지막이다! 긴급 용돈 ${money(round.support)} 입금.`);
-    resultBox.appendChild(note);
-    sfx("coin");
-    await beat(400);
-  }
-  resultBox.insertAdjacentHTML("beforeend", financeChart(c));
+    // 판정 다음: 부모님 긴급 용돈(있으면) → 분기별 돈의 흐름 (공개 순서는 main과 같음)
+    if (round.support) {
+      const note = document.createElement("p");
+      note.className = "family-support";
+      note.innerHTML = `<span class="fs-phone" aria-hidden="true">📱</span><span class="fs-msg"><b>엄마</b>${esc(`이번이 진짜 마지막이다! 긴급 용돈 ${money(round.support)} 입금.`)}</span>`;
+      note.setAttribute("aria-label", `엄마: 이번이 진짜 마지막이다! 긴급 용돈 ${money(round.support)} 입금.`);
+      resultBox.appendChild(note);
+      sfx("coin");
+      await beat(400);
+    }
+    resultBox.insertAdjacentHTML("beforeend", financeChart(c));
 
-  // 퇴사자는 상자를 들고 걸어 나갑니다
-  for (const label of round.quits) {
-    const x = staff.find(s => `${s.rank} ${s.name}` === label);
-    if (x) await officeQuit(rankNo(x.rank));
-  }
-  revealing = false;
-  office.holdQuit = false;
-  officeSync(false);
-  talkEnsure();
-  officeIdle();
-  if (!closed) {
-    talk.afterLeft = 2;
-    ambientStart("after");
+    // 퇴사자는 상자를 들고 동시에 걸어 나갑니다 (아무리 많아도 5초 안쪽, 탭하면 바로)
+    const quitters = round.quits.map(label => staff.find(s => `${s.rank} ${s.name}` === label)).filter(Boolean);
+    if (quitters.length) {
+      await safely(() => Promise.race([
+        Promise.all(quitters.map((x, k) => beat(k * 220).then(() => officeQuit(rankNo(x.rank))))),
+        beat(5000)
+      ]));
+    }
+  } catch (e) {
+    console.warn("진실 공개 오류 (다음 분기로 넘어갈 수 있게 정리합니다)", e);
+  } finally {
+    revealUI(false);
+    revealTail(false);
+    revealing = false;
+    office.holdQuit = false;
+    quickFor = c; // 첫 분기를 끝까지 봤으면 다음 공개부터 빠르게
+    document.body.classList.remove("in-suspense");
+    const sus = document.getElementById("suspense");
+    if (sus) sus.hidden = true;
+    guard(officeHideSay); // 공개가 끝나면 무대 말풍선은 반드시 걷음 (퇴사 도장은 그대로)
+    guard(() => { officeSync(false); talkEnsure(); officeIdle(); });
+    if (!closed) {
+      talk.afterLeft = 2;
+      ambientStart("after");
+    }
   }
 }
 
@@ -2758,8 +3138,22 @@ function renderFinal(placed) {
       <span class="ename">${esc(c.events[i].title)} ${round.choice === "closed" ? "🚪" : round.choice === "dig" ? "🔍" : "👏"}${round.success ? "✅" : "❌"}<small>${esc(round.result.news)}</small></span>
       <b class="${round.profit < 0 ? "neg" : "pos"}">${money(round.profit)}</b></li>`).join("");
 
+  const root = document.getElementById("final");
+  // 결산 발표가 아직 진행 중인데 같은 회사로 다시 불리면(공유 순위표가 순위를 새로 계산해 board-sync가 다시 부름)
+  // 순위 띠만 바꿔 끼우고 발표(두구두구·숫자·별·순위 도장)는 끝까지 이어 갑니다. 순위 띠는 rank-on 전까지 CSS가 숨김
+  if (finalShownFor === c && !root.classList.contains("settled") && root.firstElementChild) {
+    const old = root.querySelector(".placed-wrap, .placed");
+    if (old) {
+      const t = document.createElement("div");
+      t.innerHTML = banner;
+      if (t.firstElementChild) old.replaceWith(t.firstElementChild);
+      return;
+    }
+  }
   finalToken++;
-  document.getElementById("final").innerHTML = `
+  // #final은 한 판이 끝나도 그대로 남는 요소: 지난 판의 연출 상태(go·stars-on·rank-on)를 지우고 새로 시작
+  root.classList.remove("pre", "go", "stars-on", "rank-on", "settled");
+  root.innerHTML = `
     <h2 class="sr-only">1년 결산</h2>
     ${banner}
     <div class="front">
@@ -2808,50 +3202,84 @@ function renderFinal(placed) {
           ${statBar("정직", x.honesty, "honest")} ${hearts(x.loyalty)}</li>`).join("")}</ul>
       </div>
     </div>`;
-  finalShow(c, profit, placed, finalToken);
+  finalKind = !staffOf(c).length ? "dark" : profit >= 0 ? "party" : "pack";
+  // 같은 회사를 다시 그리는 경우(공유 순위표가 순위를 새로 계산해 board-sync가 다시 부름 등)는 두구두구 없이 바로 결과
+  const again = finalShownFor === c;
+  finalShownFor = c;
+  if (again) finalSettle(root, profit);
+  else finalShow(c, profit, placed, finalToken);
 }
 
+// 결산 신문의 별 기준 (1년 순이익, 만원). 연출용 꾸밈일 뿐 game.js 규칙·순위와는 무관합니다.
+// 팀이 매출·급여 밸런스를 바꾸면 이 숫자만 고치세요: ★ 흑자 · ★★ 3,000만원 이상 · ★★★ 8,000만원 이상
+const FINAL_STAR_LINES = [0, 3000, 8000];
+
 function finalStars(profit) {
-  return profit >= 8000 ? 3 : profit >= 3000 ? 2 : profit >= 0 ? 1 : 0;
+  return FINAL_STAR_LINES.filter(line => profit >= line).length;
+}
+
+let finalKind = null;     // 결산 사무실 에필로그: party | pack | dark
+let finalShownFor = null; // 결산 발표 연출을 이미 보여 준 회사
+
+// 결산 화면을 연출 없이 최종 상태로 (건너뛰기·다른 화면으로 갔다 오기·다시 그리기·연출 오류 모두 여기로)
+function finalSettle(root, profit) {
+  const total = root.querySelector(".total-count");
+  if (total) total.textContent = money(profit);
+  root.classList.remove("pre");
+  root.classList.add("go", "stars-on", "rank-on", "settled");
+  const pop = document.getElementById("final-pop");
+  if (pop) pop.hidden = true;
+  revealing = false;
+  guard(() => {
+    if (finalKind && document.body.dataset.screen === "screen-final" && document.body.classList.contains("with-office")) officeEpilogue(finalKind);
+    renderHud();
+  });
 }
 
 // '결산 발표' 연출: 두구두구 → 신문이 돌며 들어옴 → 숫자 → 별 → 순위 쾅 (탭하면 건너뜀)
 async function finalShow(c, profit, placed, token) {
   const root = document.getElementById("final");
   const live = () => token === finalToken && game.company === c && (document.body.dataset.screen || "screen-final") === "screen-final";
+  // 중간에 다른 화면으로 가면(순위표 등) 그 자리에서 최종 상태로: 돌아왔을 때 0만원·순위 없음으로 남지 않게
+  const bail = () => { if (token === finalToken) finalSettle(root, profit); };
   resetSkip();
   revealing = true;
   root.classList.add("pre");
-  await beat(0);
-  if (!live()) return;
-  const kind = !staffOf(c).length ? "dark" : profit >= 0 ? "party" : "pack";
-  if (document.body.classList.contains("with-office")) { officeSync(false); officeEpilogue(kind); }
-  const pop = document.getElementById("final-pop");
-  if (pop && !reduceMotion()) {
-    pop.innerHTML = `<div class="fp-card"><small>${esc(c.name)} · 1년 결산</small><b>결산 발표</b><p class="drum" aria-hidden="true">두구두구두구</p><span>탭하면 바로 보기</span></div>`;
-    pop.hidden = false;
-    pop.onclick = skipReveal;
-    replay(pop, "show");
-    sfx("drum", 1300);
-    await beat(1350);
-    pop.hidden = true;
+  try {
+    await beat(0);
+    if (!live()) return bail();
+    guard(() => { if (document.body.classList.contains("with-office")) { officeSync(false); officeEpilogue(finalKind); } });
+    const pop = document.getElementById("final-pop");
+    if (pop && !reduceMotion()) {
+      pop.innerHTML = `<div class="fp-card"><small>${esc(c.name)} · 1년 결산</small><b>결산 발표</b><p class="drum" aria-hidden="true">두구두구두구</p><span>탭하면 바로 보기</span></div>`;
+      pop.hidden = false;
+      pop.onclick = skipReveal;
+      replay(pop, "show");
+      sfx("drum", 1300);
+      await beat(1350);
+      pop.hidden = true;
+    }
+    if (!live()) return bail();
+    root.classList.remove("pre");
+    root.classList.add("go");
+    sfx("whoosh");
+    await beat(650);
+    sfx("stamp");
+    await countUp(root.querySelector(".total-count"), profit, 1400);
+    if (!live()) return bail();
+    root.classList.add("stars-on");
+    guard(renderHud);
+    if (profit >= 0) { sfx("fanfare"); burst(24); } else sfx("fail");
+    await beat(500);
+    if (!live()) return bail();
+    root.classList.add("rank-on");
+    if (placed) sfx("stamp");
+    if (placed && placed.rank <= 3) setTimeout(() => burst(26), 200);
+    revealing = false;
+  } catch (e) {
+    console.warn("결산 연출 오류 (최종 화면으로 바로 갑니다)", e);
+    bail();
   }
-  if (!live()) { revealing = false; root.classList.remove("pre"); return; }
-  root.classList.remove("pre");
-  root.classList.add("go");
-  sfx("whoosh");
-  await beat(650);
-  sfx("stamp");
-  await countUp(root.querySelector(".total-count"), profit, 1400);
-  if (!live()) return;
-  root.classList.add("stars-on");
-  if (profit >= 0) { sfx("fanfare"); burst(24); } else sfx("fail");
-  await beat(500);
-  root.classList.add("rank-on");
-  if (placed) sfx("stamp");
-  if (placed && placed.rank <= 3) setTimeout(() => burst(26), 200);
-  revealing = false;
-  renderHud();
 }
 
 // ===== 순위표 =====
@@ -2909,7 +3337,9 @@ function renderSettings() {
 
 // 단톡방 말풍선. person은 직급 색 프로필용 ({rank, name}), 사장(ceo)은 없음.
 // onShow: 말풍선이 뜨는 순간 사무실 무대도 같이 움직이게 (건너뛰어도 꼭 불림)
-async function addBubble(room, who, text, kind, person, onShow) {
+// opts (선택): hold = 다음 말풍선까지 읽을 시간(ms), cls = 말풍선에 붙일 클래스, tag = 이름 옆 꼬리표
+async function addBubble(room, who, text, kind, person, onShow, opts) {
+  const o = opts || {};
   const fast = skipping || reduceMotion();
   if (!fast && kind !== "ceo") {
     const typing = document.createElement("div");
@@ -2919,17 +3349,18 @@ async function addBubble(room, who, text, kind, person, onShow) {
     room.appendChild(typing);
     talkScroll(true);
     if (person) officeTyping(person, true);
-    await beat(TYPING_DELAY);
+    await beat(pace(TYPING_DELAY));
     typing.remove();
   }
-  const div = msgNode({ person, who, text, kind });
+  const div = msgNode({ person, who, text, kind, cls: o.cls, tag: o.tag });
   room.appendChild(div);
   talkNew(div);
   if (onShow) onShow();
   if (fast) return;
   sfx(kind === "lie" ? "lie" : "pop");
   if (kind === "lie") replay(room, "thud", 500);
-  await beat(kind === "lie" ? BUBBLE_DELAY + 380 : BUBBLE_DELAY);
+  const hold = pace(o.hold || BUBBLE_DELAY);
+  await beat(kind === "lie" ? hold + pace(380) : hold);
 }
 
 let toastTimer;
@@ -2997,6 +3428,11 @@ function setupUI() {
   document.addEventListener("visibilitychange", () => {
     document.body.classList.toggle("tab-hidden", document.hidden);
   });
+  // 부스 대기 화면(타이틀)이 오래 떠 있어도 명예의 전당이 공유 순위표를 따라가게 (바뀐 게 없으면 다시 그리지 않음)
+  setInterval(() => {
+    const s = document.getElementById("screen-found");
+    if (!document.hidden && s && s.classList.contains("active") && s.classList.contains("intro")) guard(renderTitle);
+  }, 15000);
 }
 
 setupUI();
