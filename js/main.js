@@ -1,108 +1,51 @@
 // 담당 D: 버튼과 흐름 연결
-// 창업 → (ChatKHU) 창업 뉴스 → 채용 → 위기 → (ChatKHU) 지시 전달·보고 → 진실 공개 → 결산·순위
+// 창업 → (ChatKHU 업종) → (ChatKHU 창업·후보) → 면접 → [이벤트 → (ChatKHU) → 보고 → 진실 공개] x3 → 최종 결산·순위
 
-let aiMode = "founding"; // ChatKHU 화면이 지금 어느 단계용인지
-let lastPlacedAt = null; // 방금 플레이한 기록 (순위표에서 강조)
+let lastPlacedAt = null;   // 방금 플레이한 기록 (순위표에서 강조)
+let interviewIndex = 0;    // 지금 면접 중인 직급 번호
 
 function startGame() {
   resetGame();
-  game.companies.forEach(c => (c.cards = drawCards()));
-  game.companies.forEach((c, i) => renderFound(i));
+  interviewIndex = 0;
+  renderFound();
   showScreen("screen-found");
 }
 
-// ===== 창업 화면 =====
+// ===== ChatKHU 단계 공통 처리 =====
+// 키가 있으면 바로 자동으로 부르고, 실패하면 다시 시도 / 붙여넣기 / 연습 모드를 고를 수 있습니다.
 
-document.querySelectorAll(".company.found").forEach(box => {
-  const i = Number(box.dataset.company);
+let aiStep = null;   // { name, onDone }
+let aiToken = 0;     // 오래된 응답이 늦게 도착해도 무시하기 위한 번호
 
-  box.addEventListener("click", e => {
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
-    const c = game.companies[i];
-    if (btn.dataset.action === "pick") {
-      const card = c.cards[Number(btn.dataset.k)];
-      c.industry = card.name;
-      c.emoji = card.emoji;
-      renderFound(i);
-    }
-    if (btn.dataset.action === "reroll" && !c.rerolled) {
-      c.cards = drawCards();
-      c.rerolled = true;
-      c.industry = "";
-      c.emoji = "";
-      renderFound(i);
-    }
-  });
-
-  // 입력할 때마다 저장 (다시 그려도 지워지지 않게)
-  box.addEventListener("input", e => {
-    const field = e.target.dataset.field;
-    if (field === "player" || field === "name" || field === "motto") {
-      game.companies[i][field] = e.target.value;
-      if (field === "motto") box.querySelector(".counter").textContent = `${e.target.value.length} / ${MOTTO_MAX}`;
-    }
-  });
-
-  box.addEventListener("change", e => {
-    if (e.target.dataset.action === "fund") {
-      game.companies[i].funding = e.target.value;
-      renderFound(i);
-    }
-  });
-});
-
-document.getElementById("btn-found").addEventListener("click", () => {
-  for (const c of game.companies) {
-    const error = checkFounding(c);
-    if (error) return toast(error);
-  }
-  aiMode = "founding";
-  renderAI(aiMode);
+function runAI(name, onDone) {
+  aiStep = { name, onDone };
+  renderAIScreen(AI_STEPS[name]);
   showScreen("screen-ai");
-});
+  if (getApiKey()) autoRunAI();
+}
 
-// ===== ChatKHU 화면 =====
-
-// 자동 연결: 요청문을 ChatKHU API로 바로 보내고 결과를 적용
-document.getElementById("btn-auto").addEventListener("click", async () => {
-  const errorBox = document.getElementById("ai-error");
-  errorBox.textContent = "";
-  setAutoBusy(true);
+async function autoRunAI() {
+  const step = AI_STEPS[aiStep.name];
+  const token = ++aiToken;
+  setAIState("busy");
   try {
     const answer = await callChatKHU(document.getElementById("ai-request").value);
-    // 결과를 붙여넣기 칸에도 남겨 둡니다 (형식이 틀렸을 때 확인용)
-    document.getElementById("ai-response").value = answer;
-    if (aiMode === "founding") applyFounding(answer, getModel());
-    else applyBattle(answer, getModel());
+    if (token !== aiToken) return;
+    document.getElementById("ai-response").value = answer; // 형식이 틀렸을 때 확인용
+    step.apply(answer, getModel());
   } catch (err) {
-    errorBox.textContent = err.message;
-    setAutoBusy(false);
+    if (token !== aiToken) return;
+    setAIState("error", err.message);
     return;
   }
-  setAutoBusy(false);
-  afterAI();
-});
+  aiStep.onDone();
+}
 
-document.getElementById("btn-key-save").addEventListener("click", () => {
-  const key = document.getElementById("key-input").value.trim();
-  if (!key && !getApiKey()) return toast("API 키를 붙여넣어 주세요.");
-  saveApiSettings(key, document.getElementById("model-select").value);
-  renderAutoBox();
-  toast("저장했어요. 이제 'ChatKHU로 바로 만들기'를 누르세요.");
-});
-
-document.getElementById("btn-key-edit").addEventListener("click", () => renderAutoBox(true));
-
-document.getElementById("btn-key-clear").addEventListener("click", () => {
-  clearApiKey();
-  renderAutoBox();
-  toast("이 브라우저에서 API 키를 지웠어요.");
-});
+document.getElementById("btn-ai-retry").addEventListener("click", autoRunAI);
+document.getElementById("btn-ai-connect").addEventListener("click", openSettings);
 
 document.getElementById("btn-copy").addEventListener("click", async () => {
   const area = document.getElementById("ai-request");
-  const btn = document.getElementById("btn-copy");
   try {
     await navigator.clipboard.writeText(area.value);
   } catch {
@@ -110,108 +53,133 @@ document.getElementById("btn-copy").addEventListener("click", async () => {
     area.select();
     document.execCommand("copy");
   }
-  btn.textContent = "복사됨! ChatKHU에 붙여넣으세요";
+  document.getElementById("btn-copy").textContent = "복사됨! ChatKHU에 붙여넣으세요";
 });
 
 document.getElementById("btn-apply").addEventListener("click", () => {
   const text = document.getElementById("ai-response").value.trim();
-  const errorBox = document.getElementById("ai-error");
-  if (!text) return (errorBox.textContent = "ChatKHU 답변을 붙여넣어 주세요.");
+  if (!text) return setAIState("error", "ChatKHU 답변을 붙여넣어 주세요.");
+  aiToken++;
   try {
-    if (aiMode === "founding") applyFounding(text, "");
-    else applyBattle(text, "");
+    AI_STEPS[aiStep.name].apply(text, "");
   } catch (err) {
-    errorBox.textContent = err.message;
-    return;
+    return setAIState("error", err.message);
   }
-  afterAI();
+  aiStep.onDone();
 });
 
 document.getElementById("btn-practice").addEventListener("click", () => {
-  if (aiMode === "founding") practiceFounding();
-  else practiceBattle();
-  afterAI();
+  aiToken++;
+  AI_STEPS[aiStep.name].practice();
+  aiStep.onDone();
 });
 
-function afterAI() {
-  if (aiMode === "founding") {
+// ===== 창업 =====
+
+const foundBox = document.getElementById("found-box");
+
+foundBox.addEventListener("click", e => {
+  const btn = e.target.closest("[data-action]");
+  if (!btn || btn.dataset.action !== "roll") return;
+  const c = game.company;
+  if (c.rolls >= MAX_ROLLS) return;
+  runAI("industry", () => {
+    c.rolls++;
+    renderFound();
+    showScreen("screen-found");
+  });
+});
+
+foundBox.addEventListener("input", e => {
+  const field = e.target.dataset.field;
+  if (!field) return;
+  game.company[field] = e.target.value;
+  const counter = foundBox.querySelector(`.counter[data-for="${field}"]`);
+  if (counter) counter.textContent = `${e.target.value.length} / ${field === "detail" ? DETAIL_MAX : MOTTO_MAX}`;
+});
+
+foundBox.addEventListener("change", e => {
+  if (e.target.dataset.action === "fund") {
+    game.company.funding = e.target.value;
+    renderFound();
+  }
+});
+
+document.getElementById("btn-found").addEventListener("click", () => {
+  const error = checkFounding(game.company);
+  if (error) return toast(error);
+  makeCandidates(game.company);
+  runAI("founding", () => {
     renderFoundingNews();
     showScreen("screen-news");
-  } else {
-    showResult();
-  }
-}
-
-// ===== 창업 뉴스 → 채용 =====
-
-document.getElementById("btn-to-hire").addEventListener("click", () => {
-  game.companies.forEach((c, i) => renderHire(i));
-  showScreen("screen-hire");
+  });
 });
 
-document.querySelectorAll(".company.hire").forEach(box => {
-  const i = Number(box.dataset.company);
+// ===== 면접 =====
 
-  const tryHire = () => {
-    const rank = box.querySelector('[data-field="rank"]').value;
-    const persona = box.querySelector('[data-field="persona"]').value;
-    const error = hire(i, rank, persona);
-    if (error) return toast(error);
-    renderHire(i);
-    box.querySelector('[data-field="rank"]').value = rank; // 고르던 직급 유지
+document.getElementById("btn-to-interview").addEventListener("click", () => {
+  interviewIndex = 0;
+  renderInterview(interviewIndex);
+  showScreen("screen-interview");
+});
+
+document.getElementById("interview").addEventListener("click", e => {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const c = game.company;
+  const rank = HIRE_RANKS[interviewIndex];
+  const go = i => {
+    interviewIndex = i;
+    renderInterview(i);
+    document.getElementById("interview").scrollIntoView({ behavior: "smooth" });
   };
 
-  box.addEventListener("click", e => {
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
-    if (btn.dataset.action === "preset") {
-      box.querySelector('[data-field="persona"]').value = btn.dataset.p;
+  switch (btn.dataset.action) {
+    case "tab": return go(Number(btn.dataset.i));
+    case "hire": {
+      const error = hireCandidate(c, rank, Number(btn.dataset.id));
+      if (error) return toast(error);
+      // 뽑으면 다음 직급으로 넘어갑니다
+      return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
     }
-    if (btn.dataset.action === "hire") tryHire();
-    if (btn.dataset.action === "fire") {
-      fire(i, Number(btn.dataset.id));
-      renderHire(i);
-    }
-  });
-
-  box.addEventListener("keydown", e => {
-    if (e.key === "Enter" && e.target.dataset.field === "persona") tryHire();
-  });
+    case "vacant":
+      hireCandidate(c, rank, null);
+      return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
+    case "prev": return go(interviewIndex - 1);
+    case "next": return go(interviewIndex + 1);
+    case "done":
+      if (staffOf(c).length === 0) return toast("직원을 한 명 이상 뽑아 주세요.");
+      game.round = 0;
+      c.rounds = [];
+      return startRound();
+  }
 });
 
-// ===== 위기 =====
+// ===== 이벤트 라운드 =====
 
-document.getElementById("btn-to-crisis").addEventListener("click", () => {
-  const empty = game.companies.find(c => c.staff.length === 0);
-  if (empty) return toast("직원을 한 명 이상 뽑아 주세요.");
-  renderCrisisBoxes();
-  document.querySelectorAll("#crisis-boxes textarea").forEach(t =>
-    t.addEventListener("input", () => updateCounter(t, ORDER_MAX)));
-  showScreen("screen-crisis");
-});
+function startRound() {
+  game.company.rounds[game.round] = { order: "", result: null };
+  renderEvent();
+  const area = document.getElementById("order");
+  area.addEventListener("input", () => {
+    document.querySelector('.counter[data-for="order"]').textContent = `${area.value.length} / ${ORDER_MAX}`;
+  });
+  showScreen("screen-event");
+}
 
 document.getElementById("btn-run").addEventListener("click", () => {
-  const orders = game.companies.map((c, i) => document.getElementById(`order-${i}`).value.trim());
-  if (orders.some(o => !o)) return toast("사장님, 지시를 적어 주세요.");
-  game.companies.forEach((c, i) => (c.order = orders[i]));
-  aiMode = "battle";
-  renderAI(aiMode);
-  showScreen("screen-ai");
+  const order = document.getElementById("order").value.trim();
+  if (!order) return toast("사장님, 지시를 적어 주세요.");
+  game.company.rounds[game.round].order = order;
+  runAI("event", showRoundResult);
 });
 
-// ===== 결과 =====
-
 const revealBtn = document.getElementById("btn-reveal");
-const restartBtn = document.getElementById("btn-restart");
-const resultBoardBtn = document.getElementById("btn-result-board");
+const nextBtn = document.getElementById("btn-next");
 
-async function showResult() {
-  document.getElementById("result-title").textContent = "사장님께 보고가 올라왔습니다";
-  document.getElementById("result-lead").textContent = "직원들이 일을 마치고 보고했습니다. 정말 이렇게 잘 됐을까요?";
-  document.getElementById("verdict").innerHTML = "";
+async function showRoundResult() {
   revealBtn.hidden = true;
-  restartBtn.hidden = true;
-  resultBoardBtn.hidden = true;
+  nextBtn.hidden = true;
   showScreen("screen-result");
   await renderReports();
   revealBtn.hidden = false;
@@ -220,15 +188,22 @@ async function showResult() {
 revealBtn.addEventListener("click", async () => {
   revealBtn.hidden = true;
   await renderTruth();
-  const placed = recordResult(game.companies[0]); // 연습 모드면 null
-  lastPlacedAt = placed ? placed.at : null;
-  renderVerdict(placed);
-  restartBtn.hidden = false;
-  resultBoardBtn.hidden = false;
-  document.getElementById("verdict").scrollIntoView({ behavior: "smooth" });
+  nextBtn.textContent = game.round < ROUNDS - 1 ? `이벤트 ${game.round + 2} 받기 →` : "최종 결산 보기";
+  nextBtn.hidden = false;
 });
 
-restartBtn.addEventListener("click", startGame);
+nextBtn.addEventListener("click", () => {
+  if (game.round < ROUNDS - 1) {
+    game.round++;
+    return startRound();
+  }
+  const placed = recordResult(game.company); // 연습 모드가 섞였으면 null
+  lastPlacedAt = placed ? placed.at : null;
+  renderFinal(placed);
+  showScreen("screen-final");
+});
+
+document.getElementById("btn-restart").addEventListener("click", startGame);
 
 // ===== 순위표 =====
 
@@ -236,21 +211,19 @@ let screenBeforeBoard = "screen-found";
 
 function openBoard() {
   const current = document.querySelector(".screen.active");
-  if (current && current.id !== "screen-board") screenBeforeBoard = current.id;
+  if (current && current.id !== "screen-board" && current.id !== "screen-settings") screenBeforeBoard = current.id;
   renderBoard(lastPlacedAt);
   showScreen("screen-board");
 }
 
 document.getElementById("btn-board").addEventListener("click", openBoard);
-resultBoardBtn.addEventListener("click", openBoard);
+document.getElementById("btn-final-board").addEventListener("click", openBoard);
 
 document.getElementById("btn-board-back").addEventListener("click", () => {
-  // 결과 화면에서 왔으면 다음 사람 차례로, 아니면 하던 화면으로
-  if (screenBeforeBoard === "screen-result" && !restartBtn.hidden) startGame();
+  if (screenBeforeBoard === "screen-final") startGame();
   else showScreen(screenBeforeBoard);
 });
 
-// 초기화는 실수 방지를 위해 두 번 눌러야 합니다
 const clearBtn = document.getElementById("btn-board-clear");
 let clearArmed = false;
 clearBtn.addEventListener("click", () => {
@@ -268,4 +241,39 @@ clearBtn.addEventListener("click", () => {
   toast("순위표를 비웠어요.");
 });
 
+// ===== ChatKHU 연결 설정 =====
+
+let screenBeforeSettings = "screen-found";
+
+function openSettings() {
+  const current = document.querySelector(".screen.active");
+  if (current && current.id !== "screen-settings") screenBeforeSettings = current.id;
+  renderSettings();
+  showScreen("screen-settings");
+}
+
+document.getElementById("btn-settings").addEventListener("click", openSettings);
+
+document.getElementById("btn-key-save").addEventListener("click", () => {
+  const key = document.getElementById("key-input").value.trim();
+  if (!key && !getApiKey()) return toast("API 키를 붙여넣어 주세요.");
+  saveApiSettings(key, document.getElementById("model-select").value);
+  renderSettingsButton();
+  toast("저장했어요.");
+  showScreen(screenBeforeSettings);
+  // ChatKHU 단계에서 왔으면 바로 이어서 실행
+  if (screenBeforeSettings === "screen-ai" && aiStep) {
+    renderAIScreen(AI_STEPS[aiStep.name]);
+    autoRunAI();
+  }
+});
+
+document.getElementById("btn-key-clear").addEventListener("click", () => {
+  clearApiKey();
+  renderSettings();
+  renderSettingsButton();
+  toast("이 브라우저에서 API 키를 지웠어요.");
+});
+
+renderSettingsButton();
 startGame();

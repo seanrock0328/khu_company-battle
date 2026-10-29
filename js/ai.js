@@ -1,6 +1,5 @@
 // 담당 C: ChatKHU 연결
-// 게임이 ChatKHU에 보낼 요청문을 만들고, ChatKHU가 돌려준 JSON을 받아 게임에 적용합니다.
-// ChatKHU 없이 테스트할 때를 위한 "연습 모드"(AI 아님)도 여기 있습니다.
+// 한 판에 ChatKHU를 5번 부릅니다: 업종 뽑기 → 창업(뉴스·이벤트·면접 후보) → 이벤트 3번
 // 요청문 문구를 고치면 결과가 달라집니다. 고칠 때마다 docs/ai-log.md에 기록!
 
 // ===== 0. ChatKHU API 자동 연결 =====
@@ -9,7 +8,6 @@
 
 const CHATKHU_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/chat/completions/";
 
-// 고를 수 있는 모델 (ChatKHU 모델 목록에서 고름. 크레딧 단가가 모델마다 다름)
 const CHATKHU_MODELS = [
   { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (빠름)" },
   { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
@@ -32,10 +30,9 @@ function saveApiSettings(key, model) {
 }
 function clearApiKey() { store.remove("chatkhu_key"); }
 
-// 요청문을 ChatKHU에 보내고 답변 글자를 돌려받습니다
 async function callChatKHU(prompt) {
   const key = getApiKey();
-  if (!key) throw new Error("API 키를 먼저 저장해 주세요.");
+  if (!key) throw new Error("ChatKHU API 키가 없어요. 오른쪽 위 ChatKHU 버튼에서 키를 저장해 주세요.");
   let res;
   try {
     res = await fetch(CHATKHU_URL, {
@@ -67,205 +64,223 @@ async function callChatKHU(prompt) {
   return Array.isArray(text) ? text.map(p => p.text || "").join("") : String(text);
 }
 
-// ===== 1. 창업 단계 =====
+// ===== 1. 업종 뽑기 =====
+
+function buildIndustryRequest() {
+  const c = game.company;
+  const seed = INDUSTRY_SEEDS[randInt(0, INDUSTRY_SEEDS.length - 1)];
+  return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.
+대학생 플레이어가 창업할 업종을 하나 랜덤으로 정해라.
+엉뚱하고 웃기지만 실제로 있을 법한 업종이어야 한다. 랜덤 키워드 "${seed}"에서 영감을 받아라.${c.industry ? `\n방금 나온 "${c.industry}"와는 전혀 다른 분야로.` : ""}
+
+설명 없이 아래 JSON만 출력하라.
+{"emoji":"이모지 1개","industry":"업종 이름 15자 이내"}`;
+}
+
+function applyIndustry(text) {
+  const d = parseJson(text);
+  if (!d.industry) throw new Error("업종 이름(industry)이 없어요.");
+  game.company.industry = String(d.industry).slice(0, 20);
+  game.company.emoji = String(d.emoji || "🏢").slice(0, 4);
+}
+
+function practiceIndustry() {
+  const options = FALLBACK_INDUSTRIES.filter(x => x.industry !== game.company.industry);
+  const x = options[randInt(0, options.length - 1)];
+  game.company.industry = x.industry;
+  game.company.emoji = x.emoji;
+}
+
+// ===== 2. 창업: 뉴스, 이벤트 3개, 면접 후보 이름·자기소개·답변 =====
 
 function buildFoundingRequest() {
+  const c = game.company;
   const input = {
-    companies: game.companies.map(c => ({
-      name: c.name, industry: c.industry, motto: c.motto, funding: fundingOf(c).name
+    company: { name: c.name, industry: c.industry, detail: c.detail, motto: c.motto, funding: fundingOf(c).name },
+    eventTypes: EVENT_ORDER,
+    candidates: allCandidates(c).map(x => ({
+      id: x.id, rank: x.rank, mbti: x.mbti, attachment: attachmentLabel(x),
+      skill: x.skill, honesty: x.honesty, luck: x.luck
     }))
   };
-  return `너는 회사 배틀 게임 "10자 사원 주식회사"의 AI 진행자다.
-아래 회사가 방금 창업했다. 회사마다 다음 두 가지를 만들어라.
+  return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다. 플레이어가 방금 아래 회사를 창업했다.
 
-1. news: 창업 소식을 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 업종, 사훈, 자금 출처를 재치 있게 녹일 것.
-2. crisis: 그 업종에서 곧 터질 위기 카드 1장. title은 15자 이내, text는 50자 이내. 웃기지만 그럴듯하게, 사장이 대응 지시를 내릴 수 있는 상황으로.
+[만들 것]
+1. news: 창업 소식 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 하는 일, 사훈, 자금 출처를 재치 있게.
+2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개. 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황.
+3. candidates: 면접 후보 전원(id 그대로)에 대해
+   - name: 한국식 이름 3글자. 성격이 드러나는 웃긴 이름도 좋음 (예: 김대충). 실존 유명인 이름 금지.
+   - intro: 면접 자기소개 30자 이내. MBTI, 애착 유형, 능력치가 은근히 드러나게, 웃기게.
+   - answer: "우리 회사에서 무엇을 하고 싶나요?"에 대한 답 40자 이내. 회사가 하는 일을 반영.
+   - honesty가 낮은 후보는 면접에서 허세나 그럴듯한 거짓말을 섞되, 정직도 숫자를 말하지는 마라.
+   - 능력치 숫자를 그대로 말하지 마라.
 
 [회사 정보]
-${JSON.stringify(input, null, 1)}
+${JSON.stringify(input)}
 
-설명 없이 아래 JSON 형식만 출력하라. companies 순서는 입력과 같게.
-{"companies":[{"news":"...","crisis":{"title":"...","text":"..."}}]}`;
+설명 없이 아래 JSON 형식만 출력하라.
+{"news":"...","events":[{"type":"위기","title":"...","text":"..."}],"candidates":[{"id":1,"name":"...","intro":"...","answer":"..."}]}`;
 }
 
 function applyFounding(text, model) {
-  const data = parseJson(text);
-  const list = data && data.companies;
-  if (!Array.isArray(list) || list.length < game.companies.length) {
-    throw new Error("결과에 회사 정보(companies)가 없어요.");
-  }
-  list.slice(0, game.companies.length).forEach((r, i) => {
-    if (!r || !r.news || !r.crisis || !r.crisis.title || !r.crisis.text) {
-      throw new Error(`${i + 1}번째 회사의 news나 crisis가 비어 있어요.`);
-    }
+  const c = game.company;
+  const d = parseJson(text);
+  if (!d.news) throw new Error("창업 뉴스(news)가 없어요.");
+  if (!Array.isArray(d.events) || d.events.length < EVENT_ORDER.length) throw new Error(`이벤트(events)가 ${EVENT_ORDER.length}개가 아니에요.`);
+  if (!Array.isArray(d.candidates)) throw new Error("면접 후보(candidates)가 없어요.");
+
+  const events = EVENT_ORDER.map((type, i) => {
+    const e = d.events[i] || {};
+    if (!e.title || !e.text) throw new Error(`${i + 1}번째 이벤트의 title이나 text가 비어 있어요.`);
+    return { type, title: String(e.title), text: String(e.text) };
   });
-  game.companies.forEach((c, i) => {
-    const r = list[i];
-    c.news = String(r.news);
-    c.crisis = { title: String(r.crisis.title), text: String(r.crisis.text) };
-    c.foundingByAI = true;
-    c.foundingModel = model || "";
+  const byId = new Map(d.candidates.map(x => [Number(x.id), x]));
+  const missing = allCandidates(c).filter(x => !byId.get(x.id) || !byId.get(x.id).name);
+  if (missing.length > 3) throw new Error(`면접 후보 ${missing.length}명의 정보가 빠졌어요.`);
+
+  c.news = String(d.news);
+  c.events = events;
+  allCandidates(c).forEach(x => {
+    const r = byId.get(x.id) || {};
+    x.name = String(r.name || pickName()).slice(0, 6);
+    x.intro = String(r.intro || pick(FALLBACK_INTROS[x.type]));
+    x.answer = String(r.answer || "열심히 하겠습니다.");
   });
+  c.foundingByAI = true;
+  c.foundingModel = model || "";
 }
 
 function practiceFounding() {
-  game.companies.forEach(c => {
-    const industry = INDUSTRIES.find(x => x.name === c.industry);
-    c.news = `[단독] '${c.name}', "${c.motto}" 사훈 내걸고 ${c.industry} 시장 출사표… ${fundingOf(c).name}로 시작`;
-    c.crisis = pick(industry.crises);
-    c.foundingByAI = false;
+  const c = game.company;
+  c.news = `[단독] '${c.name}', "${c.motto}" 사훈 내걸고 ${c.industry} 시장 출사표… ${fundingOf(c).name}로 시작`;
+  c.events = EVENT_ORDER.map(type => ({ type, ...pick(FALLBACK_EVENTS[type]) }));
+  const names = shuffle(FALLBACK_NAMES);
+  allCandidates(c).forEach((x, i) => {
+    x.name = names[i % names.length];
+    x.intro = pick(FALLBACK_INTROS[x.type]);
+    x.answer = x.honesty <= 3 ? "제가 오면 매출 10배입니다. 진짜로요." : "맡겨 주시는 일 성실히 하겠습니다.";
   });
+  c.foundingByAI = false;
 }
 
-// ===== 2. 결전 단계 (지시 전달, 보고, 판정) =====
+let usedNames = new Set();
+function pickName() {
+  const left = FALLBACK_NAMES.filter(n => !usedNames.has(n));
+  const n = left.length ? pick(left) : pick(FALLBACK_NAMES);
+  usedNames.add(n);
+  return n;
+}
 
-function buildBattleRequest() {
+// ===== 3. 이벤트: 지시 전달, 거짓말, 보고, 판정 =====
+
+function buildEventRequest() {
+  const c = game.company;
+  const i = game.round;
+  const round = c.rounds[i];
   const input = {
-    companies: game.companies.map(c => ({
-      name: c.name,
-      industry: c.industry,
-      motto: c.motto,
-      crisis: { title: c.crisis.title, text: c.crisis.text },
-      ceoOrder: c.order,
-      staff: chainOf(c).map(s => ({ rank: s.rank, persona: s.persona, chars: rankInfo(s.rank).chars }))
-    }))
+    company: { name: c.name, industry: c.industry, detail: c.detail, motto: c.motto },
+    round: `${i + 1}/${ROUNDS}`,
+    event: c.events[i],
+    ceoOrder: round.order,
+    staff: staffOf(c).map(x => ({
+      rank: x.rank, name: x.name, mbti: x.mbti, attachment: attachmentLabel(x),
+      skill: x.skill, honesty: x.honesty, luck: x.luck, chars: rankInfo(x.rank).chars
+    })),
+    previousRounds: c.rounds.slice(0, i).map((r, k) => ({ event: c.events[k].title, score: r.result.score, news: r.result.news }))
   };
-  return `너는 회사 배틀 게임 "10자 사원 주식회사"의 AI 진행자다.
-회사에서 사장의 지시가 직원들을 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 연기하고 판정하라.
+  return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.
+사장의 지시가 staff를 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 각 직원의 성격대로 연기하고 판정하라.
 
-[규칙]
-1. down: staff 순서대로(높은 직급부터) 각 직원이 윗사람에게 들은 말을 자기 persona와 회사 motto대로 이해해서 아랫사람에게 전달하는 말. 개수는 staff 수와 같다. 각 직원의 chars 글자 수를 절대 넘기지 마라. 성격 때문에 지시가 자연스럽게 바뀌거나 엉뚱해질수록 재밌다.
+[직원 성격 규칙]
+- skill(능력 1~10): 높으면 지시를 정확히 이해하고 일을 잘함. 낮으면 실수로 말을 잘못 전달함(실수는 거짓말이 아님).
+- honesty(정직 1~10): 낮을수록 자기에게 유리하게 일부러 말을 바꾸거나 거짓말함. 8 이상은 거의 거짓말하지 않음.
+- attachment: 회피형이 강할수록 문제를 숨기고 책임을 피함. 안정형은 문제도 솔직하게 말함.
+- luck(운 1~10): 높은 직원이 있으면 가끔 엉뚱한 행동이 우연히 대박 남.
+- mbti 성향도 말투와 판단에 반영.
+
+[출력 규칙]
+1. down: staff 순서대로(높은 직급부터) 각 직원이 윗사람에게 들은 말을 아랫사람에게 전달하는 말. 개수는 staff 수와 같다. say는 각자의 chars 글자 수를 절대 넘기지 마라. 일부러 바꾸거나 거짓을 섞었으면 lie: true.
 2. action: 맨 아래 직원이 받은 말대로 실제로 한 일 1문장 (40자 이내).
-3. up: 맨 아래 직원부터 위로 올라가며 각 직원이 윗사람에게 하는 보고. staff의 역순이며 개수는 staff 수와 같다. 위로 갈수록 실제보다 그럴듯하게 부풀려라. 각 직원의 chars를 넘기지 마라. 마지막 항목이 사장이 받는 최종 보고다.
-4. score: 사장의 원래 의도와 위기 해결에 비춰 action의 실제 결과를 0~100 정수로 판정. 엉뚱한 행동이 우연히 대박 날 수도 있다. 여러 플레이어의 순위를 매기는 점수이니 기준을 일관되게: 위기 해결 50점, 사장 의도가 지켜진 정도 30점, 재미와 반전 20점.
-5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름을 넣고, 창업 뉴스의 후속 기사처럼.
-6. reason: 점수 이유 한 줄 (50자 이내).
+3. up: 맨 아래 직원부터 위로 올라가며 각 직원이 윗사람에게 하는 보고. staff의 역순, 개수는 staff 수와 같다. say는 chars 이내. 문제를 숨기거나 부풀렸으면 lie: true. 마지막 항목이 사장이 받는 최종 보고.
+4. score: 0~100 정수. ${input.event.type === "기회" ? "기회를 얼마나 잘 살렸는지" : "위기를 얼마나 해결했는지"} 기준. 실제 결과 50점, 사장 의도가 지켜진 정도 30점, 재미와 반전 20점. 여러 플레이어의 순위를 매기므로 기준을 일관되게.
+5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 이전 라운드가 있으면 이어지는 이야기로.
+6. reason: 점수 이유 한 줄 (50자 이내). 결정적이었던 직원 이름을 넣어라.
 
-[회사 정보]
-${JSON.stringify(input, null, 1)}
+[상황]
+${JSON.stringify(input)}
 
-설명 없이 아래 JSON 형식만 출력하라. companies 순서는 입력과 같게.
-{"companies":[{"down":["..."],"action":"...","up":["..."],"score":0,"news":"...","reason":"..."}]}`;
+설명 없이 아래 JSON 형식만 출력하라.
+{"down":[{"say":"...","lie":false}],"action":"...","up":[{"say":"...","lie":false}],"score":0,"news":"...","reason":"..."}`;
 }
 
-function applyBattle(text, model) {
-  const data = parseJson(text);
-  const list = data && data.companies;
-  if (!Array.isArray(list) || list.length < game.companies.length) {
-    throw new Error("결과에 회사 정보(companies)가 없어요.");
+function applyEvent(text, model) {
+  const c = game.company;
+  const d = parseJson(text);
+  if (!Array.isArray(d.down) || !Array.isArray(d.up)) throw new Error("down이나 up이 없어요.");
+  const score = Math.round(Number(d.score));
+  if (!Number.isFinite(score)) throw new Error("score가 숫자가 아니에요.");
+
+  const staff = staffOf(c);
+  let over = 0;
+  const fit = (item, rank) => {
+    const limit = rankInfo(rank).chars;
+    const raw = typeof item === "string" ? { say: item, lie: false } : (item || {});
+    let say = String(raw.say ?? "…").trim() || "…";
+    if (say.length > limit) { over++; say = say.slice(0, limit); }
+    return { say, lie: raw.lie === true || raw.lie === "true" };
+  };
+  c.rounds[game.round].result = {
+    down: staff.map((x, k) => fit(d.down[k], x.rank)),
+    up: [...staff].reverse().map((x, k) => fit(d.up[k], x.rank)),
+    action: String(d.action || "…"),
+    score: Math.max(0, Math.min(100, score)),
+    news: String(d.news || ""),
+    reason: String(d.reason || ""),
+    over, practice: false, model: model || ""
+  };
+}
+
+// 연습 모드 (AI 아님: 능력치로 흉내만 냄)
+const LIES_DOWN = ["일단 쉬어도 된대", "사장님이 알아서 하래", "대충 해도 된대", "이건 내 공으로 하자"];
+const LIES_UP = ["완벽하게 끝냈습니다!", "반응 폭발입니다", "목표 초과 달성!", "업계 1위 예상입니다"];
+
+function practiceEvent() {
+  const c = game.company;
+  const staff = staffOf(c);
+  const down = [];
+  let heard = c.rounds[game.round].order;
+  for (const x of staff) {
+    const limit = rankInfo(x.rank).chars;
+    const lie = x.honesty <= 3 && Math.random() < 0.6;
+    if (lie) heard = pick(LIES_DOWN);
+    else {
+      const words = heard.split(/[\s,.]+/).filter(Boolean);
+      const kept = words.filter(() => Math.random() > (10 - x.skill) / 20);
+      heard = (kept.length ? kept : words).join(" ");
+    }
+    down.push({ say: heard.slice(0, limit) || "…", lie });
   }
-  const results = game.companies.map((c, i) => {
-    const r = list[i] || {};
-    const chain = chainOf(c);
-    if (!Array.isArray(r.down) || !Array.isArray(r.up)) {
-      throw new Error(`${i + 1}번째 회사의 down이나 up이 없어요.`);
-    }
-    const score = Math.round(Number(r.score));
-    if (!Number.isFinite(score)) throw new Error(`${i + 1}번째 회사의 score가 숫자가 아니에요.`);
-
-    // 글자 수를 넘긴 말은 잘라내고, 몇 번 넘겼는지 셉니다 (서식4 검증 기록용)
-    let over = 0;
-    const fit = (s, limit) => {
-      s = String(s ?? "").trim();
-      if (s.length > limit) { over++; return s.slice(0, limit); }
-      return s;
-    };
-    const down = chain.map((s, k) => fit(r.down[k] ?? "…", rankInfo(s.rank).chars));
-    const upChain = [...chain].reverse();
-    const up = upChain.map((s, k) => fit(r.up[k] ?? "…", rankInfo(s.rank).chars));
-
-    return {
-      down, up,
-      action: String(r.action || down[down.length - 1]),
-      score: Math.max(0, Math.min(100, score)),
-      news: String(r.news || ""),
-      reason: String(r.reason || ""),
-      over, practice: false, model: model || ""
-    };
+  const last = down[down.length - 1].say;
+  const up = [...staff].reverse().map((x, k) => {
+    const limit = rankInfo(x.rank).chars;
+    const lie = (x.honesty <= 4 || x.secure < 40) && Math.random() < 0.7;
+    const say = k === 0 && !lie ? `${last} 했습니다` : lie ? pick(LIES_UP) : "솔직히 애매합니다";
+    return { say: say.slice(0, limit), lie };
   });
-  game.companies.forEach((c, i) => (c.result = results[i]));
-}
-
-// ===== 연습 모드 (AI 아님: 규칙으로 흉내만 냄) =====
-
-// 성격에 따라 말을 바꾸는 규칙. 프리셋에 없는 성격은 단어를 무작위로 빼먹습니다.
-const PERSONA_RULES = {
-  "회의 좋아함": t => "회의로 " + t,
-  "대충 빨리": t => t.slice(0, Math.ceil(t.length / 2)) + " 대충",
-  "숫자 집착": t => t + " KPI 3개",
-  "밈 장인": t => t + " 밈으로",
-  "아부의 달인": t => "역시 사장님! " + t,
-  "퇴사 준비 중": t => "일단 " + t + " 몰라요",
-  "MZ 신입": t => t + " 해야함?",
-  "말 바꾸기 장인": t => t.split(" ").reverse().join(" "),
-  "꼼꼼함 끝판왕": t => t,
-  "실적만 봄": t => "실적 위해 " + t
-};
-
-function practiceRelay(persona, heard, limit) {
-  const words = heard.split(/[\s,.]+/).filter(Boolean);
-  const kept = words.filter(() => Math.random() > 0.3);
-  let text = (kept.length ? kept : words).join(" ");
-  const rule = PERSONA_RULES[persona];
-  if (rule) text = rule(text);
-  return text.slice(0, limit);
-}
-
-const INFLATE = [
-  "반응 괜찮습니다",
-  "성과 나오고 있습니다",
-  "기대 이상 반응입니다",
-  "목표 초과 달성입니다!",
-  "업계 판도를 바꾸고 있습니다!"
-];
-
-function practiceBattle() {
-  game.companies.forEach(c => {
-    const chain = chainOf(c);
-    const down = [];
-    let heard = c.order;
-    for (const s of chain) {
-      heard = practiceRelay(s.persona, heard, rankInfo(s.rank).chars) || "…";
-      down.push(heard);
-    }
-    const action = `${down[down.length - 1]} 실행함`;
-
-    const upChain = [...chain].reverse();
-    const up = upChain.map((s, k) => {
-      const limit = rankInfo(s.rank).chars;
-      const line = k === 0 ? `${down[down.length - 1]} 했습니다` : INFLATE[Math.min(k - 1, INFLATE.length - 1)];
-      return line.slice(0, limit);
-    });
-
-    // 위기 키워드가 끝까지 살아남았는지로 점수 계산
-    let score;
-    const keywords = (c.crisis && c.crisis.keywords) || [];
-    if (keywords.length) {
-      const last = down[down.length - 1];
-      const all = down.join(" ");
-      score = 40;
-      for (const k of keywords) {
-        if (last.includes(k)) score += 15;
-        else if (all.includes(k)) score += 5;
-      }
-    } else {
-      score = 30 + Math.floor(Math.random() * 50);
-    }
-    score = Math.min(score, 100);
-
-    const news = score >= 70
-      ? `'${c.name}', ${c.crisis.title} 위기 정면 돌파… 업계 "의외의 결과"`
-      : score >= 50
-        ? `'${c.name}', ${c.crisis.title} 대응 무난… 직원들 "무슨 지시였는지 모름"`
-        : `'${c.name}', ${c.crisis.title} 대응 실패… "사장님 말씀이 사원까지 안 갔다"`;
-
-    c.result = { down, up, action, score, news, reason: "연습 모드: 위기 키워드가 끝까지 살아남은 만큼 점수", over: 0, practice: true };
-  });
+  const avgSkill = staff.reduce((s, x) => s + x.skill, 0) / staff.length;
+  const maxLuck = Math.max(...staff.map(x => x.luck));
+  const lies = down.filter(x => x.lie).length;
+  const score = Math.max(0, Math.min(100, Math.round(25 + avgSkill * 5 + Math.random() * maxLuck * 3 - lies * 8)));
+  const ev = c.events[game.round];
+  c.rounds[game.round].result = {
+    down, up, action: `${last} 실행함`, score,
+    news: score >= 60 ? `'${c.name}', ${ev.title} ${ev.type === "기회" ? "기회 잡았다" : "정면 돌파"}` : `'${c.name}', ${ev.title} 앞에서 우왕좌왕`,
+    reason: "연습 모드: 평균 능력, 운, 거짓말 수로 계산", over: 0, practice: true, model: ""
+  };
 }
 
 // ===== 공통 =====
 
-// ChatKHU 답변에서 JSON 부분만 꺼냅니다 (```json 코드블록이나 앞뒤 설명이 붙어 있어도 됨)
 function parseJson(text) {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -273,10 +288,29 @@ function parseJson(text) {
   try {
     return JSON.parse(text.slice(start, end + 1));
   } catch (e) {
-    throw new Error("JSON 형식이 깨졌어요. ChatKHU에 '형식에 맞게 JSON만 다시 출력해줘'라고 해 보세요.");
+    throw new Error("JSON 형식이 깨졌어요. 다시 시도하거나, ChatKHU에 '형식에 맞게 JSON만 다시 출력해줘'라고 해 보세요.");
   }
 }
 
 function pick(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
+
+// 단계별 묶음: 화면(main.js)은 이 표만 보고 ChatKHU를 부릅니다
+const AI_STEPS = {
+  industry: {
+    title: "ChatKHU가 업종을 뽑는 중",
+    lead: "엉뚱하지만 있을 법한 업종을 ChatKHU가 골라 줍니다.",
+    build: buildIndustryRequest, apply: (t) => applyIndustry(t), practice: practiceIndustry
+  },
+  founding: {
+    title: "ChatKHU가 창업 소식과 면접 후보를 준비 중",
+    lead: "창업 뉴스, 앞으로 닥칠 이벤트 3개, 직급별 면접 후보 18명의 자기소개를 만듭니다.",
+    build: buildFoundingRequest, apply: applyFounding, practice: practiceFounding
+  },
+  event: {
+    title: "ChatKHU가 직원들을 연기하는 중",
+    lead: "지시가 내려가며 바뀌고, 누군가는 거짓말을 합니다. 보고는 부풀려져 올라옵니다.",
+    build: buildEventRequest, apply: applyEvent, practice: practiceEvent
+  }
+};
