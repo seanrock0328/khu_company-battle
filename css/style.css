@@ -344,3 +344,19 @@ details textarea { font-size: 12px; color: var(--muted); }
 .board .pts { font-size: 18px; white-space: nowrap; }
 .season p { margin: 0; }
 .season .row input { flex: 1; min-width: 0; width: auto; margin-top: 0; font-size: 12px; }
+
+.interview-questions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.interview-questions .small { padding: 6px 9px; font-size: 12px; }
+.interview-questions [aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.quarter-track { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; list-style: none; padding: 0; margin: 16px 0; }
+.quarter-track li { padding: 7px 3px; border: 1px solid var(--line); border-radius: 8px; text-align: center; font-size: 12px; color: var(--muted); }
+.quarter-track small { display: block; }
+.quarter-track .done { background: var(--good-soft); color: var(--good); }
+.quarter-track .current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+@media (max-width: 520px) {
+  .rounds li { grid-template-columns: auto 1fr; }
+  .rounds li > b { grid-column: 2; }
+  .reveal-list li { grid-template-columns: auto 1fr; }
+  .board li { gap: 8px; grid-template-columns: 32px 1fr; }
+  .board .pts { grid-column: 2; }
+}

@@ -48,6 +48,13 @@ const FALLBACK_INTROS = {
   luck: ["로또 4등 3번 당첨됐습니다.", "제가 가는 곳은 항상 비가 그칩니다.", "운으로 여기까지 왔습니다."]
 };
 
+// 추가 면접은 API 호출 없이 후보의 성격에 맞춰 답합니다.
+const INTERVIEW_QUESTIONS = [
+  { id: "motivation", label: "지원 동기", question: "우리 회사에서 무엇을 하고 싶나요?" },
+  { id: "mistake", label: "실수 대처", question: "업무 중 큰 실수를 했다면 어떻게 하실 건가요?" },
+  { id: "handoff", label: "지시 전달", question: "짧게 지시를 전달해야 한다면 무엇을 남기나요?" }
+];
+
 // 창업 자금: 예산과 대가가 다릅니다
 // 직급 6자리를 모두 평범하게 채우면 인건비가 약 21 듭니다.
 const FUNDING = [
