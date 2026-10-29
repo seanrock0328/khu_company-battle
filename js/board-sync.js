@@ -50,7 +50,8 @@
   async function refresh() {
     try {
       const data = await api("GET", "/board");
-      state.entries = Array.isArray(data.entries) ? data.entries : [];
+      // 서버가 별도 규칙 버전을 보관하지 않으므로, 보존되는 결산 표제로 새 경제 규칙을 구분합니다.
+      state.entries = Array.isArray(data.entries) ? data.entries.filter(e => String(e.news || "").startsWith(CASH_RULE_VERSION)) : [];
       state.loaded = true;
       if (SHARED_INDUSTRY && data.season && data.season.industry) {
         state.season = data.season;

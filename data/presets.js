@@ -61,17 +61,11 @@ const CEO_POWERS = [
   { id: "direct", name: "☎️ 직통 전화", when: "지시 전", text: "중간 직급을 건너뛰고 가장 낮은 직급에게 직접 지시합니다. 전 직원 인건비는 그대로입니다." }
 ];
 
-const FINAL_STRATEGIES = [
-  { id: "safe", name: "🛡️ 기존 고객 지키기", text: "정기 계약으로 이번 분기 매출을 최소 4,000만원·최대 6,000만원으로 제한합니다." },
-  { id: "venture", name: "🚀 신사업 승부", text: "성과 70점 이상이면 매출 +4,000만원, 미달이면 −4,000만원입니다. 매출은 0원 아래로 내려가지 않습니다." }
-];
-
-// 창업 자금: 예산과 대가가 다릅니다
-// 직급 6자리를 모두 평범하게 채우면 인건비가 약 21 듭니다.
+// 금액 단위: 만원. 봉투는 창업할 때 한 번만 열고 결과를 저장합니다.
 const FUNDING = [
-  { id: "parents", name: "부모님 돈", budget: 18, note: "결산 때 부모님 잔소리" },
-  { id: "angel", name: "엔젤 투자", budget: 22, note: "기본" },
-  { id: "vc", name: "대형 VC", budget: 28, note: "1년 수익이 적자면 사장 해임" }
+  { id: "parents", name: "👪 부모님 돈", budget: 18, cash: 8000, note: "잔액이 마이너스가 되면 긴급 용돈 4,000만원, 딱 한 번!", line: "이번이 진짜 마지막이다. 밥은 먹고 다니니?" },
+  { id: "savings", name: "🍗 알바로 모은 돈", budget: 22, cash: 10000, note: "사장님의 고생을 알아준 직원들, 시작 충성심 +2", line: "사장님도 튀겨 보셨군요… 입사하겠습니다." },
+  { id: "lottery", name: "🎰 로또 당첨금", budget: 28, cash: 10000, note: "6,000만원·1억원·1억 4,000만원 중 하나! 봉투를 열면 확정", line: "축하합니다! 이제 당첨금보다 회사를 오래 지켜 주세요." }
 ];
 
 const MBTI = ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP",
