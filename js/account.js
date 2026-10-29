@@ -217,6 +217,9 @@
   // ===== 이어하기 =====
 
   let pendingSave = null;
+  let saveQueue = Promise.resolve();
+  let lastSavedAt = 0;
+  const checkpointKey = () => `company_battle_checkpoint_${auth.id.toLowerCase()}`;
 
   async function afterLogin() {
     let me;
@@ -230,7 +233,10 @@
     auth.id = me.id;
     if (me.guest) auth.guest = true;
     userBtn.textContent = userLabel();
-    pendingSave = me.save && me.save.phase && me.save.company ? me.save : null;
+    let localSave = null;
+    try { localSave = JSON.parse(keep.get(checkpointKey()) || "null"); } catch {}
+    const latest = localSave && localSave.savedAt > (me.save?.savedAt || 0) ? localSave : me.save;
+    pendingSave = latest && latest.phase && latest.company ? latest : null;
     if (pendingSave) {
       renderResume(pendingSave);
       showScreen("screen-resume");
@@ -242,10 +248,13 @@
   function renderResume(s) {
     const c = s.company;
     const profit = (c.rounds || []).reduce((sum, r) => sum + (typeof r.profit === "number" ? r.profit : 0), 0);
-    const where = { news: "면접 전", event: `${quarterLabel(s.round)} 지시 전`, choice: `${quarterLabel(s.round)} 보고 받음`, settled: `${quarterLabel(s.round)} 결산 끝` }[s.phase] || "";
+    const compatible = c.financeVersion === CASH_RULE_VERSION;
+    document.getElementById("btn-resume").disabled = !compatible;
+    const where = { funding: "창업자금 봉투 개봉 완료", interview: "면접 중", news: "면접 전", event: `${quarterLabel(s.round)} 지시 전`, choice: `${quarterLabel(s.round)} 보고 받음`, settled: `${quarterLabel(s.round)} 결산 끝` }[s.phase] || "";
     document.getElementById("resume-box").innerHTML = `
       ${companyTitle(c)}
       <p class="big">${esc(where)}</p>
+      ${!compatible ? '<p class="bad">이전 경제 규칙으로 저장된 게임입니다. 새 회사로 시작해 주세요.</p>' : ""}
       <p>누적 수익 <b class="${profit < 0 ? "neg" : "pos"}">${money(profit)}</b> · 저장 ${new Date(s.savedAt).toLocaleString("ko-KR")}</p>`;
   }
 
@@ -264,16 +273,28 @@
     newArmed = false;
     e.target.textContent = "새로 시작";
     pendingSave = null;
-    api("/save-clear", { token: auth.token }).catch(() => {});
+    keep.remove(checkpointKey());
+    const token = auth.token;
+    saveQueue = saveQueue.then(() => api("/save-clear", { token })).catch(() => {});
     startGame();
   });
 
   function resume(s) {
+    if (s.company.financeVersion !== CASH_RULE_VERSION) return;
     game.company = s.company;
     game.round = s.round;
     nextCandidateId = Math.max(nextCandidateId, s.nextCandidateId || 1);
+    interviewIndex = s.interviewIndex || 0;
     pendingSave = null;
     switch (s.phase) {
+      case "funding":
+        renderFound();
+        showScreen("screen-found");
+        break;
+      case "interview":
+        renderInterview(interviewIndex);
+        showScreen("screen-interview");
+        break;
       case "news":
         renderFoundingNews();
         showScreen("screen-news");
@@ -306,14 +327,19 @@
   function save(phase) {
     if (!auth.enabled || !auth.token || auth.guest) return; // 손님은 이어하기 저장 안 함
     const snapshot = {
-      v: 1, phase, savedAt: Date.now(), round: game.round,
-      nextCandidateId, company: game.company
+      v: 2, phase, savedAt: Math.max(Date.now(), lastSavedAt + 1), round: game.round,
+      nextCandidateId, interviewIndex, company: JSON.parse(JSON.stringify(game.company))
     };
-    api("/save", { token: auth.token, save: snapshot }).catch(err => {
+    lastSavedAt = snapshot.savedAt;
+    keep.set(checkpointKey(), JSON.stringify(snapshot));
+    const token = auth.token;
+    saveQueue = saveQueue.then(() => api("/save", { token, save: snapshot })).catch(err => {
       if (err.status === 401) toast("로그인이 풀려서 저장하지 못했어요. 다시 로그인해 주세요.");
       else console.warn("저장 실패", err);
     });
   }
+
+  document.addEventListener("company-state-change", e => save(e.detail.phase));
 
   function wrap(name, fn) {
     const original = window[name];
@@ -361,7 +387,11 @@
 
   wrap("renderFinal", original => function () {
     original.apply(this, arguments);
-    if (auth.enabled && auth.token && !auth.guest) api("/save-clear", { token: auth.token }).catch(() => {});
+    if (auth.enabled && auth.token && !auth.guest) {
+      keep.remove(checkpointKey());
+      const token = auth.token;
+      saveQueue = saveQueue.then(() => api("/save-clear", { token })).catch(() => {});
+    }
   });
 
   // ===== 시작: 서버가 로그인을 지원하는지 확인 =====

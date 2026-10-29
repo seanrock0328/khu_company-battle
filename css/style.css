@@ -372,9 +372,38 @@ details textarea { font-size: 12px; color: var(--muted); }
 .ending-card { background: #fff9e9; border-color: #e0c383; }
 .ending-card .ending-title { color: var(--accent); font-size: 24px; }
 .ending-share { margin-top: 12px; }
+.bank-card { margin: 14px 0; border-radius: 12px; padding: 14px; background: #edf6f1; border: 1px solid #b7d9c5; }
+.bank-card small, .bank-card strong { display: block; }
+.bank-card strong { font-size: clamp(23px, 6vw, 32px); font-variant-numeric: tabular-nums; }
+.bank-card p { margin: 6px 0 0; font-size: 13px; }
+.funding-open { border: 2px dashed #d3aa52; background: #fff9e9; border-radius: 12px; padding: 16px; }
+.funding-open h3 { margin: 4px 0; font-size: 22px; }
+.family-support { margin: 0; padding: 14px; border-radius: 10px; background: #fff2cc; font-weight: 700; }
+.finance-chart h3 { margin: 0 0 6px; }
+.cash-line { width: 100%; display: block; margin: 8px 0; overflow: visible; }
+.cash-line text { font-size: 13px; fill: var(--muted); }
+.chart-grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.chart-zero { stroke: var(--bad); stroke-dasharray: 4 4; }
+.cash-path { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.cash-line circle { fill: var(--accent); stroke: white; stroke-width: 2; }
+.chart-label { font-size: 13px; font-weight: 700; margin: 16px 0 8px; }
+.flow-legend { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-weight: 400; }
+.flow-legend i { width: 9px; height: 9px; display: inline-block; }
+.income { background: var(--good); }
+.expense { background: #d56760; }
+.flow-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.flow-quarter { padding: 8px 3px; text-align: center; border: 1px solid var(--line); border-radius: 8px; }
+.flow-quarter.selected { border-color: var(--accent); background: #fff7f8; }
+.bar-pair { display: flex; align-items: flex-end; justify-content: center; gap: 5px; height: 90px; margin: 4px 0 8px; }
+.flow-bar { width: 22%; max-width: 24px; min-height: 1px; border-radius: 3px 3px 0 0; }
+.flow-quarter small { display: block; font-size: 11px; }
+.flow-quarter button { padding: 5px 6px; margin-top: 8px; font-size: 12px; }
+.flow-detail h4 { margin: 14px 0 4px; }
+.salary b { font-size: 14px; }
 #decision-tools { display: grid; gap: 12px; }
 #decision-tools .power-panel { margin: 0; }
 @media (max-width: 520px) {
+  .cash-line text { font-size: 22px; }
   .power-grid { grid-template-columns: 1fr; }
   .rounds li { grid-template-columns: auto 1fr; }
   .rounds li > b { grid-column: 2; }

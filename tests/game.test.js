@@ -26,6 +26,7 @@ function setup(options = {}) {
 function hire(run) {
   run(`
     const c = game.company;
+    c.funding = "parents";
     c.industry = "붕어빵"; c.player = "사장"; c.name = "테스트 회사";
     c.foundingByAI = true;
     makeCandidates(c);
@@ -105,16 +106,16 @@ test("전원 퇴사 후 남은 분기마다 영업 중단 손실을 한 번씩 �
       settleRound(c, "closed");
     }
   `);
-  assert.equal(run("CLOSED_PENALTY"), 9000);
-  assert.equal(run("totalProfit(c)"), -36000);
-  assert.equal(run("c.rounds.every(r => r.revenue === 0 && r.cost === 0 && r.penalty === 9000 && r.profit === -9000)"), true);
-  assert.match(run("c.rounds[0].loyaltyNote"), /임대료와 위약금 −9,000만원/);
+  assert.equal(run("CLOSED_PENALTY"), 10000);
+  assert.equal(run("totalProfit(c)"), -40000);
+  assert.equal(run("c.rounds.every(r => r.revenue === 0 && r.cost === 0 && r.penalty === 10000 && r.profit === -10000)"), true);
+  assert.match(run("c.rounds[0].loyaltyNote"), /임대료와 위약금 −1억원/);
 });
 
 function simulate(scores, choices, salary = 14, loyalty = 5) {
   const run = setup();
   hire(run);
-  run(`employee.salary = ${salary}; employee.loyalty = ${loyalty}; c.funding = "vc";`);
+  run(`employee.salary = ${salary}; employee.loyalty = ${loyalty}; c.funding = "lottery";`);
   for (let i = 0; i < 4; i++) {
     run(`
       game.round = ${i};
@@ -134,18 +135,18 @@ test("4턴 동안 추궁해도 초기 충성심 5인 직원은 남아 있고 1�
 });
 
 test("충성심이 낮은 직원을 전원 퇴사시키는 전략이 정상 경영보다 불리하다", () => {
-  // 낮은 충성심 2인 상황을 고정: 2분기 근무 수익 8,400 - 중단 2분기 손실 18,000.
+  // 낮은 충성심 2인 상황을 고정: 2분기 근무 수익 8,400 - 중단 2분기 손실 20,000.
   const closed = simulate(Array(4).fill(70), Array(4).fill("dig"), 14, 2);
   const scores = [20, 90, 30, 70];
   const normal = simulate(scores, scores.map(s => s >= 60 ? "praise" : "dig"));
-  assert.equal(closed, -9600);
+  assert.equal(closed, -11600);
   assert.equal(normal, 9800);
   assert.ok(normal > closed);
 });
 
 test("영업 중단으로 정상 경영의 최악 손실도 피할 수 없다", () => {
   const run = setup();
-  assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY + DINNER_COST"));
+  assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY + DINNER_COST + INVESTMENT_COST - INVESTMENT_LOSS"));
   for (const salary of [14, 18, 22, 28]) {
     for (const score of [0, 20, 59, 60, 70, 100]) {
       // 충성심 2와 첫 2분기 성과를 고정. 남은 2분기의 운영과 중단을 비교.
@@ -258,30 +259,30 @@ test("추리 단서는 점수·진실 원문을 노출하지 않고 성공·실�
   assert.doesNotMatch(a, /59|60|비밀|실패|성공/);
 });
 
-for (const [strategy, score, expected] of [
-  ["safe", 0, 4000], ["safe", 100, 6000],
-  ["venture", 0, 0], ["venture", 69, 2900], ["venture", 70, 11000], ["venture", 100, 14000]
-]) {
-  test(`마지막 분기 ${strategy} 전략의 성과 ${score}점 매출은 ${expected}만원이다`, () => {
+for (const [score, returned] of [[0, 500], [59, 500], [60, 1600], [100, 1600]]) {
+  test(`성과 ${score}점일 때 투자금 회수는 ${returned}만원이며 원금을 한 번만 정산한다`, () => {
     const run = setup();
     hire(run);
-    run('c.rounds[0] = { result: null };');
-    assert.equal(run(`setFinalStrategy(c, "${strategy}")`), false);
-    run('game.round = 3; c.rounds[3] = { result: null };');
-    assert.equal(run(`setFinalStrategy(c, "${strategy}")`), true);
-    run(`c.rounds[3].result = { score: ${score} }; settleRound(c, "dig");`);
-    assert.equal(run("c.rounds[3].revenue"), expected);
-    assert.equal(run("c.rounds[3].baseRevenue + c.rounds[3].strategyDelta"), expected);
-    assert.equal(run('setFinalStrategy(c, "safe")'), false);
+    run('c.initialCash = 10000; c.rounds[0] = { result: null, investment: 0 };');
+    assert.equal(run('setInvestment(c, true)'), null);
+    assert.equal(run('setInvestment(c, true)'), null);
+    assert.equal(run('cashBalance(c)'), 10000); // 지출 예약은 실제 잔액에서 중복 차감하지 않음
+    run(`c.rounds[0].result = { score: ${score} }; settleRound(c, "dig"); settleRound(c, "dig");`);
+    assert.equal(run('c.rounds[0].investmentCost'), 1000);
+    assert.equal(run('c.rounds[0].investmentReturn'), returned);
+    assert.equal(run('c.rounds[0].profit'), run(`${score} * 100 + ${returned} - 1000 - employee.salary * 200`));
+    assert.equal(run('cashBalance(c)'), run('10000 + totalProfit(c)'));
+    assert.match(run('setInvestment(c, false)'), /지시/);
   });
 }
 
-test("영업 중단 분기에는 최종 안전 전략의 최소 매출도 발생하지 않는다", () => {
+test("영업 중단 분기에는 예약된 투자도 집행하지 않는다", () => {
   const run = setup();
   hire(run);
-  run('game.round = 3; c.rounds[3] = { result: null, strategy: "safe" }; employee.quit = true; closeUnstaffedRound(c);');
+  run('game.round = 3; c.rounds[3] = { result: null, investment: 1000 }; employee.quit = true; closeUnstaffedRound(c);');
   assert.equal(run("c.rounds[3].revenue"), 0);
-  assert.equal(run("c.rounds[3].profit"), -9000);
+  assert.equal(run("c.rounds[3].investmentCost"), 0);
+  assert.equal(run("c.rounds[3].profit"), -10000);
 });
 
 test("수익·충성심·선택에 따른 엔딩과 공유 문구를 일관되게 만든다", () => {
@@ -291,7 +292,7 @@ test("수익·충성심·선택에 따른 엔딩과 공유 문구를 일관되�
   assert.equal(run("endingFor(c).id"), "happy");
   assert.match(run("endingShareText(c)"), /1년 4턴 결산/);
   assert.match(run("endingShareText(c)"), /\+4,000만원/);
-  run('c.rounds[3].strategy = "venture"; c.rounds[3].strategyDelta = 4000;');
+  run('c.rounds[3].investmentCost = 1000; c.rounds[3].investmentReturn = 1600;');
   assert.equal(run("endingFor(c).id"), "comeback");
   run('c.rounds.forEach(r => { r.profit = -1000; });');
   assert.equal(run("endingFor(c).id"), "welfare");
@@ -314,6 +315,80 @@ test("연습 모드에서 전원 퇴사해도 정식 순위에 기록하지 않�
   `);
   assert.equal(run("isPractice(c)"), true);
   assert.equal(run("recordResult(c)"), null);
+});
+
+test("창업 봉투는 출처별 금액을 지급하고 로또를 다시 뽑지 않는다", () => {
+  const run = setup();
+  assert.equal(run('openFunding({ funding: "parents" })'), 8000);
+  assert.equal(run('openFunding({ funding: "savings" })'), 10000);
+  run('const lottery = { funding: "lottery", initialCash: null }; Math.random = () => 0; openFunding(lottery);');
+  assert.equal(run('lottery.initialCash'), 6000);
+  run('Math.random = () => 0.99; openFunding(lottery);');
+  assert.equal(run('lottery.initialCash'), 6000);
+  assert.equal(run('openFunding(JSON.parse(JSON.stringify(lottery)))'), 6000);
+  assert.equal(run('openFunding({ funding: "lottery" })'), 14000);
+});
+
+test("알바 자금의 시작 충성심 보너스는 후보 생성 때 한 번만 적용한다", () => {
+  const run = setup();
+  run('const c = game.company; c.funding = "savings"; openFunding(c); makeCandidates(c);');
+  assert.equal(run('allCandidates(c).every(x => x.loyalty === 7)'), true);
+  run('openFunding(c)');
+  assert.equal(run('allCandidates(c).every(x => x.loyalty === 7)'), true);
+});
+
+test("급여와 회식비를 확보한 뒤 남은 현금으로만 투자한다", () => {
+  const run = setup();
+  hire(run);
+  run('c.initialCash = employee.salary * 200 + 1200; c.rounds[0] = { result: null, investment: 0 };');
+  assert.equal(run('usePower(c, "dinner")'), null);
+  assert.match(run('setInvestment(c, true)'), /부족/);
+  assert.equal(run('setInvestment(c, false)'), null);
+  run('c.initialCash = employee.salary * 200 + 1300;');
+  assert.equal(run('setInvestment(c, true)'), null);
+  assert.equal(run('availableCash(c)'), 0);
+  run('c.rounds[0].committed = true;');
+  assert.match(run('setInvestment(c, false)'), /지시/);
+});
+
+test("긴급 용돈은 한 번만 입금되고 순이익에는 포함하지 않는다", () => {
+  const run = setup();
+  hire(run);
+  run('c.initialCash = 1000; c.rounds[0] = { result: { score: 0 } }; settleRound(c, "praise");');
+  assert.equal(run('c.rounds[0].support'), 4000);
+  assert.equal(run('cashBalance(c)'), run('1000 + totalProfit(c) + 4000'));
+  run('game.round = 1; c.rounds[1] = { result: { score: 0 } }; settleRound(c, "praise");');
+  assert.equal(run('c.rounds[1].support'), 0);
+  assert.equal(run('totalSupport(c)'), 4000);
+  assert.equal(run('cashBalance(c) - initialCapital(c) - totalSupport(c)'), run('totalProfit(c)'));
+});
+
+test("현금이 마이너스여도 급여는 정산하고 새 투자는 막되 그대로 운영할 수 있다", () => {
+  const run = setup();
+  hire(run);
+  run('c.funding = "lottery"; c.initialCash = 0; c.rounds[0] = { result: { score: 0 } }; settleRound(c, "dig");');
+  assert.equal(run('cashBalance(c)'), run('-employee.salary * 200'));
+  run('game.round = 1; c.rounds[1] = { result: null, investment: 0 };');
+  assert.match(run('setInvestment(c, true)'), /부족/);
+  assert.equal(run('setInvestment(c, false)'), null);
+  assert.match(run('usePower(c, "dinner")'), /부족/);
+});
+
+test("모든 분기의 입출금과 잔액이 맞고 직전 마감이 다음 기초가 된다", () => {
+  const run = setup();
+  hire(run);
+  run(`c.initialCash = 8000;
+    for (game.round = 0; game.round < ROUNDS; game.round++) {
+      c.rounds[game.round] = { result: null, investment: 0 };
+      if (game.round % 2 === 0) setInvestment(c, true);
+      c.rounds[game.round].result = { score: game.round < 2 ? 70 : 20 };
+      settleRound(c, "dig");
+    }
+  `);
+  assert.equal(run('financeHistory(c).every(r => r.opening + r.income - r.expense === r.closing)'), true);
+  assert.equal(run('financeHistory(c).slice(1).every((r, i) => r.opening === financeHistory(c)[i].closing)'), true);
+  assert.equal(run('financeHistory(c)[3].closing'), run('cashBalance(c)'));
+  assert.equal(run('cashBalance(c) - initialCapital(c) - totalSupport(c)'), run('totalProfit(c)'));
 });
 
 test("기본: 업종이 달라도 순위표 하나로 수익순 정렬한다 (10/29 팀 결정)", () => {
