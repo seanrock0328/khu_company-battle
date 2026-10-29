@@ -36,11 +36,12 @@
   function upload(entry) {
     if (state.uploading.has(entry.at)) return;
     state.uploading.add(entry.at);
-    api("POST", "/board", { entry })
+    const token = typeof window.getAuthToken === "function" ? window.getAuthToken() : "";
+    api("POST", "/board", { entry, token })
       .then(() => { if (!state.entries.some(e => e.at === entry.at)) state.entries.push(entry); })
       .catch(err => {
         state.uploading.delete(entry.at);
-        if (state.enabled) toast("순위표를 서버에 저장하지 못했어요. 이 기기에는 남아 있어요.");
+        if (state.enabled) toast(token ? "순위표를 서버에 저장하지 못했어요. 이 기기에는 남아 있어요." : "로그인해야 공유 순위표에 기록돼요. 이 기기에는 남아 있어요.");
         console.warn(err);
       });
   }
