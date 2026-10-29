@@ -313,7 +313,9 @@ let screenBeforeBoard = "screen-found";
 
 function openBoard() {
   const current = document.querySelector(".screen.active");
-  if (current && current.id !== "screen-board" && current.id !== "screen-settings") screenBeforeBoard = current.id;
+  // 설정 화면에서 왔으면 설정을 열기 전 화면으로 (예전 값이 남아 게임 중에 창업 화면이나 새 판으로 가지 않게)
+  const from = current && (current.id === "screen-settings" ? screenBeforeSettings : current.id);
+  if (from && from !== "screen-board") screenBeforeBoard = from;
   renderBoard(lastPlacedAt);
   showScreen("screen-board");
 }
@@ -321,10 +323,8 @@ function openBoard() {
 document.getElementById("btn-board").addEventListener("click", openBoard);
 document.getElementById("btn-final-board").addEventListener("click", openBoard);
 
-document.getElementById("btn-board-back").addEventListener("click", () => {
-  if (screenBeforeBoard === "screen-final") startGame();
-  else showScreen(screenBeforeBoard);
-});
+// 항상 보던 화면으로 돌아갑니다. 결산에서 왔으면 결산 화면으로 (다음 판은 결산 화면의 버튼으로 시작)
+document.getElementById("btn-board-back").addEventListener("click", () => showScreen(screenBeforeBoard));
 
 document.getElementById("season-box").addEventListener("click", async e => {
   if (e.target.id !== "btn-copy-link") return;
@@ -343,9 +343,8 @@ clearBtn.addEventListener("click", () => {
     setTimeout(() => { clearArmed = false; clearBtn.textContent = "순위표 초기화"; }, 4000);
     return;
   }
-  clearBoard();
+  clearBoard(); // 공유 순위표면 관리자 코드를 물어보고, 취소하면 아무것도 지우지 않습니다
   lastPlacedAt = null;
-  screenBeforeBoard = "screen-final"; // 돌아가면 새 판(새 업종 뽑기)부터
   clearArmed = false;
   clearBtn.textContent = "순위표 초기화";
   renderBoard(null);

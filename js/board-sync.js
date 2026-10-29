@@ -35,6 +35,9 @@
 
   function upload(entry) {
     if (state.uploading.has(entry.at)) return;
+    // 앞사람 기록이 올라가지 못했다가 다음 사람이 로그인한 사이에 재시도되면 다음 사람 이름으로 올라가므로, 지금 로그인한 사람의 기록만 올립니다
+    const who = typeof window.getAuthId === "function" ? window.getAuthId() : "";
+    if (who && entry.player !== who) return;
     state.uploading.add(entry.at);
     const token = typeof window.getAuthToken === "function" ? window.getAuthToken() : "";
     api("POST", "/board", { entry, token })

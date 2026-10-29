@@ -258,6 +258,7 @@ function loadClient({ token = "a".repeat(64), respond }) {
     var game = { company: { player: "", rounds: [] }, round: 0 };
     var nextCandidateId = 1, interviewIndex = 0, ROUNDS = 4, lastPlacedAt = null, log = [], aiToken = 0;
     function toast(m) { log.push(m); }
+    function esc(s) { return String(s ?? ""); }
     function showScreen(id) { __state.screen = id; }
     function startGame() { log.push("startGame"); }
     function renderFound() {}
@@ -348,15 +349,16 @@ test("게임: 면접·지시 쓰기처럼 잦은 저장은 손을 멈춘 뒤 한
   assert.ok(saves(c).length <= 1 + 4, `3분 동안 ${saves(c).length - 1}번`);
 });
 
-test("게임: 저장된 게임을 못 불러오면 그 판은 저장·지우기를 하지 않아 하던 게임을 덮어쓰지 않는다", async () => {
+test("게임: 저장된 게임을 못 불러오면 다시 시도 화면을 보여 주고, 저장·지우기를 하지 않아 하던 게임을 덮어쓰지 않는다", async () => {
   const c = loadClient({ respond: p => p === "/me" ? { status: 500, data: { error: "계정 처리 중 오류가 났어요." } } : okServer(p) });
   await c.advance(0);
+  assert.equal(c.state.screen, "screen-resume");
   c.emit("funding");
   c.run('renderFoundingNews(); game.round = 0; startRound(); showRoundResult(); settleRound(game.company, "dig"); renderFinal();');
   await c.advance(90000);
   assert.equal(c.requests.filter(r => r.path === "/save" || r.path === "/save-clear").length, 0);
   assert.equal(c.saved.has("company_battle_checkpoint_사장님"), false, "이 기기의 하던 게임 기록도 덮어쓰지 않음");
-  assert.match(c.run("log.join('|')"), /못 불러왔어요/);
+  assert.match(c.run("log.join('|')"), /불러오지 못했어요/);
 });
 
 test("게임: 처음 서버 확인이 8초 안에 안 되면 로그인 없이 시작한다", async () => {

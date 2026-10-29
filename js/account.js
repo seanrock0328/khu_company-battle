@@ -25,6 +25,7 @@
 
   // board-sync.js가 순위 기록을 올릴 때 이 토큰을 씁니다
   window.getAuthToken = () => (auth.enabled ? auth.token : "");
+  window.getAuthId = () => (auth.enabled ? auth.id : ""); // 앞사람 기록이 다음 사람 이름으로 올라가지 않게 (board-sync.js)
 
   async function api(path, body) {
     const res = await fetchWithTimeout(base + path, {
@@ -95,8 +96,8 @@
       </form></div>
     </section>
     <section id="screen-resume" class="screen">
-      <h2>하던 게임이 있어요</h2>
-      <p class="lead">이어서 하거나, 새 회사를 차릴 수 있어요.</p>
+      <h2 id="resume-title">하던 게임이 있어요</h2>
+      <p class="lead" id="resume-lead">이어서 하거나, 새 회사를 차릴 수 있어요.</p>
       <div class="solo"><div class="card resume-card" id="resume-box"></div></div>
       <div class="row center">
         <button id="btn-resume" class="primary">이어서 하기</button>
@@ -112,6 +113,28 @@
   userBtn.className = "pill user";
   userBtn.hidden = true;
   topButtons.prepend(userBtn);
+
+  // 결산 화면: 로그인한 채로 "다음 사람 차례"를 누르면 다음 사람 기록이 앞사람 아이디로 올라갑니다.
+  // 그래서 로그인 중에는 "로그아웃하고 다음 사람"(기본)과 "같은 아이디로 한 판 더"를 나눠서 보여 줍니다.
+  // (화면 개편으로 btn-restart가 없어져도 로그인·이어하기는 그대로 돌아가게, 없으면 이 부분만 건너뜁니다)
+  const restartBtn = document.getElementById("btn-restart");
+  const restartLabel = restartBtn ? restartBtn.textContent : "";
+  const nextPersonBtn = document.createElement("button");
+  nextPersonBtn.id = "btn-logout-next";
+  nextPersonBtn.className = "primary";
+  nextPersonBtn.textContent = "로그아웃하고 다음 사람";
+  nextPersonBtn.hidden = true;
+  if (restartBtn) restartBtn.before(nextPersonBtn);
+  nextPersonBtn.addEventListener("click", () => logout("다음 사장님 차례예요. 로그인하거나 손님으로 바로 시작해 주세요."));
+
+  function updateFinalButtons() {
+    if (!restartBtn) return;
+    const loggedIn = auth.enabled && !!auth.id;
+    restartBtn.textContent = !loggedIn ? restartLabel : auth.guest ? "같은 닉네임으로 한 판 더" : "같은 아이디로 한 판 더";
+    restartBtn.classList.toggle("primary", !loggedIn);
+    restartBtn.classList.toggle("secondary", loggedIn);
+    nextPersonBtn.hidden = !loggedIn;
+  }
 
   // ===== 로그인 화면 =====
 
@@ -219,6 +242,26 @@
     userBtn.hidden = true;
   }
 
+  // 로그인 화면 보여 주기. 기다리던 ChatKHU 답이 늦게 와도 무시하게 main.js의 aiToken을 올립니다
+  // (안 그러면 늦은 답이 새 빈 회사에 적용되고, 로그인 화면을 건너뛰어 다음 화면으로 넘어갑니다)
+  function showLogin() {
+    aiToken++;
+    showScreen("screen-login");
+  }
+
+  function logout(message) {
+    const wasGuest = auth.guest;
+    const token = auth.token;
+    afterSaves(() => api("/logout", { token }).catch(() => {})); // 기다리던 저장을 먼저 보낸 뒤 로그아웃 (먼저 끊으면 그 저장이 버려짐)
+    clearAuth();
+    startGame();
+    showLogin();
+    // 다음 사람에게 앞사람 이름이 그대로 보이지 않게
+    document.getElementById("guest-name").value = "";
+    document.getElementById("login-id").value = "";
+    toast(message || (wasGuest ? "손님 플레이를 마쳤어요." : "로그아웃했어요. 하던 게임은 저장돼 있어요."));
+  }
+
   // 로그아웃은 두 번 눌러야 (실수 방지)
   let logoutArmed = false;
   userBtn.addEventListener("click", async () => {
@@ -229,18 +272,13 @@
       return;
     }
     logoutArmed = false;
-    const wasGuest = auth.guest;
-    const token = auth.token;
-    afterSaves(() => api("/logout", { token }).catch(() => {})); // 기다리던 저장을 먼저 보낸 뒤 로그아웃 (먼저 끊으면 그 저장이 버려짐)
-    clearAuth();
-    startGame();
-    showScreen("screen-login");
-    toast(wasGuest ? "손님 플레이를 마쳤어요." : "로그아웃했어요. 하던 게임은 저장돼 있어요.");
+    logout();
   });
 
   // ===== 이어하기 =====
 
   let pendingSave = null;
+  let saveUnknown = false; // 서버가 바쁘거나(429) 인터넷이 끊겨 저장된 게임이 있는지 모르는 상태
   let lastSavedAt = 0;
   const checkpointKey = () => `company_battle_checkpoint_${auth.id.toLowerCase()}`;
 
@@ -250,11 +288,18 @@
       me = await api("/me", { token: auth.token });
       auth.canSave = !me.guest;
     } catch (err) {
-      if (err.status === 401) { clearAuth(); showScreen("screen-login"); return; }
-      // 못 불러온 채로 새 판을 저장하면 하던 게임을 덮어쓰므로, 이번 판은 이어하기 저장을 하지 않습니다 (canSave는 false 그대로)
-      toast("저장된 게임을 못 불러왔어요. 하던 게임은 지우지 않고, 이번 판은 이어하기 없이 해요.");
-      me = { id: auth.id, save: null };
+      if (err.status === 401) { clearAuth(); showLogin(); return; }
+      if (!auth.guest) {
+        // 여기서 새 게임을 시작하면 첫 저장이 하던 게임을 덮어씁니다 (canSave는 false 그대로).
+        // 로그인은 그대로 두고, 다시 시도할지 새로 시작할지 사장님이 고르게 합니다.
+        renderResumeError(err);
+        showScreen("screen-resume");
+        toast("저장된 게임을 불러오지 못했어요. 잠시 후 '다시 시도'를 눌러 주세요.");
+        return;
+      }
+      me = { id: auth.id, guest: true, save: null }; // 손님은 이어하기 저장이 없으니 그대로 시작
     }
+    saveUnknown = false;
     auth.id = me.id;
     if (me.guest) auth.guest = true;
     userBtn.textContent = userLabel();
@@ -270,7 +315,24 @@
     }
   }
 
+  function setResumeText(title, lead, button) {
+    document.getElementById("resume-title").textContent = title;
+    document.getElementById("resume-lead").textContent = lead;
+    document.getElementById("btn-resume").textContent = button;
+  }
+
+  function renderResumeError(err) {
+    pendingSave = null;
+    saveUnknown = true;
+    setResumeText("저장된 게임을 확인하지 못했어요", "서버가 잠깐 바쁘거나 인터넷이 끊겼어요. 하던 게임이 있다면 서버에 그대로 있어요.", "다시 시도");
+    document.getElementById("btn-resume").disabled = false;
+    document.getElementById("resume-box").innerHTML = `
+      <p>${esc(err.status ? err.message : err.timeout ? err.message : "서버에 접속하지 못했어요. 인터넷 연결을 확인해 주세요.")}</p>
+      <p class="hint">'새로 시작'을 누르면 저장된 게임이 있어도 지워져요.</p>`;
+  }
+
   function renderResume(s) {
+    setResumeText("하던 게임이 있어요", "이어서 하거나, 새 회사를 차릴 수 있어요.", "이어서 하기");
     const c = s.company;
     const profit = (c.rounds || []).reduce((sum, r) => sum + (typeof r.profit === "number" ? r.profit : 0), 0);
     const compatible = c.financeVersion === CASH_RULE_VERSION;
@@ -283,8 +345,12 @@
       <p>누적 수익 <b class="${profit < 0 ? "neg" : "pos"}">${money(profit)}</b> · 저장 ${new Date(s.savedAt).toLocaleString("ko-KR")}</p>`;
   }
 
-  document.getElementById("btn-resume").addEventListener("click", () => {
-    if (pendingSave) resume(pendingSave);
+  document.getElementById("btn-resume").addEventListener("click", async () => {
+    if (pendingSave) return resume(pendingSave);
+    if (!saveUnknown) return;
+    const btn = document.getElementById("btn-resume"); // 다시 시도
+    btn.disabled = true;
+    try { await afterLogin(); } finally { if (saveUnknown) btn.disabled = false; }
   });
 
   let newArmed = false;
@@ -298,6 +364,8 @@
     newArmed = false;
     e.target.textContent = "새로 시작";
     pendingSave = null;
+    // 저장을 확인 못 한 상태에서도 사장님이 두 번 눌러 고른 것이므로, 서버 저장을 지우고 이번 판부터 다시 저장합니다
+    if (saveUnknown) { saveUnknown = false; auth.canSave = !auth.guest; }
     clearSave();
     startGame();
   });
@@ -469,6 +537,7 @@
 
   wrap("renderFinal", original => function () {
     original.apply(this, arguments);
+    updateFinalButtons();
     clearSave();
   });
 
@@ -498,7 +567,7 @@
       setAuth(keep.get(KEY_ID), savedToken, keep.get(KEY_GUEST) === "1");
       await afterLogin();
     } else {
-      showScreen("screen-login");
+      showLogin();
     }
   })();
 })();
