@@ -86,10 +86,70 @@ test("전원 퇴사 후에도 8분기를 마치고 마지막 근무 분기의 �
     }
   `);
   assert.equal(run("c.rounds.length"), 8);
-  assert.equal(run('c.rounds.slice(1).every(r => r.choice === "closed" && r.profit === 0 && !r.result.practice)'), true);
+  assert.equal(run('c.rounds.slice(1).every(r => r.choice === "closed" && r.profit === -CLOSED_PENALTY && !r.result.practice)'), true);
   assert.equal(run("recordResult(c).total"), 1);
   run("recordResult(c)");
   assert.equal(run("loadBoard().length"), 1);
+});
+
+test("전원 퇴사 후 남은 분기마다 영업 중단 손실을 한 번씩 적용한다", () => {
+  const run = setup();
+  hire(run);
+  run(`
+    employee.quit = true;
+    for (game.round = 0; game.round < ROUNDS; game.round++) {
+      c.rounds[game.round] = { result: null };
+      closeUnstaffedRound(c);
+      closeUnstaffedRound(c);
+      settleRound(c, "closed");
+    }
+  `);
+  assert.equal(run("CLOSED_PENALTY"), 9000);
+  assert.equal(run("totalProfit(c)"), -72000);
+  assert.equal(run("c.rounds.every(r => r.revenue === 0 && r.cost === 0 && r.penalty === 9000 && r.profit === -9000)"), true);
+  assert.match(run("c.rounds[0].loyaltyNote"), /임대료와 위약금 −9,000만원/);
+});
+
+function simulate(scores, choices, salary = 14) {
+  const run = setup();
+  hire(run);
+  run(`employee.salary = ${salary}; c.funding = "vc";`);
+  for (let i = 0; i < 8; i++) {
+    run(`
+      game.round = ${i};
+      c.rounds[game.round] = { result: null };
+      if (!staffOf(c).length) closeUnstaffedRound(c);
+      else {
+        c.rounds[game.round].result = { score: ${scores[i]}, news: "비교 결산" };
+        settleRound(c, "${choices[i]}");
+      }
+    `);
+  }
+  return run("totalProfit(c)");
+}
+
+test("코멘트의 5회 연속 추궁 전략이 정상 경영보다 불리하다", () => {
+  // 인건비 합 14: 첫 5분기 성과 70점이면 2억 1,000만원, 이후 중단 손실 2억 7,000만원.
+  const closed = simulate(Array(8).fill(70), Array(8).fill("dig"));
+  const scores = [20, 90, 30, 70, 35, 40, 49, 40];
+  const normal = simulate(scores, scores.map(s => s >= 60 ? "praise" : "dig"));
+  assert.equal(closed, -6000);
+  assert.equal(normal, 15000);
+  assert.ok(normal > closed);
+});
+
+test("영업 중단으로 정상 경영의 최악 손실도 피할 수 없다", () => {
+  const run = setup();
+  assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY"));
+  for (const salary of [14, 18, 22, 28]) {
+    for (const score of [0, 20, 59, 60, 70, 100]) {
+      // 첫 5분기 성과는 같게 고정. 추궁으로 퇴사시킨 경우와 직원을 유지한 경우를 비교.
+      const scores = [...Array(5).fill(70), ...Array(3).fill(score)];
+      const closed = simulate(scores, Array(8).fill("dig"), salary);
+      const normal = simulate(scores, Array(8).fill("praise"), salary);
+      assert.ok(normal > closed, `인건비 ${salary}, 남은 분기 성과 ${score}`);
+    }
+  }
 });
 
 test("연습 모드에서 전원 퇴사해도 정식 순위에 기록하지 않는다", () => {

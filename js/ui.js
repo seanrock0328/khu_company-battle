@@ -224,7 +224,7 @@ function renderEvent() {
       <p class="field-label">이 지시를 듣는 순서 <span class="hint">♥ 충성심</span></p>
       <ol class="chain">${chain}</ol>
       ${quit.length ? `<p class="hint">퇴사: ${quit.join(", ")}</p>` : ""}
-      ${!activeStaff.length ? '<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기도 결산하며, 매출과 인건비는 0원입니다.</p>' : `<p class="hint">이번 분기 인건비 ${money(payroll(c) * COST_PER_SALARY, false)} · 성과 ${SUCCESS_LINE}점 이상이면 잘 수행한 것으로 판정합니다.</p>`}
+      ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : `<p class="hint">이번 분기 인건비 ${money(payroll(c) * COST_PER_SALARY, false)} · 성과 ${SUCCESS_LINE}점 이상이면 잘 수행한 것으로 판정합니다.</p>`}
     </div>`;
 }
 
@@ -288,7 +288,7 @@ async function renderTruth() {
     <table class="ledger">
       <tr><td>매출 (성과 ${r.score}점)</td><td>${money(round.revenue)}</td></tr>
       <tr><td>인건비</td><td>${money(-round.cost)}</td></tr>
-      ${round.penalty ? `<tr class="bad"><td>칭찬 실패 불이익</td><td>${money(-round.penalty)}</td></tr>` : ""}
+      ${round.penalty ? `<tr class="bad"><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
       <tr class="sum"><td>이번 분기 수익</td><td class="${round.profit < 0 ? "neg" : "pos"}">${money(round.profit)}</td></tr>
       <tr><td>누적 수익</td><td class="${totalProfit(c) < 0 ? "neg" : "pos"}">${money(totalProfit(c))}</td></tr>
     </table>

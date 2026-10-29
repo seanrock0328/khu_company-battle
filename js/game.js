@@ -36,6 +36,9 @@ const REVENUE_PER_POINT = 100;   // 성과 1점당 매출
 const COST_PER_SALARY = 200;     // 연봉 1당 분기 인건비
 const SUCCESS_LINE = 60;         // 성과 60점 이상이면 "잘 수행함"
 const PRAISE_FAIL_PENALTY = 3000; // 잘 못했는데 칭찬하면 큰 불이익
+// 정상 경영의 최대 분기 손실(최대 인건비 28 x 200 + 불이익 3000 = 8600)보다 크게.
+// 전원 퇴사로 적자 분기를 피하는 전략이 이득이 되지 않게 합니다.
+const CLOSED_PENALTY = 9000;     // 영업 중단 분기의 임대료·위약금
 const LOYALTY_START = 5;
 const LOYALTY_MAX = 10;
 
@@ -250,7 +253,8 @@ function settleRound(c, choice) {
   let note;
 
   if (choice === "closed") {
-    note = "직원이 없어 영업을 중단했습니다. 이번 분기 매출과 인건비는 0원입니다";
+    penalty = CLOSED_PENALTY;
+    note = `직원이 없어 영업을 중단했습니다. 임대료와 위약금 ${money(-penalty)}`;
   } else if (choice === "praise") {
     if (success) { delta = 1; note = "칭찬받은 직원들의 충성심이 올랐습니다 (+1)"; }
     else { penalty = PRAISE_FAIL_PENALTY; note = "엉터리 일을 칭찬해서 문제가 커졌습니다"; }
