@@ -104,5 +104,5 @@ const TEAM_SERVER_URL = "https://khu-company-battle.○○○.workers.dev";
 `https://khu-company-battle.seanrock0328.workers.dev` 를 열어서 `"board":true`, `"adminCode":true`, `"version":3`이 보이면 완료.
 
 ## 알아 둘 것
-- 무료 사용량: 하루 기록 저장 1,000번, 순위표 조회 수천 번 정도. 대회·전시 규모에는 충분합니다.
+- 무료 사용량: 하루 기록 저장 1,000번, 순위표 목록 읽기 1,000번. 서버가 순위표를 10초씩 기억해서 읽기를 아끼므로 대회·전시 규모에는 충분합니다. 전시회 당일 Cloudflare의 KV 사용량 화면을 한 번씩 확인하세요.
 - 서버를 거치지 않고 직접 기록을 조작해 보내는 것까지 완벽히 막지는 못합니다. 학교 행사용으로는 충분한 수준이고, 이상한 기록이 보이면 관리자 코드로 초기화하세요.
