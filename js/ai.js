@@ -3,6 +3,70 @@
 // ChatKHU 없이 테스트할 때를 위한 "연습 모드"(AI 아님)도 여기 있습니다.
 // 요청문 문구를 고치면 결과가 달라집니다. 고칠 때마다 docs/ai-log.md에 기록!
 
+// ===== 0. ChatKHU API 자동 연결 =====
+// ChatKHU API Gateway (OpenAI 호환). 문서: https://docs.mindlogic.ai/docs/general/api-gateway/getting-started/overview
+// API 키는 절대 코드에 쓰지 않습니다! 게임 화면에서 입력받아 그 브라우저(localStorage)에만 저장합니다.
+
+const CHATKHU_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/chat/completions/";
+
+// 고를 수 있는 모델 (ChatKHU 모델 목록에서 고름. 크레딧 단가가 모델마다 다름)
+const CHATKHU_MODELS = [
+  { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (빠름)" },
+  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
+  { id: "gpt-5.6-terra", name: "GPT-5.6 Terra" },
+  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5 (빠름)" },
+  { id: "solar-pro4", name: "Solar Pro 4 (국내)" }
+];
+
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  remove(k) { try { localStorage.removeItem(k); } catch {} }
+};
+
+function getApiKey() { return store.get("chatkhu_key"); }
+function getModel() { return store.get("chatkhu_model") || CHATKHU_MODELS[0].id; }
+function saveApiSettings(key, model) {
+  if (key) store.set("chatkhu_key", key.trim());
+  if (model) store.set("chatkhu_model", model);
+}
+function clearApiKey() { store.remove("chatkhu_key"); }
+
+// 요청문을 ChatKHU에 보내고 답변 글자를 돌려받습니다
+async function callChatKHU(prompt) {
+  const key = getApiKey();
+  if (!key) throw new Error("API 키를 먼저 저장해 주세요.");
+  let res;
+  try {
+    res = await fetch(CHATKHU_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        model: getModel(),
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 8000
+      })
+    });
+  } catch (e) {
+    throw new Error("브라우저에서 ChatKHU에 접속하지 못했어요. 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
+  }
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 150);
+    const reasons = {
+      401: "API 키가 틀렸거나 해지됐어요. 키를 다시 확인해 주세요.",
+      402: "ChatKHU 크레딧이 부족해요.",
+      403: "이 모델은 API로 쓸 수 없어요. 다른 모델을 골라 주세요.",
+      404: "모델 이름을 찾지 못했어요. 다른 모델을 골라 주세요.",
+      429: "요청이 너무 많아요. 잠시 후 다시 눌러 주세요."
+    };
+    throw new Error(`${reasons[res.status] || "ChatKHU 오류가 났어요."} (${res.status}) ${detail}`);
+  }
+  const data = await res.json();
+  const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!text) throw new Error("ChatKHU 답변이 비어 있어요. 다시 눌러 보거나 다른 모델을 골라 주세요.");
+  return Array.isArray(text) ? text.map(p => p.text || "").join("") : String(text);
+}
+
 // ===== 1. 창업 단계 =====
 
 function buildFoundingRequest() {
@@ -24,7 +88,7 @@ ${JSON.stringify(input, null, 1)}
 {"companies":[{"news":"...","crisis":{"title":"...","text":"..."}},{"news":"...","crisis":{"title":"...","text":"..."}}]}`;
 }
 
-function applyFounding(text) {
+function applyFounding(text, model) {
   const data = parseJson(text);
   const list = data && data.companies;
   if (!Array.isArray(list) || list.length < 2) {
@@ -40,6 +104,7 @@ function applyFounding(text) {
     c.news = String(r.news);
     c.crisis = { title: String(r.crisis.title), text: String(r.crisis.text) };
     c.foundingByAI = true;
+    c.foundingModel = model || "";
   });
 }
 
@@ -83,7 +148,7 @@ ${JSON.stringify(input, null, 1)}
 {"companies":[{"down":["..."],"action":"...","up":["..."],"score":0,"news":"...","reason":"..."},{"down":["..."],"action":"...","up":["..."],"score":0,"news":"...","reason":"..."}]}`;
 }
 
-function applyBattle(text) {
+function applyBattle(text, model) {
   const data = parseJson(text);
   const list = data && data.companies;
   if (!Array.isArray(list) || list.length < 2) {
@@ -115,7 +180,7 @@ function applyBattle(text) {
       score: Math.max(0, Math.min(100, score)),
       news: String(r.news || ""),
       reason: String(r.reason || ""),
-      over, practice: false
+      over, practice: false, model: model || ""
     };
   });
   game.companies.forEach((c, i) => (c.result = results[i]));

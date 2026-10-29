@@ -64,6 +64,42 @@ document.getElementById("btn-found").addEventListener("click", () => {
 
 // ===== ChatKHU 화면 =====
 
+// 자동 연결: 요청문을 ChatKHU API로 바로 보내고 결과를 적용
+document.getElementById("btn-auto").addEventListener("click", async () => {
+  const errorBox = document.getElementById("ai-error");
+  errorBox.textContent = "";
+  setAutoBusy(true);
+  try {
+    const answer = await callChatKHU(document.getElementById("ai-request").value);
+    // 결과를 붙여넣기 칸에도 남겨 둡니다 (형식이 틀렸을 때 확인용)
+    document.getElementById("ai-response").value = answer;
+    if (aiMode === "founding") applyFounding(answer, getModel());
+    else applyBattle(answer, getModel());
+  } catch (err) {
+    errorBox.textContent = err.message;
+    setAutoBusy(false);
+    return;
+  }
+  setAutoBusy(false);
+  afterAI();
+});
+
+document.getElementById("btn-key-save").addEventListener("click", () => {
+  const key = document.getElementById("key-input").value.trim();
+  if (!key && !getApiKey()) return toast("API 키를 붙여넣어 주세요.");
+  saveApiSettings(key, document.getElementById("model-select").value);
+  renderAutoBox();
+  toast("저장했어요. 이제 'ChatKHU로 바로 만들기'를 누르세요.");
+});
+
+document.getElementById("btn-key-edit").addEventListener("click", () => renderAutoBox(true));
+
+document.getElementById("btn-key-clear").addEventListener("click", () => {
+  clearApiKey();
+  renderAutoBox();
+  toast("이 브라우저에서 API 키를 지웠어요.");
+});
+
 document.getElementById("btn-copy").addEventListener("click", async () => {
   const area = document.getElementById("ai-request");
   const btn = document.getElementById("btn-copy");
@@ -82,8 +118,8 @@ document.getElementById("btn-apply").addEventListener("click", () => {
   const errorBox = document.getElementById("ai-error");
   if (!text) return (errorBox.textContent = "ChatKHU 답변을 붙여넣어 주세요.");
   try {
-    if (aiMode === "founding") applyFounding(text);
-    else applyBattle(text);
+    if (aiMode === "founding") applyFounding(text, "");
+    else applyBattle(text, "");
   } catch (err) {
     errorBox.textContent = err.message;
     return;

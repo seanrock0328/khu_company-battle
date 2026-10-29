@@ -80,6 +80,31 @@ function renderAI(mode) {
   document.getElementById("ai-response").value = "";
   document.getElementById("ai-error").textContent = "";
   document.getElementById("btn-copy").textContent = "요청문 복사하기";
+  document.getElementById("auto-status").textContent = "";
+  renderAutoBox();
+}
+
+// API 키가 저장돼 있으면 "바로 만들기" 버튼을, 없으면 키 입력칸을 보여줍니다
+function renderAutoBox(forceSetup) {
+  const hasKey = !!getApiKey();
+  const setup = forceSetup || !hasKey;
+  document.getElementById("auto-ready").hidden = setup;
+  document.getElementById("auto-setup").hidden = !setup;
+  document.getElementById("btn-key-clear").hidden = !hasKey;
+  const select = document.getElementById("model-select");
+  select.innerHTML = CHATKHU_MODELS.map(m =>
+    `<option value="${m.id}" ${m.id === getModel() ? "selected" : ""}>${m.name}</option>`).join("");
+  const model = CHATKHU_MODELS.find(m => m.id === getModel());
+  document.getElementById("auto-model-name").textContent = model ? model.name : getModel();
+  document.getElementById("key-input").value = "";
+}
+
+function setAutoBusy(busy) {
+  const btn = document.getElementById("btn-auto");
+  btn.disabled = busy;
+  btn.textContent = busy ? "ChatKHU가 쓰는 중…" : "ChatKHU로 바로 만들기";
+  document.getElementById("btn-practice").disabled = busy;
+  document.getElementById("auto-status").textContent = busy ? "보통 10~40초 걸려요." : "";
 }
 
 // ===== 창업 뉴스 =====
@@ -87,7 +112,7 @@ function renderAI(mode) {
 function renderFoundingNews() {
   document.getElementById("founding-news").innerHTML = game.companies.map(c => `
     <article class="news">
-      <p class="paper">경희경제신문 <span>${c.foundingByAI ? "ChatKHU 작성" : "연습 모드"}</span></p>
+      <p class="paper">경희경제신문 <span>${c.foundingByAI ? `ChatKHU 작성${c.foundingModel ? " · " + esc(c.foundingModel) : ""}` : "연습 모드"}</span></p>
       <h3>${esc(c.news)}</h3>
       ${companyTitle(c)}
     </article>`).join("");
@@ -200,7 +225,7 @@ function renderVerdict() {
     const twist = fundingTwist(c);
     return `
     <article class="news ${w === i ? "win" : ""}">
-      <p class="paper">경희경제신문 · 결산 <span>${r.practice ? "연습 모드" : "ChatKHU 판정"}</span></p>
+      <p class="paper">경희경제신문 · 결산 <span>${r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
       <h3>${esc(r.news)}</h3>
       <p class="score">${r.score}<small>점</small></p>
       <p class="reason">${esc(r.reason)}</p>
