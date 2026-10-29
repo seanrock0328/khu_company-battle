@@ -2,15 +2,15 @@
 // 이 파일은 화면을 직접 건드리지 않습니다. 계산만 합니다.
 
 // ===== 팀 약속: 데이터 모양 (바꾸려면 단톡방에 먼저 공유!) =====
-// 한 판 = 플레이어 한 명이 회사 하나를 운영. 이벤트 3번(위기·기회·위기)의 점수 합계로 순위.
+// 한 판 = 플레이어 한 명이 2년(8분기) 동안 회사 하나를 운영. 8분기 누적 수익으로 순위.
 // 회사:
 // {
 //   player, emoji, industry, detail(세부정보), name, motto, funding,
-//   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x3,
-//   candidates: { 임원: [후보 x3], 부장: [...], ... }, hires: { 임원: 후보id | null, ... },
-//   rounds: [{ order, result: { down:[{say, lie}], action, up:[{say, lie}], score, news, reason, practice, model } }]
+//   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x8,
+//   candidates: { 임원: [후보 x3], ... }, hires: { 임원: 후보id | null, ... },
+//   rounds: [{ order, result, choice:"dig"|"praise", success, revenue, cost, penalty, profit, loyaltyNote, quits:[이름] }]
 // }
-// 후보: { id, rank, name, mbti, secure(안정형 %), skill(능력 1~10), luck(운 1~10), honesty(정직 1~10, 숨김), salary, intro, answer }
+// 후보: { id, rank, name, mbti, secure(안정형 %), skill, luck, honesty(숨김), loyalty(충성심, 5에서 시작), quit, salary, intro, answer }
 
 const RANKS = [
   { name: "사장", chars: 100, base: 0 },  // 플레이어
@@ -28,7 +28,20 @@ const DETAIL_MAX = 40;
 const NAME_MAX = 12;
 const MOTTO_MAX = 20;
 const ORDER_MAX = 100;
-const ROUNDS = EVENT_ORDER.length; // 3
+const ROUNDS = EVENT_ORDER.length; // 8분기
+
+// ===== 경제 규칙 (단위: 만원) =====
+// 분기 수익 = 성과 점수 x 100 - 인건비 x 200 - 불이익
+const REVENUE_PER_POINT = 100;   // 성과 1점당 매출
+const COST_PER_SALARY = 200;     // 연봉 1당 분기 인건비
+const SUCCESS_LINE = 60;         // 성과 60점 이상이면 "잘 수행함"
+const PRAISE_FAIL_PENALTY = 3000; // 잘 못했는데 칭찬하면 큰 불이익
+const LOYALTY_START = 5;
+const LOYALTY_MAX = 10;
+
+function quarterLabel(i) {
+  return `${Math.floor(i / 4) + 1}년차 ${(i % 4) + 1}분기`;
+}
 
 function newCompany() {
   return {
@@ -43,9 +56,48 @@ function rankInfo(rankName) {
   return RANKS.find(r => r.name === rankName);
 }
 
+// ===== 대결 업종 (같은 대결에 참가한 사람은 모두 같은 업종) =====
+// 이 노트북에서 첫 사람이 뽑은 업종이 저장되고, 다음 사람부터 그대로 씁니다.
+// 다른 기기와는 공유 링크(?industry=...&emoji=...)로 맞춥니다. 순위표를 초기화하면 새로 뽑습니다.
+
+const SEASON_KEY = "company_battle_season_v3";
+
+function getSeason() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SEASON_KEY) || "null");
+    return s && s.industry ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function setSeason(industry, emoji) {
+  try { localStorage.setItem(SEASON_KEY, JSON.stringify({ industry, emoji })); } catch {}
+}
+
+function clearSeason() {
+  try { localStorage.removeItem(SEASON_KEY); } catch {}
+}
+
+// 공유 링크로 들어왔으면 그 업종을 이 기기의 대결 업종으로
+function seasonFromUrl() {
+  const q = new URLSearchParams(location.search);
+  const industry = (q.get("industry") || "").trim().slice(0, 20);
+  if (!industry) return;
+  setSeason(industry, (q.get("emoji") || "🏢").slice(0, 4));
+  history.replaceState(null, "", location.pathname); // 주소창 정리
+}
+
+function seasonLink() {
+  const s = getSeason();
+  if (!s) return "";
+  const q = new URLSearchParams({ industry: s.industry, emoji: s.emoji });
+  return `${location.origin}${location.pathname}?${q}`;
+}
+
 // ===== 창업 =====
 
-const MAX_ROLLS = 2; // 업종 뽑기: 처음 1번 + 다시 뽑기 1번
+const MAX_ROLLS = 2; // 업종 뽑기: 처음 1번 + 다시 뽑기 1번 (대결 업종이 정해지기 전에만)
 
 function checkFounding(c) {
   if (!c.player.trim()) return "사장님 닉네임을 적어 주세요. 순위표에 나와요.";
@@ -77,29 +129,25 @@ function shuffle(list) {
   return a;
 }
 
-// 후보 셋은 각각 능력형, 정직형, 운형 중 하나. 세 능력치 합은 항상 17이라 밸런스가 맞습니다.
+// 후보 셋은 각각 능력형, 정직형, 운형. 세 능력치 합은 항상 17이라 밸런스가 맞습니다.
 function makeCandidate(rank, type) {
   const main = randInt(7, 9);
-  let rest = 17 - main;
+  const rest = 17 - main;
   const a = randInt(Math.max(1, rest - 9), Math.min(9, rest - 1));
-  const b = rest - a;
   const stats = { skill: 0, honesty: 0, luck: 0 };
   const others = ["skill", "honesty", "luck"].filter(k => k !== type);
   stats[type] = main;
   stats[others[0]] = a;
-  stats[others[1]] = b;
+  stats[others[1]] = rest - a;
   const base = rankInfo(rank).base;
   return {
-    id: nextCandidateId++,
-    rank,
-    type,
-    name: "",
+    id: nextCandidateId++, rank, type, name: "",
     mbti: MBTI[randInt(0, MBTI.length - 1)],
     secure: randInt(1, 9) * 10,
     ...stats,
+    loyalty: LOYALTY_START, quit: false,
     salary: Math.max(1, Math.round(base * (0.6 + stats.skill * 0.08))),
-    intro: "",
-    answer: ""
+    intro: "", answer: ""
   };
 }
 
@@ -126,18 +174,19 @@ function attachmentLabel(x) {
 
 // ===== 채용 =====
 
-function payroll(c) {
-  return HIRE_RANKS.reduce((sum, r) => {
-    const x = c.hires[r] ? candidateById(c, c.hires[r]) : null;
-    return sum + (x ? x.salary : 0);
-  }, 0);
-}
-
 function budgetOf(c) {
   return fundingOf(c).budget;
 }
 
-// 실패하면 이유, 성공하면 null. id가 null이면 그 자리를 비웁니다.
+// 지시가 내려가는 순서 (빈자리, 퇴사자는 건너뜀)
+function staffOf(c) {
+  return HIRE_RANKS.map(r => c.hires[r] ? candidateById(c, c.hires[r]) : null).filter(x => x && !x.quit);
+}
+
+function payroll(c) {
+  return staffOf(c).reduce((sum, x) => sum + x.salary, 0);
+}
+
 function hireCandidate(c, rank, id) {
   const before = c.hires[rank];
   c.hires[rank] = id;
@@ -148,15 +197,50 @@ function hireCandidate(c, rank, id) {
   return null;
 }
 
-// 지시가 내려가는 순서 (빈자리는 건너뜀)
-function staffOf(c) {
-  return HIRE_RANKS.map(r => c.hires[r] ? candidateById(c, c.hires[r]) : null).filter(Boolean);
+// ===== 분기 결산: 파고들기 / 칭찬하기 =====
+// 칭찬 + 잘함   → 충성심 +1
+// 칭찬 + 못함   → 큰 불이익 (-3000만원)
+// 파고듦 + 잘함 → 충성심 -1 (의심받아 서운함)
+// 파고듦 + 못함 → 불이익 없음 (문제를 미리 잡아냄)
+// 충성심이 0이 되면 퇴사합니다.
+
+function settleRound(c, choice) {
+  const round = c.rounds[game.round];
+  const score = round.result.score;
+  const success = score >= SUCCESS_LINE;
+  const staff = staffOf(c);
+  let penalty = 0;
+  let delta = 0;
+  let note;
+
+  if (choice === "praise") {
+    if (success) { delta = 1; note = "칭찬받은 직원들의 충성심이 올랐습니다 (+1)"; }
+    else { penalty = PRAISE_FAIL_PENALTY; note = "엉터리 일을 칭찬해서 문제가 커졌습니다"; }
+  } else {
+    if (success) { delta = -1; note = "잘했는데 의심받은 직원들이 서운해합니다 (충성심 -1)"; }
+    else { note = "파고든 덕분에 문제를 미리 잡아 불이익을 막았습니다"; }
+  }
+
+  const quits = [];
+  if (delta) {
+    staff.forEach(x => {
+      x.loyalty = Math.max(0, Math.min(LOYALTY_MAX, x.loyalty + delta));
+      if (x.loyalty === 0) { x.quit = true; quits.push(`${x.rank} ${x.name}`); }
+    });
+  }
+
+  const revenue = score * REVENUE_PER_POINT;
+  const cost = staff.reduce((s, x) => s + x.salary, 0) * COST_PER_SALARY;
+  Object.assign(round, {
+    choice, success, revenue, cost, penalty,
+    profit: revenue - cost - penalty,
+    loyaltyNote: note, quits
+  });
+  return round;
 }
 
-// ===== 결산 =====
-
-function totalScore(c) {
-  return c.rounds.reduce((s, r) => s + (r.result ? r.result.score : 0), 0);
+function totalProfit(c) {
+  return c.rounds.reduce((s, r) => s + (typeof r.profit === "number" ? r.profit : 0), 0);
 }
 
 function isPractice(c) {
@@ -173,15 +257,28 @@ function fundingTwist(c) {
     ];
     return { kind: "nag", text: nags[randInt(0, nags.length - 1)] };
   }
-  if (c.funding === "vc" && totalScore(c) < 150) {
-    return { kind: "fired", text: "이사회 결정: 사장님은 오늘부로 해임되셨습니다." };
+  if (c.funding === "vc" && totalProfit(c) < 0) {
+    return { kind: "fired", text: "이사회 결정: 2년 적자로 사장님은 오늘부로 해임되셨습니다." };
   }
   return null;
 }
 
+// 금액 표시: 12345 → "+1억 2,345만원"
+function money(n, signed = true) {
+  const sign = n < 0 ? "−" : signed ? "+" : "";
+  const v = Math.abs(Math.round(n));
+  const eok = Math.floor(v / 10000);
+  const man = v % 10000;
+  const parts = [];
+  if (eok) parts.push(`${eok.toLocaleString()}억`);
+  if (man || !eok) parts.push(`${man.toLocaleString()}만원`);
+  else parts[0] += "원";
+  return sign + parts.join(" ");
+}
+
 // ===== 순위표 (이 노트북 브라우저에 저장) =====
 
-const BOARD_KEY = "company_battle_leaderboard_v2";
+const BOARD_KEY = "company_battle_leaderboard_v3";
 
 function loadBoard() {
   try {
@@ -197,7 +294,7 @@ function saveBoard(list) {
 }
 
 function sortedBoard() {
-  return loadBoard().sort((a, b) => b.score - a.score || a.at - b.at);
+  return loadBoard().sort((a, b) => b.profit - a.profit || a.at - b.at);
 }
 
 // 연습 모드가 한 번이라도 섞이면 순위에 넣지 않습니다
@@ -206,7 +303,7 @@ function recordResult(c) {
   const last = c.rounds[c.rounds.length - 1].result;
   const entry = {
     player: c.player.trim(), name: c.name, emoji: c.emoji, industry: c.industry,
-    score: totalScore(c), news: last.news, model: last.model || "", at: Date.now()
+    profit: totalProfit(c), news: last.news, model: last.model || "", at: Date.now()
   };
   const list = loadBoard();
   list.push(entry);
@@ -215,11 +312,18 @@ function recordResult(c) {
   return { rank: sorted.findIndex(e => e.at === entry.at) + 1, total: sorted.length, at: entry.at };
 }
 
+// 순위표를 비우면 대결 업종도 새로 뽑습니다
 function clearBoard() {
   saveBoard([]);
+  clearSeason();
 }
 
 function resetGame() {
   game.company = newCompany();
   game.round = 0;
+  const season = getSeason();
+  if (season) {
+    game.company.industry = season.industry;
+    game.company.emoji = season.emoji;
+  }
 }

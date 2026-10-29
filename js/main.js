@@ -82,7 +82,7 @@ foundBox.addEventListener("click", e => {
   const btn = e.target.closest("[data-action]");
   if (!btn || btn.dataset.action !== "roll") return;
   const c = game.company;
-  if (c.rolls >= MAX_ROLLS) return;
+  if (getSeason() || c.rolls >= MAX_ROLLS) return;
   runAI("industry", () => {
     c.rolls++;
     renderFound();
@@ -108,6 +108,7 @@ foundBox.addEventListener("change", e => {
 document.getElementById("btn-found").addEventListener("click", () => {
   const error = checkFounding(game.company);
   if (error) return toast(error);
+  if (!getSeason()) setSeason(game.company.industry, game.company.emoji); // 다음 사장님도 같은 업종으로
   makeCandidates(game.company);
   runAI("founding", () => {
     renderFoundingNews();
@@ -170,34 +171,47 @@ function startRound() {
 document.getElementById("btn-run").addEventListener("click", () => {
   const order = document.getElementById("order").value.trim();
   if (!order) return toast("사장님, 지시를 적어 주세요.");
-  game.company.rounds[game.round].order = order;
+  const round = game.company.rounds[game.round];
+  round.order = order;
+  round.chain = staffOf(game.company).map(x => x.id); // 이번 분기에 지시를 들은 직원 순서
   runAI("event", showRoundResult);
 });
 
-const revealBtn = document.getElementById("btn-reveal");
+const choiceBox = document.getElementById("choice");
 const nextBtn = document.getElementById("btn-next");
 
 async function showRoundResult() {
-  revealBtn.hidden = true;
+  choiceBox.hidden = true;
   nextBtn.hidden = true;
   showScreen("screen-result");
   await renderReports();
-  revealBtn.hidden = false;
+  choiceBox.hidden = false;
+  choiceBox.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-revealBtn.addEventListener("click", async () => {
-  revealBtn.hidden = true;
+// 보고를 받은 뒤 사장의 선택: 파고들기 / 칭찬하기
+async function choose(choice) {
+  choiceBox.hidden = true;
+  settleRound(game.company, choice);
   await renderTruth();
-  nextBtn.textContent = game.round < ROUNDS - 1 ? `이벤트 ${game.round + 2} 받기 →` : "최종 결산 보기";
+  const noStaff = staffOf(game.company).length === 0;
+  const last = game.round >= ROUNDS - 1 || noStaff;
+  nextBtn.textContent = last
+    ? (noStaff ? "직원이 모두 떠났습니다… 결산 보기" : "2년 결산 보기")
+    : `${quarterLabel(game.round + 1)}로 →`;
   nextBtn.hidden = false;
-});
+}
+
+document.getElementById("btn-dig").addEventListener("click", () => choose("dig"));
+document.getElementById("btn-praise").addEventListener("click", () => choose("praise"));
 
 nextBtn.addEventListener("click", () => {
-  if (game.round < ROUNDS - 1) {
+  const c = game.company;
+  if (game.round < ROUNDS - 1 && staffOf(c).length > 0) {
     game.round++;
     return startRound();
   }
-  const placed = recordResult(game.company); // 연습 모드가 섞였으면 null
+  const placed = recordResult(c); // 연습 모드가 섞였으면 null
   lastPlacedAt = placed ? placed.at : null;
   renderFinal(placed);
   showScreen("screen-final");
@@ -224,6 +238,14 @@ document.getElementById("btn-board-back").addEventListener("click", () => {
   else showScreen(screenBeforeBoard);
 });
 
+document.getElementById("season-box").addEventListener("click", async e => {
+  if (e.target.id !== "btn-copy-link") return;
+  const input = document.getElementById("season-link");
+  try { await navigator.clipboard.writeText(input.value); }
+  catch { input.select(); document.execCommand("copy"); }
+  toast("링크를 복사했어요. 단톡방에 공유하세요!");
+});
+
 const clearBtn = document.getElementById("btn-board-clear");
 let clearArmed = false;
 clearBtn.addEventListener("click", () => {
@@ -235,10 +257,11 @@ clearBtn.addEventListener("click", () => {
   }
   clearBoard();
   lastPlacedAt = null;
+  screenBeforeBoard = "screen-final"; // 돌아가면 새 판(새 업종 뽑기)부터
   clearArmed = false;
   clearBtn.textContent = "순위표 초기화";
   renderBoard(null);
-  toast("순위표를 비웠어요.");
+  toast("순위표를 비웠어요. 다음 사장님이 새 대결 업종을 뽑습니다.");
 });
 
 // ===== ChatKHU 연결 설정 =====
@@ -275,5 +298,6 @@ document.getElementById("btn-key-clear").addEventListener("click", () => {
   toast("이 브라우저에서 API 키를 지웠어요.");
 });
 
+seasonFromUrl(); // 공유 링크로 들어왔으면 그 업종으로 대결
 renderSettingsButton();
 startGame();

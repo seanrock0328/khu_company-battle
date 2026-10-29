@@ -34,7 +34,8 @@ const FALLBACK_EVENTS = {
     { title: "대기업 협업 제안", text: "대기업이 공동 프로모션을 하자고 제안했다." }
   ]
 };
-const EVENT_ORDER = ["위기", "기회", "위기"]; // 한 판의 이벤트 순서
+// 한 판 = 2년 x 4분기 = 8턴. 분기마다 이벤트 하나 (위기 5번, 기회 3번)
+const EVENT_ORDER = ["위기", "기회", "위기", "위기", "기회", "위기", "기회", "위기"];
 
 // 연습 모드용 후보 이름과 자기소개
 const FALLBACK_NAMES = [
@@ -52,7 +53,7 @@ const FALLBACK_INTROS = {
 const FUNDING = [
   { id: "parents", name: "부모님 돈", budget: 18, note: "결산 때 부모님 잔소리" },
   { id: "angel", name: "엔젤 투자", budget: 22, note: "기본" },
-  { id: "vc", name: "대형 VC", budget: 28, note: "총점 150 미만이면 사장 해임" }
+  { id: "vc", name: "대형 VC", budget: 28, note: "2년 수익이 적자면 사장 해임" }
 ];
 
 const MBTI = ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP",

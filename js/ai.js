@@ -1,5 +1,5 @@
 // 담당 C: ChatKHU 연결
-// 한 판에 ChatKHU를 5번 부릅니다: 업종 뽑기 → 창업(뉴스·이벤트·면접 후보) → 이벤트 3번
+// 한 판에 ChatKHU를 최대 10번 부릅니다: 업종 뽑기(대결의 첫 사람만) → 창업(뉴스·이벤트 8개·면접 후보) → 8분기 이벤트
 // 요청문 문구를 고치면 결과가 달라집니다. 고칠 때마다 docs/ai-log.md에 기록!
 
 // ===== 0. ChatKHU API 자동 연결 =====
@@ -136,7 +136,7 @@ function buildFoundingRequest() {
 
 [만들 것]
 1. news: 창업 소식 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 하는 일, 사훈, 자금 출처를 재치 있게.
-2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개. 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황.
+2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개 (2년 동안 분기마다 하나). 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황. 서로 겹치지 않게, 뒤로 갈수록 규모가 커지게.
 3. candidates: 면접 후보 전원(id 그대로)에 대해
    - name: 한국식 이름 3글자. 성격이 드러나는 웃긴 이름도 좋음 (예: 김대충). 실존 유명인 이름 금지.
    - intro: 면접 자기소개 30자 이내. MBTI, 애착 유형, 능력치가 은근히 드러나게, 웃기게.
@@ -208,14 +208,18 @@ function buildEventRequest() {
   const round = c.rounds[i];
   const input = {
     company: { name: c.name, industry: c.industry, detail: c.detail, motto: c.motto },
-    round: `${i + 1}/${ROUNDS}`,
+    quarter: `${quarterLabel(i)} (${i + 1}/${ROUNDS})`,
     event: c.events[i],
     ceoOrder: round.order,
     staff: staffOf(c).map(x => ({
       rank: x.rank, name: x.name, mbti: x.mbti, attachment: attachmentLabel(x),
-      skill: x.skill, honesty: x.honesty, luck: x.luck, chars: rankInfo(x.rank).chars
+      skill: x.skill, honesty: x.honesty, luck: x.luck, loyalty: x.loyalty, chars: rankInfo(x.rank).chars
     })),
-    previousRounds: c.rounds.slice(0, i).map((r, k) => ({ event: c.events[k].title, score: r.result.score, news: r.result.news }))
+    // 최근 3분기만 (요청문이 너무 길어지지 않게)
+    previousRounds: c.rounds.slice(Math.max(0, i - 3), i).map((r, k) => ({
+      event: c.events[Math.max(0, i - 3) + k].title, score: r.result.score, news: r.result.news,
+      ceoReaction: r.choice === "praise" ? "칭찬" : "파고듦"
+    }))
   };
   return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.
 사장의 지시가 staff를 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 각 직원의 성격대로 연기하고 판정하라.
@@ -225,6 +229,7 @@ function buildEventRequest() {
 - honesty(정직 1~10): 낮을수록 자기에게 유리하게 일부러 말을 바꾸거나 거짓말함. 8 이상은 거의 거짓말하지 않음.
 - attachment: 회피형이 강할수록 문제를 숨기고 책임을 피함. 안정형은 문제도 솔직하게 말함.
 - luck(운 1~10): 높은 직원이 있으면 가끔 엉뚱한 행동이 우연히 대박 남.
+- loyalty(충성심 0~10): 높을수록 성실하고 거짓말을 덜 함. 3 이하면 대충 하고 불만을 섞어 말함.
 - mbti 성향도 말투와 판단에 반영.
 
 [출력 규칙]
@@ -234,12 +239,13 @@ function buildEventRequest() {
 4. score: 0~100 정수. ${input.event.type === "기회" ? "기회를 얼마나 잘 살렸는지" : "위기를 얼마나 해결했는지"} 기준. 실제 결과 50점, 사장 의도가 지켜진 정도 30점, 재미와 반전 20점. 여러 플레이어의 순위를 매기므로 기준을 일관되게.
 5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 이전 라운드가 있으면 이어지는 이야기로.
 6. reason: 점수 이유 한 줄 (50자 이내). 결정적이었던 직원 이름을 넣어라.
+7. audit: 사장이 "제대로 했는지 파고들었을 때" 드러나는 사실 한 문장 (50자 이내). 거짓말이 있었다면 누가 무엇을 숨겼는지.
 
 [상황]
 ${JSON.stringify(input)}
 
 설명 없이 아래 JSON 형식만 출력하라.
-{"down":[{"say":"...","lie":false}],"action":"...","up":[{"say":"...","lie":false}],"score":0,"news":"...","reason":"..."}`;
+{"down":[{"say":"...","lie":false}],"action":"...","up":[{"say":"...","lie":false}],"score":0,"news":"...","reason":"...","audit":"..."}`;
 }
 
 function applyEvent(text, model) {
@@ -265,6 +271,7 @@ function applyEvent(text, model) {
     score: Math.max(0, Math.min(100, score)),
     news: String(d.news || ""),
     reason: String(d.reason || ""),
+    audit: String(d.audit || "특별히 숨긴 것은 없었습니다."),
     over, practice: false, model: model || ""
   };
 }
@@ -280,7 +287,7 @@ function practiceEvent() {
   let heard = c.rounds[game.round].order;
   for (const x of staff) {
     const limit = rankInfo(x.rank).chars;
-    const lie = x.honesty <= 3 && Math.random() < 0.6;
+    const lie = (x.honesty <= 3 || x.loyalty <= 2) && Math.random() < 0.6;
     if (lie) heard = pick(LIES_DOWN);
     else {
       const words = heard.split(/[\s,.]+/).filter(Boolean);
@@ -304,7 +311,9 @@ function practiceEvent() {
   c.rounds[game.round].result = {
     down, up, action: `${last} 실행함`, score,
     news: score >= 60 ? `'${c.name}', ${ev.title} ${ev.type === "기회" ? "기회 잡았다" : "정면 돌파"}` : `'${c.name}', ${ev.title} 앞에서 우왕좌왕`,
-    reason: "연습 모드: 평균 능력, 운, 거짓말 수로 계산", over: 0, practice: true, model: ""
+    reason: "연습 모드: 평균 능력, 운, 거짓말 수로 계산",
+    audit: lies ? `${staff.filter((x, k) => down[k].lie).map(x => x.name).join(", ")}이(가) 지시를 바꿔 전달했습니다.` : "모두 지시대로 전달했습니다.",
+    over: 0, practice: true, model: ""
   };
 }
 
@@ -334,7 +343,7 @@ const AI_STEPS = {
   },
   founding: {
     title: "ChatKHU가 창업 소식과 면접 후보를 준비 중",
-    lead: "창업 뉴스, 앞으로 닥칠 이벤트 3개, 직급별 면접 후보 18명의 자기소개를 만듭니다.",
+    lead: "창업 뉴스, 2년 동안 닥칠 이벤트 8개, 직급별 면접 후보 18명의 자기소개를 만듭니다. 30초~1분 걸려요.",
     build: buildFoundingRequest, apply: applyFounding, practice: practiceFounding
   },
   event: {

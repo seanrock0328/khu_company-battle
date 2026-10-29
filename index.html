@@ -17,7 +17,7 @@
     <ol class="steps">
       <li data-step="found">창업</li>
       <li data-step="interview">면접</li>
-      <li data-step="event">이벤트</li>
+      <li data-step="event">경영 8분기</li>
       <li data-step="final">결산</li>
     </ol>
   </header>
@@ -26,7 +26,7 @@
     <!-- 1. 창업 -->
     <section id="screen-found" class="screen active" data-step="found">
       <h2>회사를 차리세요</h2>
-      <p class="lead">업종은 ChatKHU가 뽑고, 무슨 일을 하는 회사인지는 사장님이 정합니다.</p>
+      <p class="lead">같은 대결의 사장님들은 모두 같은 업종으로 겨룹니다. 무슨 일을 하는 회사인지는 각자 정하세요.</p>
       <div class="solo"><div class="card" id="found-box"></div></div>
       <button id="btn-found" class="primary block">창업하기</button>
     </section>
@@ -92,6 +92,7 @@
     <!-- 4. 이벤트 -->
     <section id="screen-event" class="screen" data-step="event">
       <h2 id="event-heading"></h2>
+      <p class="profit-now" id="profit-now"></p>
       <p class="lead">사장님, 100자 안에 지시를 내려 주세요. 이 말이 직원들을 거쳐 내려갑니다.</p>
       <div class="solo" id="event-box"></div>
       <button id="btn-run" class="primary block">지시 내리기</button>
@@ -102,8 +103,25 @@
       <h2 id="result-title"></h2>
       <p class="lead" id="result-lead"></p>
       <div class="solo" id="result-box"></div>
+      <div class="solo" id="choice">
+        <div class="card choice">
+          <p class="choice-q">보고를 받았습니다. 사장님, 어떻게 하시겠어요?</p>
+          <div class="choice-buttons">
+            <button id="btn-dig" class="choice-btn dig">🔍 파고들기<small>제대로 했는지 캐묻는다</small></button>
+            <button id="btn-praise" class="choice-btn praise">👏 칭찬하기<small>믿고 칭찬한다</small></button>
+          </div>
+          <details class="rules">
+            <summary>선택 규칙</summary>
+            <ul>
+              <li>칭찬했는데 <b>잘했으면</b> → 충성심 +1</li>
+              <li>칭찬했는데 <b>못했으면</b> → 회사에 큰 불이익 (−3,000만원)</li>
+              <li>파고들었는데 <b>잘했으면</b> → 서운해서 충성심 −1 (0이 되면 퇴사)</li>
+              <li>파고들었는데 <b>못했으면</b> → 문제를 미리 잡아 불이익 없음</li>
+            </ul>
+          </details>
+        </div>
+      </div>
       <div class="row center">
-        <button id="btn-reveal" class="primary">진실 공개</button>
         <button id="btn-next" class="primary"></button>
       </div>
     </section>
@@ -121,11 +139,12 @@
     <section id="screen-board" class="screen">
       <h2>🏆 사장님 순위표</h2>
       <p class="lead" id="board-lead"></p>
+      <div id="season-box" class="solo"></div>
       <div id="board"></div>
       <div class="row center">
         <button id="btn-board-back" class="primary">게임으로 돌아가기</button>
       </div>
-      <p class="admin"><button id="btn-board-clear" class="text-btn">순위표 초기화</button></p>
+      <p class="admin"><button id="btn-board-clear" class="text-btn">순위표 초기화 (대결 업종도 새로 뽑음)</button></p>
     </section>
 
     <!-- ChatKHU 연결 설정 -->

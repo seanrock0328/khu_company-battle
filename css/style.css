@@ -302,3 +302,45 @@ details textarea { font-size: 12px; color: var(--muted); }
   max-width: calc(100% - 32px); z-index: 10;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ===== 8분기 경영: 수익, 충성심, 선택 ===== */
+.pos { color: var(--good); }
+.neg { color: var(--bad); }
+.profit-now { margin: 0 0 4px; font-size: 15px; }
+.hearts { color: #e2445c; font-size: 12px; letter-spacing: -1px; }
+.hearts .empty { color: #ddd5d6; }
+
+.choice { text-align: center; }
+.choice-q { font-weight: 700; font-size: 17px; margin: 0 0 12px; }
+.choice-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choice-btn {
+  border-radius: 14px; padding: 16px 10px; font-size: 18px; font-weight: 900;
+  border: 2px solid; display: flex; flex-direction: column; gap: 4px; align-items: center;
+}
+.choice-btn small { font-size: 12px; font-weight: 400; }
+.choice-btn.dig { background: #eef3ff; border-color: #7f9fe0; color: #1e3f8a; }
+.choice-btn.praise { background: #fff6dc; border-color: #e0b84a; color: #7a5600; }
+.choice-btn:hover { transform: translateY(-2px); }
+.rules { text-align: left; margin-top: 12px; color: var(--muted); }
+.rules ul { margin: 6px 0 0; padding-left: 18px; }
+
+.outcome { font-weight: 900; font-size: 18px; margin: 0 0 6px; }
+.outcome small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+.outcome.good { color: var(--good); }
+.outcome.bad { color: var(--bad); }
+.choice-result { padding: 8px 10px; border-radius: 8px; font-size: 14px; font-weight: 500; margin: 6px 0; }
+.choice-result.good { background: var(--good-soft); }
+.choice-result.warn { background: var(--warn-soft); }
+.choice-result.bad { background: #fdeceb; color: var(--bad); }
+.ledger { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+.ledger td { padding: 5px 0; border-top: 1px solid var(--line); }
+.ledger td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.ledger tr.sum td { font-weight: 900; font-size: 16px; }
+.ledger tr.bad td { color: var(--bad); }
+.score.big { font-size: clamp(34px, 9vw, 52px); }
+.rounds b { font-size: 15px; white-space: nowrap; }
+.rounds .etype { white-space: nowrap; }
+.reveal-list li { grid-template-columns: auto 72px 1fr auto; }
+.board .pts { font-size: 18px; white-space: nowrap; }
+.season p { margin: 0; }
+.season .row input { flex: 1; min-width: 0; width: auto; margin-top: 0; font-size: 12px; }
