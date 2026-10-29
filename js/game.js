@@ -63,13 +63,17 @@ function rankInfo(rankName) {
   return RANKS.find(r => r.name === rankName);
 }
 
-// ===== 대결 업종 (같은 대결에 참가한 사람은 모두 같은 업종) =====
-// 이 노트북에서 첫 사람이 뽑은 업종이 저장되고, 다음 사람부터 그대로 씁니다.
-// 다른 기기와는 공유 링크(?industry=...&emoji=...)로 맞춥니다. 순위표를 초기화하면 새로 뽑습니다.
+// ===== 대결 업종 =====
+// 팀 결정(10/29): 업종은 사람마다 랜덤으로 뽑고, 순위표는 업종 상관없이 하나로 매깁니다.
+// 수익은 업종이 아니라 직원·지시·선택으로 갈리므로 업종이 달라도 공정합니다.
+// 예전처럼 "모두 같은 업종으로 대결"하려면 index.html에서 game.js보다 먼저
+// <script>window.KHU_SHARED_INDUSTRY = true</script> 를 넣으면 됩니다.
+const SHARED_INDUSTRY = globalThis.KHU_SHARED_INDUSTRY === true;
 
 const SEASON_KEY = "company_battle_season_v3";
 
 function getSeason() {
+  if (!SHARED_INDUSTRY) return null;
   try {
     const s = JSON.parse(localStorage.getItem(SEASON_KEY) || "null");
     return s && s.industry ? s : null;
@@ -79,6 +83,7 @@ function getSeason() {
 }
 
 function setSeason(industry, emoji) {
+  if (!SHARED_INDUSTRY) return;
   try { localStorage.setItem(SEASON_KEY, JSON.stringify({ industry, emoji })); } catch {}
 }
 
@@ -447,7 +452,7 @@ function recordResult(c) {
   const list = loadBoard();
   list.push(entry);
   saveBoard(list);
-  const sorted = sortedBoard(c.industry);
+  const sorted = sortedBoard(SHARED_INDUSTRY ? c.industry : null);
   c.placement = { rank: sorted.findIndex(e => e.at === entry.at) + 1, total: sorted.length, at: entry.at };
   return c.placement;
 }

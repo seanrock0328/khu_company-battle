@@ -52,11 +52,11 @@
       const data = await api("GET", "/board");
       state.entries = Array.isArray(data.entries) ? data.entries : [];
       state.loaded = true;
-      if (data.season && data.season.industry) {
+      if (SHARED_INDUSTRY && data.season && data.season.industry) {
         state.season = data.season;
         local.setSeason(data.season.industry, data.season.emoji);
         applySeasonToNewGame();
-      } else if (getSeason()) {
+      } else if (SHARED_INDUSTRY && getSeason()) {
         // 서버엔 아직 대결 업종이 없고 이 기기엔 있으면, 이 기기 것을 서버에 올림
         const s = getSeason();
         api("POST", "/season", { industry: s.industry, emoji: s.emoji }).then(adoptSeason).catch(() => {});
@@ -105,7 +105,7 @@
 
   setSeason = function (industry, emoji) {
     local.setSeason(industry, emoji);
-    if (state.enabled) api("POST", "/season", { industry, emoji }).then(adoptSeason).catch(() => {});
+    if (state.enabled && SHARED_INDUSTRY) api("POST", "/season", { industry, emoji }).then(adoptSeason).catch(() => {});
   };
 
   // 공유 순위표 초기화는 관리자 코드가 있어야 합니다 (아무나 지우지 못하게)
@@ -119,7 +119,7 @@
         state.season = null;
         local.clearBoard();
         renderBoard(null);
-        toast("모든 기기의 순위표와 대결 업종을 초기화했어요.");
+        toast(SHARED_INDUSTRY ? "모든 기기의 순위표와 대결 업종을 초기화했어요." : "모든 기기의 순위표를 초기화했어요.");
       })
       .catch(err => toast(err.message));
   };
@@ -143,6 +143,35 @@
     const box = document.getElementById("season-box");
     if (box) box.querySelectorAll(".hint").forEach(p => {
       p.textContent = "모든 기기가 같은 대결 업종과 순위표를 씁니다. 이 링크를 보내면 바로 참가할 수 있어요.";
+    });
+  }
+
+  // ===== 관리자: 이 기기에만 있는 기록을 공유 순위표로 올리기 =====
+  // 공유 순위표가 켜지기 전에 이 기기에서 한 판들(지금 규칙 기록만)을 이름 그대로 올립니다.
+  const adminRow = document.querySelector("#screen-board .admin");
+  if (adminRow) {
+    const importBtn = document.createElement("button");
+    importBtn.className = "text-btn";
+    importBtn.id = "btn-board-import";
+    importBtn.textContent = "이 기기 기록을 공유 순위표에 올리기 (관리자)";
+    importBtn.style.marginLeft = "12px";
+    adminRow.appendChild(importBtn);
+    importBtn.addEventListener("click", async () => {
+      if (!state.enabled) return toast("공유 순위표가 꺼져 있어요.");
+      await refresh();
+      const onServer = new Set(state.entries.map(e => e.at));
+      const mine = local.loadBoard().filter(e => !onServer.has(e.at));
+      if (!mine.length) return toast("올릴 기록이 없어요. 이 기기 기록은 이미 다 올라가 있어요.");
+      const code = window.prompt(`이 기기에만 있는 기록 ${mine.length}개를 공유 순위표에 올립니다. 관리자 코드를 입력하세요.`);
+      if (!code) return;
+      try {
+        const res = await api("POST", "/import", { code, entries: mine });
+        state.entries = state.entries.concat(mine);
+        renderBoard(null);
+        toast(`기록 ${res.added}개를 올렸어요.`);
+      } catch (err) {
+        toast(err.message);
+      }
     });
   }
 

@@ -101,9 +101,10 @@ const TEAM_SERVER_URL = "https://khu-company-battle.○○○.workers.dev";
 `worker/worker.js`(최신)를 **Edit code**에 통째로 붙여넣고 **Deploy**. 맨 마지막 줄 `};`까지 들어갔는지 확인.
 
 ## 5. 확인
-`https://khu-company-battle.seanrock0328.workers.dev` 를 열어서 `"board":true`, `"accounts":true`, `"adminCode":true`, `"version":4`가 보이면 완료.
+`https://khu-company-battle.seanrock0328.workers.dev` 를 열어서 `"board":true`, `"accounts":true`, `"guests":true`, `"adminCode":true`, `"version":5`가 보이면 완료.
 
 ## 알아 둘 것
+- 손님(게스트)은 닉네임만으로 바로 시작합니다. 순위표에 "닉네임(손님)"으로 올라가고, 가입한 아이디와 같은 이름이나 오늘 다른 손님이 쓴 이름은 못 씁니다. 손님은 이어하기 저장을 하지 않습니다.
 - 로그인 정보도 같은 저장소에 들어갑니다. 비밀번호는 PBKDF2로 해시해서 저장하고 원래 비밀번호는 남기지 않습니다. 로그인은 30일 동안 유지됩니다.
 - 게임 진행은 면접 전, 분기 시작, 보고 받음, 분기 결산 때마다 저장돼서 한 판에 저장이 10번 안팎 생깁니다. 무료 저장 한도(하루 1,000번)로 하루 80판 정도까지 넉넉합니다. 전시회 날 더 많이 하면 Cloudflare 유료(월 5달러) 전환을 고려하세요.
 - 무료 사용량: 하루 기록 저장 1,000번, 순위표 목록 읽기 1,000번. 서버가 순위표를 10초씩 기억해서 읽기를 아끼므로 대회·전시 규모에는 충분합니다. 전시회 당일 Cloudflare의 KV 사용량 화면을 한 번씩 확인하세요.
