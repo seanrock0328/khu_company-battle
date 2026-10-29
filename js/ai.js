@@ -8,6 +8,11 @@
 
 const CHATKHU_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/chat/completions/";
 
+// 팀 중간 서버 (Cloudflare Worker, 코드는 worker/worker.js)
+// 팀 키는 이 서버에만 비밀로 저장돼 있어서, 플레이어는 키 없이 ChatKHU를 씁니다.
+// Cloudflare에 배포한 뒤 받은 주소를 여기에 넣으세요. (키가 아니라 주소라서 공개돼도 괜찮음)
+const TEAM_SERVER_URL = "";
+
 const CHATKHU_MODELS = [
   { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (빠름)" },
   { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
@@ -30,9 +35,33 @@ function saveApiSettings(key, model) {
 }
 function clearApiKey() { store.remove("chatkhu_key"); }
 
+// ChatKHU를 쓸 수 있는 상태인지 (팀원 개인 키가 있거나, 팀 서버 주소가 있거나)
+function hasAI() { return !!getApiKey() || !!TEAM_SERVER_URL; }
+function aiSourceLabel() { return getApiKey() ? "내 키" : TEAM_SERVER_URL ? "팀 서버" : ""; }
+
+// 팀 서버를 거쳐 ChatKHU 부르기
+async function callTeamServer(prompt) {
+  let res;
+  try {
+    res = await fetch(TEAM_SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, model: getModel() })
+    });
+  } catch (e) {
+    throw new Error("팀 서버에 접속하지 못했어요. 인터넷 연결을 확인하거나 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${data.error || "팀 서버 오류가 났어요."} (${res.status}) ${data.detail || ""}`);
+  if (!data.text) throw new Error("ChatKHU 답변이 비어 있어요. 다시 시도해 주세요.");
+  return data.text;
+}
+
+// 팀원 개인 키가 저장돼 있으면 직접, 아니면 팀 서버를 거쳐 부릅니다
 async function callChatKHU(prompt) {
   const key = getApiKey();
-  if (!key) throw new Error("ChatKHU API 키가 없어요. 오른쪽 위 ChatKHU 버튼에서 키를 저장해 주세요.");
+  if (!key && TEAM_SERVER_URL) return callTeamServer(prompt);
+  if (!key) throw new Error("ChatKHU 연결이 없어요. 오른쪽 위 ChatKHU 버튼에서 키를 저장해 주세요.");
   let res;
   try {
     res = await fetch(CHATKHU_URL, {

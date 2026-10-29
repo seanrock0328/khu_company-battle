@@ -13,7 +13,7 @@
 
 **순위표**: 오른쪽 위 🏆 버튼. 게임한 노트북 브라우저에 저장되므로 노트북 한 대로 돌려가며 하세요. 연습 모드가 섞인 판은 순위에 들어가지 않습니다. 시연 전 테스트 기록은 순위표 맨 아래 **순위표 초기화**(두 번 클릭)로 지우세요.
 
-**ChatKHU 연결**: 오른쪽 위 🔌 버튼에서 API 키를 한 번 저장하면 이후 ChatKHU 단계가 자동으로 진행됩니다.
+**ChatKHU 연결**: 팀 중간 서버(Cloudflare Worker)가 팀 키로 ChatKHU를 대신 불러서, 플레이어와 심사위원은 키 없이 플레이합니다. 설정법은 [`docs/cloudflare-setup.md`](docs/cloudflare-setup.md). 팀원이 자기 키로 테스트하려면 오른쪽 위 🔌 버튼에서 개인 키를 넣으면 됩니다.
 
 ChatKHU 쓰는 법은 [`prompts/chatkhu.md`](prompts/chatkhu.md)에 있습니다.
 
@@ -156,4 +156,6 @@ js/ui.js            화면 그리기
 js/main.js          버튼 연결
 prompts/chatkhu.md  ChatKHU 사용법과 실험 목록
 docs/ai-log.md      AI 사용 기록
+docs/cloudflare-setup.md  팀 중간 서버 만드는 법
+worker/worker.js    팀 중간 서버 코드 (Cloudflare에 붙여넣는 용도)
 ```

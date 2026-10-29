@@ -23,8 +23,10 @@ function showScreen(id) {
 function renderSettingsButton() {
   const btn = document.getElementById("btn-settings");
   const model = CHATKHU_MODELS.find(m => m.id === getModel());
-  btn.textContent = getApiKey() ? `🔌 ChatKHU · ${model ? model.name.replace(/ \(.*\)/, "") : getModel()}` : "⚠️ ChatKHU 연결";
-  btn.classList.toggle("warn", !getApiKey());
+  btn.textContent = hasAI()
+    ? `🔌 ChatKHU · ${model ? model.name.replace(/ \(.*\)/, "") : getModel()} · ${aiSourceLabel()}`
+    : "⚠️ ChatKHU 연결";
+  btn.classList.toggle("warn", !hasAI());
 }
 
 function companyTitle(c) {
@@ -83,7 +85,7 @@ function renderAIScreen(step) {
   document.getElementById("ai-response").value = "";
   document.getElementById("btn-copy").textContent = "요청문 복사하기";
   document.getElementById("manual-box").open = false;
-  setAIState(getApiKey() ? "busy" : "nokey");
+  setAIState(hasAI() ? "busy" : "nokey");
 }
 
 // state: busy | error | nokey
@@ -343,7 +345,8 @@ function renderSettings() {
     `<option value="${m.id}" ${m.id === getModel() ? "selected" : ""}>${m.name}</option>`).join("");
   document.getElementById("key-input").value = "";
   document.getElementById("key-state").textContent = getApiKey()
-    ? "✅ 키가 저장되어 있어요." : "아직 저장된 키가 없어요.";
+    ? "✅ 내 키가 저장되어 있어요. 지금은 팀 서버 대신 내 키로 ChatKHU를 불러요."
+    : TEAM_SERVER_URL ? "✅ 팀 서버로 연결돼 있어요. 키를 넣지 않아도 됩니다." : "아직 연결이 없어요. 키를 넣어 주세요.";
   document.getElementById("btn-key-clear").hidden = !getApiKey();
 }
 

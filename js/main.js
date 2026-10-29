@@ -21,7 +21,7 @@ function runAI(name, onDone) {
   aiStep = { name, onDone };
   renderAIScreen(AI_STEPS[name]);
   showScreen("screen-ai");
-  if (getApiKey()) autoRunAI();
+  if (hasAI()) autoRunAI();
 }
 
 async function autoRunAI() {
@@ -256,7 +256,7 @@ document.getElementById("btn-settings").addEventListener("click", openSettings);
 
 document.getElementById("btn-key-save").addEventListener("click", () => {
   const key = document.getElementById("key-input").value.trim();
-  if (!key && !getApiKey()) return toast("API 키를 붙여넣어 주세요.");
+  if (!key && !hasAI()) return toast("API 키를 붙여넣어 주세요.");
   saveApiSettings(key, document.getElementById("model-select").value);
   renderSettingsButton();
   toast("저장했어요.");
