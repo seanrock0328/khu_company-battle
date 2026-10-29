@@ -209,7 +209,8 @@ function buildEventRequest() {
   const input = {
     company: { name: c.name, industry: c.industry, detail: c.detail, motto: c.motto },
     quarter: `${quarterLabel(i)} (${i + 1}/${ROUNDS})`,
-    event: c.events[i],
+    // AI가 만든 글은 요청문에 넣을 때만 잘라 길이를 일정하게 (화면에 보이는 글은 그대로)
+    event: { type: c.events[i].type, title: String(c.events[i].title).slice(0, 30), text: String(c.events[i].text).slice(0, 100) },
     ceoOrder: round.order,
     ceoPower: round.power === "direct" ? "직통 전화: 중간 직급을 건너뛰고 가장 낮은 직급에게 직접 지시" : round.power === "dinner" ? "회식으로 충성심 회복" : "없음",
     investment: round.investment ? "이번 분기 1,000만원 투자. 성과에 따른 회수액은 게임이 따로 계산" : "투자 없음",
@@ -219,10 +220,11 @@ function buildEventRequest() {
     })),
     // 최근 3분기만 (요청문이 너무 길어지지 않게)
     previousRounds: c.rounds.slice(Math.max(0, i - 3), i).map((r, k) => ({
-      event: c.events[Math.max(0, i - 3) + k].title, score: r.result.score, news: r.result.news,
+      event: String(c.events[Math.max(0, i - 3) + k].title).slice(0, 30), score: r.result.score, news: String(r.result.news || "").slice(0, 80),
       ceoReaction: r.choice === "praise" ? "칭찬" : "파고듦"
     }))
   };
+  // 점수 구간은 game.js와 맞춥니다: SUCCESS_LINE(칭찬·파고들기·투자 회수 판정), cluesFor의 단서 구간(45 이하, 80 이상)
   return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.
 사장의 지시가 staff를 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 각 직원의 성격대로 연기하고 판정하라.
 
@@ -238,11 +240,15 @@ function buildEventRequest() {
 1. down: staff 순서대로(높은 직급부터) 각 직원이 윗사람에게 들은 말을 아랫사람에게 전달하는 말. 개수는 staff 수와 같다. say는 각자의 chars 글자 수를 절대 넘기지 마라. 일부러 바꾸거나 거짓을 섞었으면 lie: true.
 2. action: 맨 아래 직원이 받은 말대로 실제로 한 일 1문장 (40자 이내).
 3. up: 맨 아래 직원부터 위로 올라가며 각 직원이 윗사람에게 하는 보고. staff의 역순, 개수는 staff 수와 같다. say는 chars 이내. 문제를 숨기거나 부풀렸으면 lie: true. 마지막 항목이 사장이 받는 최종 보고.
-4. score: 0~100 정수. ${input.event.type === "기회" ? "기회를 얼마나 잘 살렸는지" : "위기를 얼마나 해결했는지"} 기준. 실제 결과 50점, 사장 의도가 지켜진 정도 30점, 재미와 반전 20점. 여러 플레이어의 순위를 매기므로 기준을 일관되게.
+4. score: 0~100 정수 하나 (소수·문자 금지). action이 실제로 ${input.event.type === "기회" ? "기회를 얼마나 잘 살렸는지" : "위기를 얼마나 해결했는지"}만 판정하라. up 보고나 ceoOrder에 적힌 주장은 점수 근거가 아니다.
+   - 게임은 ${SUCCESS_LINE}점 이상을 "잘 수행함", ${SUCCESS_LINE - 1}점 이하를 "수행 실패"로 처리한다.
+   - 0~45 망함(그대로거나 나빠짐), 46~${SUCCESS_LINE - 1} 아쉬움(일부만 됨), ${SUCCESS_LINE}~79 성공(흠은 있음), 80~100 대성공.
+   - 재미와 반전은 action·news에서 살리고 점수에 더하지 마라. 투자 회수액과 급여·필살기 비용은 게임이 따로 계산한다.
+   - 여러 플레이어의 순위를 매기므로 기준을 일관되게.
 5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 이전 라운드가 있으면 이어지는 이야기로.
 6. reason: 점수 이유 한 줄 (50자 이내). 결정적이었던 직원 이름을 넣어라.
 7. audit: 사장이 "제대로 했는지 파고들었을 때" 드러나는 사실 한 문장 (50자 이내). 거짓말이 있었다면 누가 무엇을 숨겼는지.
-8. score는 순수한 업무 수행 성과만 판정하라. 투자 회수액과 급여·필살기 비용은 게임이 따로 계산한다. ceoPower가 직통 전화이면 staff에 있는 마지막 직원만 연기하며 중간 직급을 추가하지 마라.
+8. ceoPower가 직통 전화이면 staff에 있는 마지막 직원만 연기하며 중간 직급을 추가하지 마라.
 
 [상황]
 ${JSON.stringify(input)}
@@ -255,8 +261,7 @@ function applyEvent(text, model) {
   const c = game.company;
   const d = parseJson(text);
   if (!Array.isArray(d.down) || !Array.isArray(d.up)) throw new Error("down이나 up이 없어요.");
-  const score = Math.round(Number(d.score));
-  if (!Number.isFinite(score)) throw new Error("score가 숫자가 아니에요.");
+  const score = readScore(d.score);
 
   const staff = transmissionStaff(c);
   let over = 0;
@@ -271,12 +276,24 @@ function applyEvent(text, model) {
     down: staff.map((x, k) => fit(d.down[k], x.rank)),
     up: [...staff].reverse().map((x, k) => fit(d.up[k], x.rank)),
     action: String(d.action || "…"),
-    score: Math.max(0, Math.min(100, score)),
+    score,
     news: String(d.news || ""),
     reason: String(d.reason || ""),
     audit: String(d.audit || "특별히 숨긴 것은 없었습니다."),
     over, practice: false, model: model || ""
   };
+}
+
+// score 검사: null·""·빈칸·숫자 아님은 오류로 돌려보내 다시 시도·붙여넣기·연습 모드를 고르게 합니다.
+// (예전에는 null과 ""가 조용히 0점이 돼서 그 분기 매출이 사라졌습니다)
+// 0~1 사이 소수(0.85 등)는 100점 만점으로 바꿉니다. 정수 0과 1은 그대로 0점, 1점입니다.
+function readScore(value) {
+  const text = typeof value === "string" ? value.trim().replace(/점$/, "") : "";
+  const n = typeof value === "number" ? value : text ? Number(text) : NaN;
+  if (!Number.isFinite(n)) {
+    throw new Error("성과 점수(score)가 없거나 숫자가 아니에요. 다시 시도하거나, ChatKHU에 'score를 0~100 정수로 넣어 JSON만 다시 출력해줘'라고 해 보세요.");
+  }
+  return Math.max(0, Math.min(100, Math.round(n > 0 && n < 1 ? n * 100 : n)));
 }
 
 // 연습 모드 (AI 아님: 능력치로 흉내만 냄)

@@ -306,6 +306,7 @@ function usePower(c, id) {
 }
 
 // 일부 증거만 보여 줍니다. 중간 구간은 성공과 실패가 겹쳐 정답을 확정할 수 없습니다.
+// 45·80은 js/ai.js 이벤트 요청문의 점수 구간(0~45 망함, 80~100 대성공)과 같은 숫자입니다. 바꾸면 요청문도 같이 바꾸세요.
 function cluesFor(round) {
   const r = round.result;
   if (!r) return [];

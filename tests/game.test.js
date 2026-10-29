@@ -179,6 +179,51 @@ test("AI 창업 요청과 연습 모드가 모두 1년 이벤트 4개를 만든�
   assert.equal(run("c.foundingByAI"), true);
 });
 
+test("이벤트 요청문은 게임의 성공선과 점수 구간을 알려 주고 서로 모순되지 않는다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  run('c.events = [{ type: "위기", title: "주문 폭주", text: "주문이 밀렸다" }]; c.rounds[0] = { order: "오늘 안에 처리해", result: null, investment: 1000 };');
+  const prompt = run("buildEventRequest()");
+  assert.match(prompt, /10자 사원 주식회사/);
+  assert.ok(prompt.includes(`${run("SUCCESS_LINE")}점 이상을 "잘 수행함", ${run("SUCCESS_LINE") - 1}점 이하를 "수행 실패"`));
+  assert.doesNotMatch(prompt, /재미와 반전 20점/);
+  assert.doesNotMatch(prompt, /최종 전략/); // 최종 전략은 투자 선택으로 바뀜
+  for (const field of ["down", "action", "up", "score", "news", "reason", "audit", "say", "lie"]) {
+    assert.ok(prompt.includes(`"${field}":`), field);
+  }
+});
+
+test("요청문에 넣는 AI 글(이벤트·뉴스)은 길이를 잘라서, AI가 길이 규칙을 어겨도 요청문이 끝없이 길어지지 않는다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  run(`
+    c.events = EVENT_ORDER.map(type => ({ type, title: "가".repeat(500), text: "나".repeat(5000) }));
+    for (let i = 0; i < 3; i++) c.rounds[i] = { order: "처리", result: { score: 70, news: "다".repeat(5000) }, choice: "praise" };
+    game.round = 3; c.rounds[3] = { order: "처리", result: null };
+  `);
+  const prompt = run("buildEventRequest()");
+  assert.ok(prompt.length < 4000, `요청문 ${prompt.length}자`);
+  assert.equal(run('c.events[0].title.length'), 500); // 화면에 보이는 글은 그대로
+});
+
+test("AI 점수가 비었거나 숫자가 아니면 오류로 돌려보내고, 0~1 소수는 100점 만점으로 바꾼다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  run('c.events = [{ type: "기회", title: "방송", text: "출연 제안" }]; c.rounds[0] = { order: "출연해", result: null };');
+  const apply = extra => run(`applyEvent(${JSON.stringify(JSON.stringify({ down: [{ say: "출연해" }], up: [{ say: "했음" }], ...extra }))}, "테스트"); c.rounds[0].result.score`);
+  for (const [score, expected] of [[0.85, 85], ["72", 72], [" 64점 ", 64], [1, 1], [0, 0], [150, 100], [-5, 0]]) {
+    assert.equal(apply({ score }), expected, JSON.stringify(score));
+  }
+  run("c.rounds[0].result = null");
+  for (const bad of [{ score: null }, { score: "" }, { score: " " }, {}, { score: "높음" }, { score: true }, { score: [80] }]) {
+    assert.throws(() => apply(bad), /성과 점수\(score\)/, JSON.stringify(bad));
+    assert.equal(run("c.rounds[0].result"), null); // 실패하면 결과를 남기지 않아 다시 시도할 수 있다
+  }
+});
+
 test("이전 8턴 순위는 보관하면서 새로운 4턴 순위에서 제외한다", () => {
   const run = setup();
   run('localStorage.setItem("company_battle_leaderboard_v3", JSON.stringify([{ industry: "붕어빵", profit: 99999 }]))');
