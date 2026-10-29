@@ -3168,3 +3168,6 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
   .quarter-pop.show .qp-card, .hire-pop.show .hire-card { animation: none !important; opacity: 1; transform: none; }
   .quarter-pop .qp-banner { display: none; }
 }
+
+/* 휴대폰 시작 화면: 제목 데모의 도장 연출이 화면을 5px 넓히지 않게 */
+#screen-found { overflow-x: clip; }
