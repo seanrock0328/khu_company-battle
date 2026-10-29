@@ -145,6 +145,24 @@ async function handleBoard(request, env, url, allowed) {
     await env.BOARD.put("season", JSON.stringify(season));
     return reply(200, { season }, allowed);
   }
+  // 관리자: 기기에만 남아 있던 기록을 공유 순위표로 옮기기 (이름 그대로, 같은 기록은 한 번만)
+  if (path === "/import") {
+    if (!env.ADMIN_CODE || cleanText(body.code, 100) !== env.ADMIN_CODE) {
+      return reply(403, { error: "관리자 코드가 틀렸어요." }, allowed);
+    }
+    const incoming = Array.isArray(body.entries) ? body.entries.slice(0, 200) : [];
+    const have = new Set((await readEntries(env)).map(e => e.at));
+    let added = 0;
+    for (const raw of incoming) {
+      const entry = cleanEntry(raw);
+      if (!entry || have.has(entry.at)) continue;
+      await env.BOARD.put(`e:${entry.at}:${Math.random().toString(36).slice(2, 8)}`, "1", { metadata: entry });
+      if (boardCache.entries) boardCache.entries.push(entry);
+      have.add(entry.at);
+      added++;
+    }
+    return reply(200, { ok: true, added, skipped: incoming.length - added }, allowed);
+  }
   if (path === "/reset") {
     if (!env.ADMIN_CODE || cleanText(body.code, 100) !== env.ADMIN_CODE) {
       return reply(403, { error: "관리자 코드가 틀렸어요." }, allowed);
@@ -309,7 +327,7 @@ export default {
       }
     }
 
-    if (["/board", "/season", "/reset"].includes(url.pathname)) {
+    if (["/board", "/season", "/reset", "/import"].includes(url.pathname)) {
       if (request.method === "POST") {
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         if (rateLimited(ip, Date.now())) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
@@ -340,7 +358,7 @@ export default {
           bodyStart: body
         }, allowed);
       }
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 5 }, allowed);
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 6 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
