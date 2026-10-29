@@ -5,7 +5,7 @@
 // 한 판 = 플레이어 한 명이 1년(4분기) 동안 회사 하나를 운영. 4분기 누적 수익으로 순위.
 // 회사:
 // {
-//   player, emoji, industry, detail(세부정보), name, motto, funding,
+//   gameId(한 판 번호), player, emoji, industry, detail(세부정보), name, motto, funding,
 //   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x4,
 //   candidates: { 임원: [후보 x3], ... }, hires: { 임원: 후보id | null, ... },
 //   rounds: [{ order, result, choice:"dig"|"praise", success, revenue, cost, penalty, profit, loyaltyNote, quits:[이름] }]
@@ -56,7 +56,9 @@ function newCompany() {
   return {
     player: "", emoji: "", industry: "", detail: "", name: "", motto: "", funding: "savings",
     rolls: 0, news: "", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: false,
-    powerUsed: null, initialCash: null, fundingLine: "", financeVersion: CASH_RULE_VERSION
+    powerUsed: null, initialCash: null, fundingLine: "", financeVersion: CASH_RULE_VERSION,
+    // 한 판 번호: 이어하기로 결산을 다시 열어도 공유 순위표에 같은 판이 두 번 올라가지 않게
+    gameId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   };
 }
 
@@ -497,7 +499,7 @@ function recordResult(c) {
   const entry = {
     player: c.player.trim(), name: c.name, emoji: c.emoji, industry: c.industry,
     profit: totalProfit(c), news: CASH_RULE_VERSION + ending.headline, ending: ending.title,
-    model: last.model || "", at: Date.now()
+    model: last.model || "", at: Date.now(), gameId: c.gameId || ""
   };
   const list = loadBoard();
   list.push(entry);

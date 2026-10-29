@@ -175,7 +175,8 @@ function applyFounding(text, model) {
     x.intro = String(r.intro || pick(FALLBACK_INTROS[x.type]));
     x.answer = String(r.answer || "열심히 하겠습니다.");
   });
-  c.foundingByAI = true;
+  // 자동 호출만 model이 있습니다. 붙여넣은 답(model 없음)으로 만든 판은 연습으로 칩니다 (순위 기록 안 됨)
+  c.foundingByAI = !!model;
   c.foundingModel = model || "";
 }
 
@@ -280,7 +281,7 @@ function applyEvent(text, model) {
     news: String(d.news || ""),
     reason: String(d.reason || ""),
     audit: String(d.audit || "특별히 숨긴 것은 없었습니다."),
-    over, practice: false, model: model || ""
+    over, practice: !model, model: model || "" // 붙여넣기(model 없음)는 연습으로
   };
 }
 

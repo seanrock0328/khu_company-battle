@@ -77,6 +77,12 @@ function rateLimited(ip, now) {
 // 기록 내용은 키의 metadata에 넣어 list 한 번으로 전부 읽습니다.
 
 const MAX_ENTRIES = 1000;
+// 지금 1년(4분기) 통장 규칙으로 실제 나올 수 있는 누적 순이익 범위 (단위 만원, js/game.js 숫자로 계산)
+//   최고: 4분기 모두 성과 100점 매출(100점 x 100) + 매 분기 투자 성공(+600) = 42,400 (급여는 0으로 넉넉하게)
+//   최저: 4분기 모두 영업 중단(−1억 x 4) = −40,000 (영업 중단 손실이 정상 분기 최악 손실 9,400보다 크게 정해져 있음)
+// game.js의 규칙 숫자를 바꾸면 여기도 같이 바꾸세요. tests/game.test.js가 둘이 맞는지 확인합니다.
+const MAX_PROFIT = 4 * (100 * 100 + 1600 - 1000);
+const MIN_PROFIT = -4 * 10000;
 let boardCache = { at: 0, entries: null };     // 무료 사용량 아끼려고 10초 동안 기억
 const BOARD_CACHE_MS = 10 * 1000;
 
@@ -88,7 +94,7 @@ function cleanEntry(e) {
   if (!e || typeof e !== "object") return null;
   const profit = Math.round(Number(e.profit));
   const at = Math.round(Number(e.at));
-  if (!Number.isFinite(profit) || Math.abs(profit) > 10000000) return null;
+  if (!Number.isFinite(profit) || profit > MAX_PROFIT || profit < MIN_PROFIT) return null;
   if (!Number.isFinite(at) || at < 1700000000000 || at > Date.now() + 60000) return null;
   const entry = {
     player: cleanText(e.player, 14), name: cleanText(e.name, 12), emoji: cleanText(e.emoji, 4),
@@ -131,7 +137,12 @@ async function handleBoard(request, env, url, allowed) {
     if (!owner) return reply(401, { error: "로그인해야 순위에 기록돼요." }, allowed);
     const entry = cleanEntry({ ...(body.entry || {}), player: owner });
     if (!entry) return reply(400, { error: "기록 형식이 잘못됐어요." }, allowed);
-    const key = `e:${entry.at}:${Math.random().toString(36).slice(2, 8)}`;
+    // 같은 판(gameId)은 같은 키: 이어하기로 결산 화면을 다시 열어도 순위표에는 한 번만 올라갑니다
+    const gameId = String(body.entry?.gameId ?? "");
+    const key = /^[0-9a-z]{6,24}$/.test(gameId)
+      ? `e:g:${normId(owner)}:${gameId}`
+      : `e:${entry.at}:${Math.random().toString(36).slice(2, 8)}`;
+    if (key.startsWith("e:g:") && await env.BOARD.get(key) !== null) return reply(200, { ok: true, duplicate: true }, allowed);
     await env.BOARD.put(key, "1", { metadata: entry });
     if (boardCache.entries) boardCache.entries.push(entry);
     return reply(200, { ok: true }, allowed);
@@ -358,7 +369,7 @@ export default {
           bodyStart: body
         }, allowed);
       }
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 6 }, allowed);
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 8 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");

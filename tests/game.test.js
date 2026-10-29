@@ -15,7 +15,8 @@ function setup(options = {}) {
       getItem: key => saved.get(key) ?? null,
       setItem: (key, value) => saved.set(key, value),
       removeItem: key => saved.delete(key)
-    }
+    },
+    ...options.globals
   });
   for (const file of ["data/presets.js", "js/game.js"]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, "..", file), "utf8"), context);
@@ -475,4 +476,190 @@ test("같은 업종 모드: index.html을 직접 열어도 유효한 업종 공�
   assert.equal(url.protocol, "file:");
   assert.equal(url.pathname, "/C:/game/index.html");
   assert.equal(url.searchParams.get("industry"), "붕어빵 프랜차이즈");
+});
+
+// ===== 순위표 보호 (붙여넣기 점수, 서버 수익 범위, 결산 순위, 같은 판 중복 기록) =====
+
+function finishGame(run, model, score = 100) {
+  run(`
+    for (game.round = 0; game.round < ROUNDS; game.round++) {
+      c.rounds[game.round] = { order: "주문 처리", result: null, investment: 0 };
+      applyEvent(JSON.stringify({ down: [{ say: "처리" }], up: [{ say: "완료" }], score: ${score} }), "${model}");
+      settleRound(c, "praise");
+    }
+  `);
+}
+
+test("붙여넣은 ChatKHU 답(모델 이름 없음)이 있는 판은 연습으로 쳐서 순위에 넣지 않는다", () => {
+  for (const [model, official] of [["", false], ["gemini-3.8-flash", true]]) {
+    const run = setup();
+    run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+    hire(run);
+    run(`applyFounding(JSON.stringify({ news: "창업", events: EVENT_ORDER.map(type => ({ type, title: "이벤트", text: "내용" })),
+      candidates: allCandidates(c).map(x => ({ id: x.id, name: "김테스트" })) }), "${model}")`);
+    assert.equal(run("c.foundingByAI"), official);
+    finishGame(run, model);
+    assert.equal(run("c.rounds.every(r => r.result.practice === " + !official + ")"), true, `model="${model}"`);
+    assert.equal(run("isPractice(c)"), !official);
+    assert.equal(run("recordResult(c) === null"), !official);
+  }
+  // 자동 창업 + 한 분기만 붙여넣기여도 연습
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  finishGame(run, "gemini-3.8-flash");
+  run('game.round = 2; applyEvent(JSON.stringify({ down: [], up: [], score: 100 }), "");');
+  assert.equal(run("isPractice(c)"), true);
+});
+
+function workerSetup() {
+  const kv = new Map();
+  const BOARD = {
+    async get(key, type) { const v = kv.get(key); return v === undefined ? null : type === "json" ? JSON.parse(v.value) : v.value; },
+    async put(key, value, opts = {}) { kv.set(key, { value, metadata: opts.metadata }); },
+    async delete(key) { kv.delete(key); },
+    async list({ prefix = "" }) {
+      return { list_complete: true, keys: [...kv].filter(([k]) => k.startsWith(prefix)).map(([name, v]) => ({ name, metadata: v.metadata })) };
+    }
+  };
+  const tokens = { tester: "a".repeat(64), other: "b".repeat(64) };
+  for (const [id, token] of Object.entries(tokens)) kv.set(`s:${token}`, { value: id });
+  // 진짜 팀 서버·ChatKHU에는 접속하지 않습니다 (fetch를 넣지 않은 별도 공간에서 worker.js 실행)
+  const context = vm.createContext({ Response, URL, crypto, TextEncoder, btoa, atob, console, AbortController, setTimeout, clearTimeout });
+  const src = fs.readFileSync(path.join(__dirname, "..", "worker/worker.js"), "utf8").replace("export default", "globalThis.worker =");
+  vm.runInContext(src, context);
+  let ip = 0;
+  const post = async (pathname, body) => {
+    const res = await context.worker.fetch(new Request(`https://test.workers.dev${pathname}`, {
+      method: "POST",
+      headers: { Origin: "http://localhost:8000", "Content-Type": "application/json", "CF-Connecting-IP": `10.0.0.${++ip}` },
+      body: JSON.stringify(body)
+    }), { BOARD });
+    return { status: res.status, data: await res.json() };
+  };
+  return { kv, tokens, post, run: code => vm.runInContext(code, context) };
+}
+
+test("서버 순위표 수익 범위는 지금 4분기 통장 규칙으로 나올 수 있는 최고·최저와 맞다", () => {
+  const server = workerSetup();
+  const rules = setup();
+  assert.equal(server.run("MAX_PROFIT"), rules("ROUNDS * (100 * REVENUE_PER_POINT + INVESTMENT_WIN - INVESTMENT_COST)"));
+  assert.equal(server.run("MIN_PROFIT"), rules("-ROUNDS * CLOSED_PENALTY"));
+  // 실제로 해 본 최고 판: 4분기 100점 + 매 분기 투자 성공, 연봉 1인 직원 한 명
+  hire(rules);
+  rules(`
+    employee.salary = 1; c.initialCash = 14000;
+    for (game.round = 0; game.round < ROUNDS; game.round++) {
+      c.rounds[game.round] = { result: null, investment: 0 };
+      setInvestment(c, true);
+      c.rounds[game.round].result = { score: 100 };
+      settleRound(c, "praise");
+    }
+  `);
+  assert.equal(rules("c.rounds.every(r => r.investmentCost === 1000)"), true);
+  assert.ok(rules("totalProfit(c)") <= server.run("MAX_PROFIT"));
+  // 손실을 가장 크게 잡은 판: 최대 인건비 + 회식 + 매 분기 투자 실패 + 4분기 0점 칭찬
+  const worst = setup();
+  hire(worst);
+  worst(`
+    c.funding = "lottery"; employee.salary = 28;
+    for (game.round = 0; game.round < ROUNDS; game.round++) {
+      c.rounds[game.round] = { result: null, investment: 1000 };
+      if (game.round === 0) usePower(c, "dinner");
+      c.rounds[game.round].result = { score: 0 };
+      settleRound(c, "praise");
+    }
+  `);
+  assert.ok(worst("totalProfit(c)") >= server.run("MIN_PROFIT"));
+});
+
+test("서버는 범위 밖 수익을 거절하고, 모델 이름이 빈 기록(영업 중단)은 받는다", async () => {
+  const { post, tokens, kv } = workerSetup();
+  const entry = profit => ({ industry: "붕어빵", name: "테스트", profit, at: Date.now(), model: "" });
+  for (const [profit, status] of [[42400, 200], [42500, 400], [-40000, 200], [-40100, 400], [10000000, 400], [9999999, 400]]) {
+    const res = await post("/board", { token: tokens.tester, entry: entry(profit) });
+    assert.equal(res.status, status, `수익 ${profit}`);
+  }
+  assert.equal([...kv.keys()].filter(k => k.startsWith("e:")).length, 2);
+});
+
+test("같은 판(gameId)은 서버 순위표에 한 번만 기록되고, 다른 사람 기록은 덮어쓰지 못한다", async () => {
+  const { post, tokens, kv } = workerSetup();
+  const entry = (at, gameId) => ({ industry: "붕어빵", name: "테스트", profit: 1000, at, model: "gemini-3.8-flash", gameId });
+  const now = Date.now();
+  assert.deepEqual((await post("/board", { token: tokens.tester, entry: entry(now - 5000, "abc123xyz") })).data, { ok: true });
+  // 이어하기로 결산을 다시 열면 at은 달라도 gameId는 같음
+  assert.deepEqual((await post("/board", { token: tokens.tester, entry: entry(now, "abc123xyz") })).data, { ok: true, duplicate: true });
+  assert.equal((await post("/board", { token: tokens.other, entry: entry(now, "abc123xyz") })).status, 200);
+  assert.equal((await post("/board", { token: tokens.tester, entry: entry(now, "") })).status, 200); // 예전 저장(번호 없음)은 예전처럼
+  const keys = [...kv.keys()].filter(k => k.startsWith("e:"));
+  assert.equal(keys.length, 3);
+  assert.equal(kv.get("e:g:tester:abc123xyz").metadata.at, now - 5000); // 처음 기록이 남음
+  assert.equal(kv.get("e:g:tester:abc123xyz").metadata.gameId, undefined); // 번호는 공개 순위표에 안 나감
+});
+
+test("한 판 번호는 판마다 다르고, 이어하기로 다시 기록해도 같은 번호로 올라간다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  finishGame(run, "gemini-3.8-flash", 70);
+  run("var saved = JSON.stringify(c); recordResult(c);"); // 4분기 결산 직후 저장본
+  run("game.company = JSON.parse(saved); recordResult(game.company);"); // 지우기 실패 후 이어하기
+  assert.equal(run("loadBoard().length"), 2); // 이 기기 사본은 둘 (서버가 하나로 합침)
+  assert.equal(run("new Set(loadBoard().map(e => e.gameId)).size"), 1);
+  assert.match(run("loadBoard()[0].gameId"), /^[0-9a-z]{6,24}$/);
+  const first = run("game.company.gameId");
+  run("resetGame()");
+  assert.notEqual(run("game.company.gameId"), first);
+});
+
+test("공유 순위표: 결산 순위는 판을 끝낸 뒤 순위표를 다시 받아 계산하고, 같은 판 중복은 이 기기에서도 지운다", async () => {
+  const server = {
+    entries: [{ player: "A", name: "가", industry: "붕어빵", profit: 1000, at: 1700000000001, news: "통장 결산 · A" }],
+    gameIds: new Set(), posts: 0
+  };
+  // 진짜 서버 대신 쓰는 가짜 서버 (이 테스트는 인터넷에 접속하지 않습니다)
+  const fetch = async (url, init = {}) => {
+    const { pathname } = new URL(url);
+    if (pathname === "/board" && init.method === "POST") {
+      const { entry } = JSON.parse(init.body);
+      server.posts++;
+      if (server.gameIds.has(entry.gameId)) return new Response(JSON.stringify({ ok: true, duplicate: true }));
+      server.gameIds.add(entry.gameId);
+      const { gameId, ...shown } = entry; // 진짜 서버도 번호는 공개하지 않음
+      server.entries.push(shown);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    if (pathname === "/board") return new Response(JSON.stringify({ season: null, entries: server.entries }));
+    return new Response("{}", { status: 404 });
+  };
+  const document = {
+    getElementById: id => ({ classList: { contains: name => name === "active" && id === "screen-final" } }),
+    querySelector: () => null
+  };
+  const run = setup({ globals: { fetch, document, console } });
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  run("var window = globalThis; var finals = []; function renderBoard() {} function renderFound() {} function toast() {} function renderFinal(p) { finals.push(p); }");
+  run(fs.readFileSync(path.join(__dirname, "..", "js/board-sync.js"), "utf8"));
+  const settle = () => new Promise(r => setTimeout(r, 20));
+  await settle(); // 화면을 열 때 순위표 받기 (A 한 명)
+
+  // 플레이하는 동안 다른 사장님 B가 더 높은 기록을 올림
+  server.entries.push({ player: "B", name: "나", industry: "AI", profit: 40000, at: 1700000000002, news: "통장 결산 · B" });
+  hire(run);
+  finishGame(run, "gemini-3.8-flash", 70);
+  run("var saved = JSON.stringify(c);");
+  assert.equal(run("recordResult(c).rank"), 1); // 오래된 순위표로는 1위
+  await settle();
+  assert.equal(run("c.placement.rank"), 2);
+  assert.equal(run("c.placement.total"), 3);
+  assert.equal(run("finals.length"), 1); // 결산 화면을 새 순위로 다시 그림
+  assert.equal(run("finals[0].rank"), 2);
+
+  // 지우기 실패 후 이어하기: 같은 판을 다시 기록해도 서버도 이 기기도 한 줄
+  run("game.company = JSON.parse(saved); recordResult(game.company);");
+  await settle();
+  assert.equal(server.posts, 2);
+  assert.equal(server.entries.length, 3);
+  assert.equal(run("loadBoard().length"), 3);
 });

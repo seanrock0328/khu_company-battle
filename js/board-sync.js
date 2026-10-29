@@ -38,7 +38,11 @@
     state.uploading.add(entry.at);
     const token = typeof window.getAuthToken === "function" ? window.getAuthToken() : "";
     api("POST", "/board", { entry, token })
-      .then(() => { if (!state.entries.some(e => e.at === entry.at)) state.entries.push(entry); })
+      .then(data => {
+        // 이미 올라간 판 (이어하기로 결산을 다시 연 경우): 서버에 한 줄만 남기고 이 기기 사본도 지웁니다
+        if (data && data.duplicate) return local.saveBoard(local.loadBoard().filter(e => e.at !== entry.at));
+        if (!state.entries.some(e => e.at === entry.at)) state.entries.push(entry);
+      })
       .catch(err => {
         state.uploading.delete(entry.at);
         if (state.enabled) toast(token ? "순위표를 서버에 저장하지 못했어요. 이 기기에는 남아 있어요." : "로그인해야 공유 순위표에 기록돼요. 이 기기에는 남아 있어요.");
@@ -123,6 +127,24 @@
         toast(SHARED_INDUSTRY ? "모든 기기의 순위표와 대결 업종을 초기화했어요." : "모든 기기의 순위표를 초기화했어요.");
       })
       .catch(err => toast(err.message));
+  };
+
+  // 결산 화면의 "N위/M명"은 화면을 연 뒤 다른 사람이 올린 기록까지 넣어 다시 계산합니다
+  // (처음 계산은 화면을 열 때 받아 둔 순위표라 오래됐을 수 있음)
+  const localRecord = recordResult;
+  recordResult = function (c) {
+    const already = !!c.placement;
+    const placed = localRecord(c);
+    if (!placed || already || !state.enabled) return placed;
+    refresh().then(() => {
+      const sorted = sortedBoard(SHARED_INDUSTRY ? c.industry : null);
+      const rank = sorted.findIndex(e => e.at === placed.at) + 1;
+      if (!rank || (rank === c.placement.rank && sorted.length === c.placement.total)) return;
+      c.placement = { rank, total: sorted.length, at: placed.at };
+      const final = document.getElementById("screen-final");
+      if (game.company === c && final && final.classList.contains("active")) renderFinal(c.placement);
+    });
+    return placed;
   };
 
   renderBoard = function (highlightAt) {
