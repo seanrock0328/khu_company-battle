@@ -4,8 +4,8 @@
 // 설정 (Cloudflare 대시보드 → 이 Worker → Settings → Variables and Secrets)
 //   CHATKHU_KEY  (Secret, 필수)  ChatKHU API Gateway 키. 절대 이 코드에 직접 쓰지 마세요!
 //   ADMIN_CODE   (Secret, 선택)  공유 순위표 초기화 때 입력하는 관리자 코드
-// 공유 순위표 (선택): Settings → Bindings → KV namespace 를 BOARD 라는 이름으로 연결
-//   연결하지 않으면 순위표는 지금처럼 각 기기에만 저장됩니다.
+// 공유 순위표·로그인 (선택): Settings → Bindings → KV namespace 를 BOARD 라는 이름으로 연결
+//   연결하지 않으면 로그인 없이, 순위표는 지금처럼 각 기기에만 저장됩니다.
 //
 // 크레딧 도둑 방지 장치
 //   1. 우리 게임 주소에서 온 요청만 받음 (ALLOWED_ORIGINS)
@@ -126,7 +126,10 @@ async function handleBoard(request, env, url, allowed) {
   if (!body) return reply(400, { error: "요청 형식이 잘못됐어요." }, allowed);
 
   if (path === "/board") {
-    const entry = cleanEntry(body.entry);
+    // 순위 기록은 로그인한 아이디로만 (남의 닉네임으로 기록하지 못하게)
+    const owner = await sessionUser(env, body.token);
+    if (!owner) return reply(401, { error: "로그인해야 순위에 기록돼요." }, allowed);
+    const entry = cleanEntry({ ...(body.entry || {}), player: owner });
     if (!entry) return reply(400, { error: "기록 형식이 잘못됐어요." }, allowed);
     const key = `e:${entry.at}:${Math.random().toString(36).slice(2, 8)}`;
     await env.BOARD.put(key, "1", { metadata: entry });
@@ -160,6 +163,104 @@ async function handleBoard(request, env, url, allowed) {
   return reply(404, { error: "없는 주소예요." }, allowed);
 }
 
+const ACCOUNT_PATHS = ["/signup", "/login", "/logout", "/me", "/save", "/save-clear"];
+
+// ===== 계정: 회원가입, 로그인, 게임 이어하기 저장 =====
+// 아이디는 대소문자 구분 없이 하나만 (닉네임 중복 방지). 비밀번호는 PBKDF2로 해시해서 저장하고 원문은 남기지 않습니다.
+// KV 키: u:<아이디 소문자> 계정, s:<토큰> 로그인 세션(30일), g:<아이디 소문자> 이어하기 저장
+
+const ID_RE = /^[0-9A-Za-z가-힣_]{2,10}$/;
+const SESSION_TTL = 60 * 60 * 24 * 30;
+const MAX_SAVE_BYTES = 200000;
+const PBKDF2_ITERATIONS = 100000;
+
+function normId(id) {
+  return String(id ?? "").trim().toLowerCase();
+}
+
+function toB64(bytes) {
+  let s = "";
+  for (const b of new Uint8Array(bytes)) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+function fromB64(b64) {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+async function hashPassword(password, saltB64) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: fromB64(saltB64), iterations: PBKDF2_ITERATIONS, hash: "SHA-256" }, key, 256);
+  return toB64(bits);
+}
+
+function sameText(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function newSession(env, id) {
+  const token = [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, "0")).join("");
+  await env.BOARD.put(`s:${token}`, id, { expirationTtl: SESSION_TTL });
+  return token;
+}
+
+// 토큰으로 로그인한 아이디 찾기 (없으면 null)
+async function sessionUser(env, token) {
+  if (typeof token !== "string" || !/^[0-9a-f]{64}$/.test(token)) return null;
+  return env.BOARD.get(`s:${token}`);
+}
+
+async function handleAccount(path, body, env, allowed) {
+  if (path === "/signup" || path === "/login") {
+    const id = String(body.id ?? "").trim();
+    const password = String(body.password ?? "");
+    if (!ID_RE.test(id)) return reply(400, { error: "아이디는 2~10자, 한글·영문·숫자·_만 쓸 수 있어요." }, allowed);
+    if (password.length < 4 || password.length > 64) return reply(400, { error: "비밀번호는 4~64자로 해 주세요." }, allowed);
+    const key = `u:${normId(id)}`;
+    const user = await env.BOARD.get(key, "json");
+
+    if (path === "/signup") {
+      if (user) return reply(409, { error: "이미 쓰고 있는 아이디예요. 다른 아이디를 골라 주세요." }, allowed);
+      const salt = toB64(crypto.getRandomValues(new Uint8Array(16)));
+      await env.BOARD.put(key, JSON.stringify({ id, salt, hash: await hashPassword(password, salt), created: Date.now() }));
+      return reply(200, { id, token: await newSession(env, id) }, allowed);
+    }
+    if (!user || !sameText(await hashPassword(password, user.salt), user.hash)) {
+      return reply(401, { error: "아이디 또는 비밀번호가 틀렸어요." }, allowed);
+    }
+    return reply(200, { id: user.id, token: await newSession(env, user.id) }, allowed);
+  }
+
+  // 아래는 로그인한 사람만
+  const id = await sessionUser(env, body.token);
+  if (!id) return reply(401, { error: "로그인이 풀렸어요. 다시 로그인해 주세요." }, allowed);
+  const saveKey = `g:${normId(id)}`;
+
+  if (path === "/logout") {
+    await env.BOARD.delete(`s:${body.token}`);
+    return reply(200, { ok: true }, allowed);
+  }
+  if (path === "/me") {
+    return reply(200, { id, save: await env.BOARD.get(saveKey, "json") }, allowed);
+  }
+  if (path === "/save") {
+    const text = JSON.stringify(body.save ?? null);
+    if (!body.save || typeof body.save !== "object") return reply(400, { error: "저장할 내용이 없어요." }, allowed);
+    if (text.length > MAX_SAVE_BYTES) return reply(413, { error: "저장할 내용이 너무 커요." }, allowed);
+    await env.BOARD.put(saveKey, text);
+    return reply(200, { ok: true }, allowed);
+  }
+  if (path === "/save-clear") {
+    await env.BOARD.delete(saveKey);
+    return reply(200, { ok: true }, allowed);
+  }
+  return reply(404, { error: "없는 주소예요." }, allowed);
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -169,6 +270,21 @@ export default {
       return allowed ? new Response(null, { status: 204, headers: corsHeaders(allowed) }) : new Response(null, { status: 403 });
     }
     const url = new URL(request.url);
+    if (ACCOUNT_PATHS.includes(url.pathname)) {
+      if (!env.BOARD) return reply(501, { error: "로그인 저장소가 설정되지 않았어요." }, allowed);
+      if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
+      if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      if (url.pathname !== "/save" && rateLimited(ip, Date.now())) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
+      const body = await request.json().catch(() => null);
+      if (!body) return reply(400, { error: "요청 형식이 잘못됐어요." }, allowed);
+      try {
+        return await handleAccount(url.pathname, body, env, allowed);
+      } catch (e) {
+        return reply(500, { error: "계정 처리 중 오류가 났어요." }, allowed);
+      }
+    }
+
     if (["/board", "/season", "/reset"].includes(url.pathname)) {
       if (request.method === "POST") {
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -200,7 +316,7 @@ export default {
           bodyStart: body
         }, allowed);
       }
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 3 }, allowed);
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 4 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
