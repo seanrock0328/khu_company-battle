@@ -303,7 +303,7 @@ details textarea { font-size: 12px; color: var(--muted); }
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* ===== 8분기 경영: 수익, 충성심, 선택 ===== */
+/* ===== 4분기 경영: 수익, 충성심, 선택 ===== */
 .pos { color: var(--good); }
 .neg { color: var(--bad); }
 .profit-now { margin: 0 0 4px; font-size: 15px; }

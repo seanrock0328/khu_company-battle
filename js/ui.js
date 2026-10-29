@@ -122,8 +122,8 @@ function renderFoundingNews() {
       <p class="detail">${esc(c.detail)}</p>
     </article>
     <div class="card teaser">
-      <p><b>2년, 8분기</b> 동안 위기 ${EVENT_ORDER.filter(t => t === "위기").length}번과 기회 ${EVENT_ORDER.filter(t => t === "기회").length}번이 찾아옵니다.</p>
-      <p class="hint">2년 누적 수익으로 순위를 겨룹니다. 인건비 예산은 ${budgetOf(c)}, 분기마다 연봉 1당 ${COST_PER_SALARY}만원이 나갑니다.</p>
+      <p><b>1년, 4분기</b> 동안 위기 ${EVENT_ORDER.filter(t => t === "위기").length}번과 기회 ${EVENT_ORDER.filter(t => t === "기회").length}번이 찾아옵니다.</p>
+      <p class="hint">1년 누적 수익으로 순위를 겨룹니다. 인건비 예산은 ${budgetOf(c)}, 분기마다 연봉 1당 ${COST_PER_SALARY}만원이 나갑니다.</p>
     </div>`;
 }
 
@@ -211,7 +211,7 @@ function renderEvent() {
   document.getElementById("event-box").innerHTML = `
     <div class="card">
       ${companyTitle(c)}
-      <ol class="quarter-track" aria-label="2년 경영 진행도">${EVENT_ORDER.map((type, i) => `<li class="${i < game.round ? "done" : i === game.round ? "current" : ""}" ${i === game.round ? 'aria-current="step"' : ""}>${quarterLabel(i)}<small>${type}${i < game.round ? " ✓" : ""}</small></li>`).join("")}</ol>
+      <ol class="quarter-track" aria-label="1년 경영 진행도">${EVENT_ORDER.map((type, i) => `<li class="${i < game.round ? "done" : i === game.round ? "current" : ""}" ${i === game.round ? 'aria-current="step"' : ""}>${quarterLabel(i)}<small>${type}${i < game.round ? " ✓" : ""}</small></li>`).join("")}</ol>
       <div class="event ${ev.type === "기회" ? "chance" : "crisis"}">
         <p class="tag">${ev.type === "기회" ? "✨ 기회" : "⚠️ 위기"}</p>
         <h3>${esc(ev.title)}</h3>
@@ -254,7 +254,7 @@ async function renderTruth() {
   const closed = round.choice === "closed";
   const staff = round.chain.map(id => candidateById(c, id)); // 이번 분기에 있던 직원 (퇴사자 포함)
   document.getElementById("result-title").textContent = closed ? "🚪 직원 부재로 영업을 중단했습니다" : round.choice === "dig" ? "🔍 파고들어 보니…" : "👏 칭찬했습니다. 그런데 진실은…";
-  document.getElementById("result-lead").textContent = closed ? "직원이 없어 이번 이벤트를 수행하지 못했습니다. 8분기까지 결산은 이어집니다." : "🤥 표시는 일부러 말을 바꾸거나 거짓말한 직원입니다.";
+  document.getElementById("result-lead").textContent = closed ? "직원이 없어 이번 이벤트를 수행하지 못했습니다. 4분기까지 결산은 이어집니다." : "🤥 표시는 일부러 말을 바꾸거나 거짓말한 직원입니다.";
 
   const room = document.getElementById("room");
   room.innerHTML = `<p class="room">📉 실제 지시 라인</p>`;
@@ -307,7 +307,7 @@ function renderFinal(placed) {
   const twist = fundingTwist(c);
   const everyone = HIRE_RANKS.map(r => c.hires[r] ? candidateById(c, c.hires[r]) : null).filter(Boolean);
 
-  // 거짓말왕: 8분기 동안 거짓말한 횟수 (그 분기에 있던 직원 기준)
+  // 거짓말왕: 4분기 동안 거짓말한 횟수 (그 분기에 있던 직원 기준)
   const lies = new Map(everyone.map(x => [x.id, 0]));
   c.rounds.forEach(round => {
     const chain = round.chain || [];
@@ -328,19 +328,19 @@ function renderFinal(placed) {
       <b class="${round.profit < 0 ? "neg" : "pos"}">${money(round.profit)}</b></li>`).join("");
 
   document.getElementById("final").innerHTML = `
-    <h2 class="center">2년 결산</h2>
+    <h2 class="center">1년 결산</h2>
     ${banner}
     <div class="solo">
       <article class="news win">
-        <p class="paper">경희경제신문 · 2년 결산</p>
+        <p class="paper">경희경제신문 · 1년 결산</p>
         ${companyTitle(c)}
-        <p class="tag" style="margin-top:12px">2년 누적 수익</p>
+        <p class="tag" style="margin-top:12px">1년 누적 수익</p>
         <p class="score big ${profit < 0 ? "neg" : "pos"}">${money(profit)}</p>
         <ol class="rounds">${rows}</ol>
         ${twist ? `<p class="twist ${twist.kind}">${esc(twist.text)}</p>` : ""}
       </article>
       <div class="card awards">
-        ${topLiar ? `<p>🤥 <b>2년간의 거짓말왕</b> ${esc(topLiar.rank)} ${esc(topLiar.name)} <small>(${lies.get(topLiar.id)}번, 정직도 ${topLiar.honesty})</small></p>` : ""}
+        ${topLiar ? `<p>🤥 <b>1년간의 거짓말왕</b> ${esc(topLiar.rank)} ${esc(topLiar.name)} <small>(${lies.get(topLiar.id)}번, 정직도 ${topLiar.honesty})</small></p>` : ""}
         ${honest.length ? `<p>😇 <b>끝까지 정직했던 직원</b> ${honest.map(x => `${esc(x.name)} <small>(정직도 ${x.honesty})</small>`).join(", ")}</p>` : ""}
         <p class="field-label">직원들의 진짜 정직도와 마지막 충성심</p>
         <ul class="reveal-list">${everyone.map(x => `<li><span class="rank">${x.rank}</span>${esc(x.name)}${x.quit ? " 🚪" : ""}
@@ -355,7 +355,7 @@ function renderBoard(highlightAt) {
   const list = sortedBoard();
   const season = getSeason();
   document.getElementById("board-lead").textContent = list.length
-    ? `같은 업종의 사장님 ${list.length}명이 겨뤘습니다. 2년 누적 수익 순위예요. (이 노트북에 저장 · 다른 기기와 자동 합산되지 않음)`
+    ? `같은 업종의 사장님 ${list.length}명이 겨뤘습니다. 1년 누적 수익 순위예요. (이 노트북에 저장 · 다른 기기와 자동 합산되지 않음)`
     : "아직 기록이 없어요. 첫 번째 사장님이 되어 보세요!";
   document.getElementById("season-box").innerHTML = season ? `
     <div class="card season">

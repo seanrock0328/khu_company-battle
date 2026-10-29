@@ -1,5 +1,5 @@
 // 담당 D: 버튼과 흐름 연결
-// 창업 → 면접 → [분기 이벤트 → 보고 → 사장 선택 → 진실 공개] x8 → 수익 결산·순위
+// 창업 → 면접 → [분기 이벤트 → 보고 → 사장 선택 → 진실 공개] x4 → 수익 결산·순위
 
 let lastPlacedAt = null;   // 방금 플레이한 기록 (순위표에서 강조)
 let interviewIndex = 0;    // 지금 면접 중인 직급 번호
@@ -204,7 +204,7 @@ async function choose(choice) {
   settleRound(game.company, choice);
   await renderTruth();
   nextBtn.textContent = game.round >= ROUNDS - 1
-    ? "2년 결산 보기"
+    ? "1년 결산 보기"
     : `${quarterLabel(game.round + 1)}로 →`;
   nextBtn.hidden = false;
 }
@@ -215,7 +215,7 @@ async function showClosedRound() {
   showScreen("screen-result");
   document.getElementById("result-box").innerHTML = '<div class="messenger" id="room"></div>';
   await renderTruth();
-  nextBtn.textContent = game.round >= ROUNDS - 1 ? "2년 결산 보기" : `${quarterLabel(game.round + 1)}로 →`;
+  nextBtn.textContent = game.round >= ROUNDS - 1 ? "1년 결산 보기" : `${quarterLabel(game.round + 1)}로 →`;
   nextBtn.hidden = false;
 }
 

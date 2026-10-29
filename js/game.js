@@ -2,11 +2,11 @@
 // 이 파일은 화면을 직접 건드리지 않습니다. 계산만 합니다.
 
 // ===== 팀 약속: 데이터 모양 (바꾸려면 단톡방에 먼저 공유!) =====
-// 한 판 = 플레이어 한 명이 2년(8분기) 동안 회사 하나를 운영. 8분기 누적 수익으로 순위.
+// 한 판 = 플레이어 한 명이 1년(4분기) 동안 회사 하나를 운영. 4분기 누적 수익으로 순위.
 // 회사:
 // {
 //   player, emoji, industry, detail(세부정보), name, motto, funding,
-//   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x8,
+//   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x4,
 //   candidates: { 임원: [후보 x3], ... }, hires: { 임원: 후보id | null, ... },
 //   rounds: [{ order, result, choice:"dig"|"praise", success, revenue, cost, penalty, profit, loyaltyNote, quits:[이름] }]
 // }
@@ -28,7 +28,7 @@ const DETAIL_MAX = 40;
 const NAME_MAX = 12;
 const MOTTO_MAX = 20;
 const ORDER_MAX = 100;
-const ROUNDS = EVENT_ORDER.length; // 8분기
+const ROUNDS = EVENT_ORDER.length; // 4분기
 
 // ===== 경제 규칙 (단위: 만원) =====
 // 분기 수익 = 성과 점수 x 100 - 인건비 x 200 - 불이익
@@ -313,7 +313,7 @@ function fundingTwist(c) {
     return { kind: "nag", text: nags[randInt(0, nags.length - 1)] };
   }
   if (c.funding === "vc" && totalProfit(c) < 0) {
-    return { kind: "fired", text: "이사회 결정: 2년 적자로 사장님은 오늘부로 해임되셨습니다." };
+    return { kind: "fired", text: "이사회 결정: 1년 적자로 사장님은 오늘부로 해임되셨습니다." };
   }
   return null;
 }
@@ -333,7 +333,8 @@ function money(n, signed = true) {
 
 // ===== 순위표 (이 노트북 브라우저에 저장) =====
 
-const BOARD_KEY = "company_battle_leaderboard_v3";
+// 이전 8분기 기록과 4분기 수익을 비교하지 않도록 저장 공간을 분리합니다.
+const BOARD_KEY = "company_battle_leaderboard_v4";
 
 function loadBoard() {
   try {

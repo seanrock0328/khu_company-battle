@@ -68,7 +68,7 @@ for (const [choice, score, loyalty, penalty] of [
   });
 }
 
-test("전원 퇴사 후에도 8분기를 마치고 마지막 근무 분기의 급여를 지급한다", () => {
+test("전원 퇴사 후에도 4분기를 마치고 마지막 근무 분기의 급여를 지급한다", () => {
   const run = setup();
   hire(run);
   run(`
@@ -85,7 +85,7 @@ test("전원 퇴사 후에도 8분기를 마치고 마지막 근무 분기의 �
       closeUnstaffedRound(c);
     }
   `);
-  assert.equal(run("c.rounds.length"), 8);
+  assert.equal(run("c.rounds.length"), 4);
   assert.equal(run('c.rounds.slice(1).every(r => r.choice === "closed" && r.profit === -CLOSED_PENALTY && !r.result.practice)'), true);
   assert.equal(run("recordResult(c).total"), 1);
   run("recordResult(c)");
@@ -105,16 +105,16 @@ test("전원 퇴사 후 남은 분기마다 영업 중단 손실을 한 번씩 �
     }
   `);
   assert.equal(run("CLOSED_PENALTY"), 9000);
-  assert.equal(run("totalProfit(c)"), -72000);
+  assert.equal(run("totalProfit(c)"), -36000);
   assert.equal(run("c.rounds.every(r => r.revenue === 0 && r.cost === 0 && r.penalty === 9000 && r.profit === -9000)"), true);
   assert.match(run("c.rounds[0].loyaltyNote"), /임대료와 위약금 −9,000만원/);
 });
 
-function simulate(scores, choices, salary = 14) {
+function simulate(scores, choices, salary = 14, loyalty = 5) {
   const run = setup();
   hire(run);
-  run(`employee.salary = ${salary}; c.funding = "vc";`);
-  for (let i = 0; i < 8; i++) {
+  run(`employee.salary = ${salary}; employee.loyalty = ${loyalty}; c.funding = "vc";`);
+  for (let i = 0; i < 4; i++) {
     run(`
       game.round = ${i};
       c.rounds[game.round] = { result: null };
@@ -128,13 +128,17 @@ function simulate(scores, choices, salary = 14) {
   return run("totalProfit(c)");
 }
 
-test("코멘트의 5회 연속 추궁 전략이 정상 경영보다 불리하다", () => {
-  // 인건비 합 14: 첫 5분기 성과 70점이면 2억 1,000만원, 이후 중단 손실 2억 7,000만원.
-  const closed = simulate(Array(8).fill(70), Array(8).fill("dig"));
-  const scores = [20, 90, 30, 70, 35, 40, 49, 40];
+test("4턴 동안 추궁해도 초기 충성심 5인 직원은 남아 있고 1년 수익만 결산한다", () => {
+  assert.equal(simulate(Array(4).fill(70), Array(4).fill("dig")), 16800);
+});
+
+test("충성심이 낮은 직원을 전원 퇴사시키는 전략이 정상 경영보다 불리하다", () => {
+  // 낮은 충성심 2인 상황을 고정: 2분기 근무 수익 8,400 - 중단 2분기 손실 18,000.
+  const closed = simulate(Array(4).fill(70), Array(4).fill("dig"), 14, 2);
+  const scores = [20, 90, 30, 70];
   const normal = simulate(scores, scores.map(s => s >= 60 ? "praise" : "dig"));
-  assert.equal(closed, -6000);
-  assert.equal(normal, 15000);
+  assert.equal(closed, -9600);
+  assert.equal(normal, 9800);
   assert.ok(normal > closed);
 });
 
@@ -143,13 +147,43 @@ test("영업 중단으로 정상 경영의 최악 손실도 피할 수 없다", 
   assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY"));
   for (const salary of [14, 18, 22, 28]) {
     for (const score of [0, 20, 59, 60, 70, 100]) {
-      // 첫 5분기 성과는 같게 고정. 추궁으로 퇴사시킨 경우와 직원을 유지한 경우를 비교.
-      const scores = [...Array(5).fill(70), ...Array(3).fill(score)];
-      const closed = simulate(scores, Array(8).fill("dig"), salary);
-      const normal = simulate(scores, Array(8).fill("praise"), salary);
+      // 충성심 2와 첫 2분기 성과를 고정. 남은 2분기의 운영과 중단을 비교.
+      const scores = [70, 70, score, score];
+      const closed = simulate(scores, Array(4).fill("dig"), salary, 2);
+      const normal = simulate(scores, Array(4).fill("praise"), salary, 2);
       assert.ok(normal > closed, `인건비 ${salary}, 남은 분기 성과 ${score}`);
     }
   }
+});
+
+test("한 판은 위기 2번·기회 2번의 4턴이며 4분기에 종료된다", () => {
+  const run = setup();
+  assert.equal(run("ROUNDS"), 4);
+  assert.equal(run('EVENT_ORDER.filter(t => t === "위기").length'), 2);
+  assert.equal(run('EVENT_ORDER.filter(t => t === "기회").length'), 2);
+  assert.equal(run("quarterLabel(ROUNDS - 1)"), "1년차 4분기");
+});
+
+test("AI 창업 요청과 연습 모드가 모두 1년 이벤트 4개를 만든다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  assert.match(run("buildFoundingRequest()"), /이벤트 4개 \(1년 동안 분기마다 하나\)/);
+  run("practiceFounding()");
+  assert.equal(run("c.events.length"), 4);
+  run(`applyFounding(JSON.stringify({ news: "창업", events: c.events,
+    candidates: allCandidates(c).map(x => ({ id: x.id, name: x.name, intro: x.intro, answer: x.answer })) }), "테스트")`);
+  assert.equal(run("c.events.length"), 4);
+  assert.equal(run("c.foundingByAI"), true);
+});
+
+test("이전 8턴 순위는 보관하면서 새로운 4턴 순위에서 제외한다", () => {
+  const run = setup();
+  run('localStorage.setItem("company_battle_leaderboard_v3", JSON.stringify([{ industry: "붕어빵", profit: 99999 }]))');
+  assert.equal(run("loadBoard().length"), 0);
+  run('saveBoard([{ industry: "붕어빵", profit: 1000 }])');
+  assert.equal(run("loadBoard()[0].profit"), 1000);
+  assert.equal(run('JSON.parse(localStorage.getItem("company_battle_leaderboard_v3"))[0].profit'), 99999);
 });
 
 test("연습 모드에서 전원 퇴사해도 정식 순위에 기록하지 않는다", () => {
