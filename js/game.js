@@ -201,10 +201,13 @@ function shuffle(list) {
   return a;
 }
 
-// 후보 셋은 각각 능력형, 정직형, 운형. 세 능력치 합은 항상 17이라 밸런스가 맞습니다.
+// 후보 셋은 각각 능력형, 정직형, 운형. 세 능력치 합은 15~19 중 무작위 (평균 17)라 밸런스가 맞습니다.
+const STAT_SUM_MIN = 15;
+const STAT_SUM_MAX = 19;
+
 function makeCandidate(rank, type) {
   const main = randInt(7, 9);
-  const rest = 17 - main;
+  const rest = randInt(STAT_SUM_MIN, STAT_SUM_MAX) - main; // 6~12라서 나머지 두 능력치도 1~9
   const a = randInt(Math.max(1, rest - 9), Math.min(9, rest - 1));
   const stats = { skill: 0, honesty: 0, luck: 0 };
   const others = ["skill", "honesty", "luck"].filter(k => k !== type);
@@ -280,6 +283,16 @@ function staffOf(c) {
 
 function payroll(c) {
   return staffOf(c).reduce((sum, x) => sum + x.salary, 0);
+}
+
+// 직원은 최소 MIN_STAFF명 (빈자리는 2자리까지). '면접 끝, 업무 시작' 버튼에서 확인합니다 (main.js).
+// 아래 4직급(차장~사원)은 가장 비싼 후보로 골라도 연봉 합 13 이하라 부모님 돈(예산 18)으로도 채울 수 있습니다.
+const MIN_STAFF = 4;
+
+function checkStaffing(c) {
+  const count = staffOf(c).length;
+  if (count < MIN_STAFF) return `직원을 ${MIN_STAFF}명 이상 뽑아 주세요. 지금 ${count}명이에요. 지시가 여러 직급을 거쳐 내려가야 해요.`;
+  return null;
 }
 
 // 전달 과정만 건너뛰며, 재직 직원과 급여 계산에는 영향을 주지 않습니다.

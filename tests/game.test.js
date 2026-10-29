@@ -55,6 +55,34 @@ test("면접을 본 같은 직급의 후보만 예산 안에서 채용한다", (
   assert.match(run('attachmentLabel(x)'), /안정형 \d+% · 회피형 \d+%/);
 });
 
+test("직원이 4명보다 적으면 업무를 시작할 수 없고, 부모님 돈으로도 4명은 항상 뽑을 수 있다", () => {
+  const run = setup();
+  hire(run); // 사원 1명
+  assert.equal(run("MIN_STAFF"), 4);
+  assert.match(run("checkStaffing(c)"), /4명 이상.*지금 1명/);
+  run(`
+    for (const rank of ["차장", "과장", "대리"]) {
+      const x = c.candidates[rank][0];
+      askCandidate(c, rank, x.id, "motivation");
+      hireCandidate(c, rank, x.id);
+    }
+  `);
+  assert.equal(run("checkStaffing(c)"), null);
+  // 가장 비싼 후보로만 골라도 아래 4직급은 부모님 예산(18) 안에 들어온다
+  for (let i = 0; i < 200; i++) {
+    run(`
+      c.funding = "parents"; makeCandidates(c);
+      var hireErrors = HIRE_RANKS.slice(-MIN_STAFF).map(rank => {
+        const x = [...c.candidates[rank]].sort((a, b) => b.salary - a.salary)[0];
+        askCandidate(c, rank, x.id, "motivation");
+        return hireCandidate(c, rank, x.id);
+      });
+    `);
+    assert.equal(run("JSON.stringify(hireErrors)"), "[null,null,null,null]");
+    assert.equal(run("checkStaffing(c)"), null);
+  }
+});
+
 for (const [choice, score, loyalty, penalty] of [
   ["praise", 60, 6, 0], ["praise", 59, 5, 3000],
   ["dig", 60, 4, 0], ["dig", 59, 5, 0]
@@ -662,4 +690,29 @@ test("공유 순위표: 결산 순위는 판을 끝낸 뒤 순위표를 다시 �
   assert.equal(server.posts, 2);
   assert.equal(server.entries.length, 3);
   assert.equal(run("loadBoard().length"), 3);
+});
+
+test("후보 능력치 합은 15~19 중 무작위(평균 17)이고 모든 능력치는 1~9 안이다", () => {
+  const run = setup();
+  const r = JSON.parse(run(`
+    const xs = [];
+    for (let i = 0; i < 300; i++) { const c = newCompany(); makeCandidates(c); xs.push(...allCandidates(c)); }
+    const honestyByShown = new Map();
+    xs.forEach(x => {
+      const k = x.skill + "," + x.luck;
+      honestyByShown.set(k, (honestyByShown.get(k) || new Set()).add(x.honesty));
+    });
+    JSON.stringify({
+      inRange: xs.every(x => [x.skill, x.honesty, x.luck].every(v => Number.isInteger(v) && v >= 1 && v <= 9)),
+      mainHigh: xs.every(x => x[x.type] >= 7),
+      sums: [...new Set(xs.map(x => x.skill + x.honesty + x.luck))].sort(),
+      avgSum: xs.reduce((s, x) => s + x.skill + x.honesty + x.luck, 0) / xs.length,
+      ambiguous: [...honestyByShown.values()].some(s => s.size > 1)
+    });
+  `));
+  assert.equal(r.inRange, true);
+  assert.equal(r.mainHigh, true);
+  assert.deepEqual(r.sums, [15, 16, 17, 18, 19]);
+  assert.ok(Math.abs(r.avgSum - 17) < 0.2, `평균 합 ${r.avgSum}`);
+  assert.equal(r.ambiguous, true);
 });

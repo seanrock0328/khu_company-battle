@@ -168,11 +168,13 @@ document.getElementById("interview").addEventListener("click", e => {
       return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
     case "prev": return go(interviewIndex - 1);
     case "next": return go(interviewIndex + 1);
-    case "done":
-      if (staffOf(c).length === 0) return toast("직원을 한 명 이상 뽑아 주세요.");
+    case "done": {
+      const error = checkStaffing(c); // 최소 인원(MIN_STAFF)은 game.js에서 정합니다
+      if (error) return toast(error);
       game.round = 0;
       c.rounds = [];
       return startRound();
+    }
   }
 });
 
