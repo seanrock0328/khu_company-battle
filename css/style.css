@@ -1269,8 +1269,8 @@ input:disabled, textarea:disabled { opacity: .7; }
   animation: eoRise .65s 1s var(--spring) both;
 }
 .eo-cheque small { font-size: var(--fs-cap); font-weight: 900; color: var(--muted); }
-.eo-cheque b { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-l); line-height: 1.1; color: var(--money); font-variant-numeric: tabular-nums; }
-.eo-stamp { position: absolute; right: 6px; bottom: 6px; font-size: var(--fs-s); padding: 0 6px; animation: stampSlam .5s 1.55s var(--spring) both; }
+.eo-cheque b { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); white-space: nowrap; line-height: 1.1; color: var(--money); font-variant-numeric: tabular-nums; }
+.eo-stamp { position: absolute; right: 6px; top: 4px; font-size: var(--fs-s); padding: 0 6px; animation: stampSlam .5s 1.55s var(--spring) both; }
 .eo-text .tag { font-size: var(--fs-xs); font-weight: 900; color: var(--muted); }
 .eo-text h3 { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-xl); line-height: 1.25; margin: 2px 0 var(--s2); }
 .eo-line {
@@ -2642,6 +2642,9 @@ main.shake { animation: shake .6s ease-in-out; }
     margin: 0 calc(var(--gutter) * -1);
     padding: var(--s4) var(--gutter) var(--s5);
     width: auto;
+    /* 데스크톱 grid의 align-items: start가 남아 있으면 면접 직급 탭(가로 스크롤)의 폭만큼 패널이 넓어져 화면이 잘립니다 */
+    align-self: stretch;
+    min-width: 0;
   }
   body.with-talk .screen.active { padding-bottom: calc(var(--sheet-closed) + var(--s5) + env(safe-area-inset-bottom)); }
   h2 { font-size: var(--fs-xl); }
