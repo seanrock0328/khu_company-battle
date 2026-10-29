@@ -91,7 +91,7 @@ function cleanEntry(e) {
   if (!Number.isFinite(profit) || Math.abs(profit) > 10000000) return null;
   if (!Number.isFinite(at) || at < 1700000000000 || at > Date.now() + 60000) return null;
   const entry = {
-    player: cleanText(e.player, 10), name: cleanText(e.name, 12), emoji: cleanText(e.emoji, 4),
+    player: cleanText(e.player, 14), name: cleanText(e.name, 12), emoji: cleanText(e.emoji, 4),
     industry: cleanText(e.industry, 20), news: cleanText(e.news, 80), model: cleanText(e.model, 30),
     profit, at
   };
@@ -127,7 +127,7 @@ async function handleBoard(request, env, url, allowed) {
 
   if (path === "/board") {
     // 순위 기록은 로그인한 아이디로만 (남의 닉네임으로 기록하지 못하게)
-    const owner = await sessionUser(env, body.token);
+    const owner = displayName(await sessionUser(env, body.token)); // 손님은 "닉네임(손님)"
     if (!owner) return reply(401, { error: "로그인해야 순위에 기록돼요." }, allowed);
     const entry = cleanEntry({ ...(body.entry || {}), player: owner });
     if (!entry) return reply(400, { error: "기록 형식이 잘못됐어요." }, allowed);
@@ -163,7 +163,15 @@ async function handleBoard(request, env, url, allowed) {
   return reply(404, { error: "없는 주소예요." }, allowed);
 }
 
-const ACCOUNT_PATHS = ["/signup", "/login", "/logout", "/me", "/save", "/save-clear"];
+const ACCOUNT_PATHS = ["/signup", "/login", "/guest", "/logout", "/me", "/save", "/save-clear"];
+const GUEST_PREFIX = "guest:";
+const GUEST_TTL = 60 * 60 * 24; // 손님 닉네임과 로그인은 하루 동안
+
+// 세션 값: 회원은 아이디, 손님은 "guest:닉네임"
+function displayName(sessionValue) {
+  if (!sessionValue) return null;
+  return sessionValue.startsWith(GUEST_PREFIX) ? `${sessionValue.slice(GUEST_PREFIX.length)}(손님)` : sessionValue;
+}
 
 // ===== 계정: 회원가입, 로그인, 게임 이어하기 저장 =====
 // 아이디는 대소문자 구분 없이 하나만 (닉네임 중복 방지). 비밀번호는 PBKDF2로 해시해서 저장하고 원문은 남기지 않습니다.
@@ -202,9 +210,9 @@ function sameText(a, b) {
   return diff === 0;
 }
 
-async function newSession(env, id) {
+async function newSession(env, id, ttl = SESSION_TTL) {
   const token = [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, "0")).join("");
-  await env.BOARD.put(`s:${token}`, id, { expirationTtl: SESSION_TTL });
+  await env.BOARD.put(`s:${token}`, id, { expirationTtl: ttl });
   return token;
 }
 
@@ -235,15 +243,31 @@ async function handleAccount(path, body, env, allowed) {
     return reply(200, { id: user.id, token: await newSession(env, user.id) }, allowed);
   }
 
+  // 손님: 닉네임만으로 바로 시작 (가입한 아이디와 같은 이름, 오늘 다른 손님이 쓴 이름은 불가)
+  if (path === "/guest") {
+    const name = String(body.name ?? "").trim();
+    if (!ID_RE.test(name)) return reply(400, { error: "닉네임은 2~10자, 한글·영문·숫자·_만 쓸 수 있어요." }, allowed);
+    if (await env.BOARD.get(`u:${normId(name)}`)) return reply(409, { error: "가입한 사장님이 쓰는 이름이에요. 다른 닉네임을 골라 주세요." }, allowed);
+    if (await env.BOARD.get(`gn:${normId(name)}`)) return reply(409, { error: "오늘 다른 손님이 쓴 닉네임이에요. 다른 닉네임을 골라 주세요." }, allowed);
+    await env.BOARD.put(`gn:${normId(name)}`, "1", { expirationTtl: GUEST_TTL });
+    return reply(200, { id: name, guest: true, token: await newSession(env, GUEST_PREFIX + name, GUEST_TTL) }, allowed);
+  }
+
   // 아래는 로그인한 사람만
-  const id = await sessionUser(env, body.token);
-  if (!id) return reply(401, { error: "로그인이 풀렸어요. 다시 로그인해 주세요." }, allowed);
+  const session = await sessionUser(env, body.token);
+  if (!session) return reply(401, { error: "로그인이 풀렸어요. 다시 로그인해 주세요." }, allowed);
+  const guest = session.startsWith(GUEST_PREFIX);
+  const id = guest ? session.slice(GUEST_PREFIX.length) : session;
   const saveKey = `g:${normId(id)}`;
 
   if (path === "/logout") {
     await env.BOARD.delete(`s:${body.token}`);
     return reply(200, { ok: true }, allowed);
   }
+  // 손님은 이어하기 저장을 하지 않습니다
+  if (guest && (path === "/save" || path === "/save-clear")) return reply(200, { ok: true, skipped: true }, allowed);
+  if (guest && path === "/me") return reply(200, { id, guest: true, save: null }, allowed);
+
   if (path === "/me") {
     return reply(200, { id, save: await env.BOARD.get(saveKey, "json") }, allowed);
   }
@@ -316,7 +340,7 @@ export default {
           bodyStart: body
         }, allowed);
       }
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 4 }, allowed);
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, version: 5 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
