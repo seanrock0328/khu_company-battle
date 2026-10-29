@@ -198,14 +198,46 @@ function hearts(n) {
   return `<span class="hearts" title="충성심 ${n}/10" aria-label="충성심 ${n}/10">${"♥".repeat(Math.ceil(n / 2))}<span class="empty">${"♥".repeat(5 - Math.ceil(n / 2))}</span> ${n}/10</span>`;
 }
 
+function powerPanel(stage) {
+  const c = game.company;
+  const used = c.powerUsed;
+  const staff = staffOf(c);
+  return `<section class="power-panel" aria-label="사장 필살기">
+    <h3>⚡ 사장 필살기 <small>${used ? "남은 횟수 0 / 1" : "세 가지 중 한 번만 사용"}</small></h3>
+    ${used ? `<p class="hint">${quarterLabel(used.round)}에 ${esc(CEO_POWERS.find(p => p.id === used.id).name)} 사용</p>` : ""}
+    <div class="power-grid">${CEO_POWERS.map(p => {
+      const disabled = used || !staff.length || (stage === "before" ? p.id === "visit" : p.id !== "visit")
+        || (p.id === "direct" && staff.length < 2) || (p.id === "dinner" && staff.every(x => x.loyalty === LOYALTY_MAX));
+      return `<button type="button" class="secondary power-button" data-power="${p.id}" ${disabled ? "disabled" : ""}>
+        <b>${esc(p.name)}</b><small>${esc(p.when)} · ${esc(p.text)}</small></button>`;
+    }).join("")}</div>
+  </section>`;
+}
+
+function renderDecisionTools() {
+  const round = game.company.rounds[game.round];
+  const box = document.getElementById("decision-tools");
+  box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
+    <h3>🗂️ 보고 옆에 놓인 단서</h3>
+    ${cluesFor(round).map(text => `<p>${esc(text)}</p>`).join("")}
+    <p class="hint">일부 상황만 담긴 단서입니다. 보고와 비교해 보세요. 성공 여부를 확정하는 증거는 아닙니다.</p>
+    </section>${powerPanel("after")}
+    ${round.power === "visit" ? `<section class="visit-result" aria-label="현장 출동 결과">
+      <h3>🔎 사장님이 직접 확인한 현장</h3>
+      <p>${esc(round.result.action)}</p><p>${esc(round.result.audit)}</p>
+      <p><b>성과 ${round.result.score}점 · ${round.result.score >= SUCCESS_LINE ? "잘 수행함" : "수행 실패"}</b></p>
+      <p class="hint">확인한 사실을 바탕으로 칭찬·추궁을 선택하세요.</p></section>` : ""}`;
+}
+
 function renderEvent() {
   const c = game.company;
   const ev = c.events[game.round];
+  const round = c.rounds[game.round];
   const activeStaff = staffOf(c);
   document.getElementById("event-heading").textContent = `${quarterLabel(game.round)} · ${game.round + 1} / ${ROUNDS}`;
   document.getElementById("profit-now").innerHTML = game.round
     ? `누적 수익 <b class="${totalProfit(c) < 0 ? "neg" : "pos"}">${money(totalProfit(c))}</b>` : "";
-  const chain = activeStaff.map(x => `<li><span class="rank">${x.rank}</span>${esc(x.name)} ${hearts(x.loyalty)}
+  const chain = transmissionStaff(c).map(x => `<li><span class="rank">${x.rank}</span>${esc(x.name)} ${hearts(x.loyalty)}
     <small>${x.mbti} · ${rankInfo(x.rank).chars}자</small></li>`).join("");
   const quit = allCandidates(c).filter(x => x.quit).map(x => `${x.rank} ${esc(x.name)}`);
   document.getElementById("event-box").innerHTML = `
@@ -217,9 +249,18 @@ function renderEvent() {
         <h3>${esc(ev.title)}</h3>
         <p>${esc(ev.text)}</p>
       </div>
+      ${activeStaff.length ? powerPanel("before") : ""}
+      ${game.round === ROUNDS - 1 && activeStaff.length ? `<fieldset class="final-strategy">
+        <legend>🏁 마지막 분기, 어떤 승부를 걸까요?</legend>
+        <p class="hint">두 전략 모두 인건비·불이익·필살기 비용은 별도입니다. 지시를 내리기 전에 하나를 골라 주세요.</p>
+        ${FINAL_STRATEGIES.map(s => `<label class="strategy-option">
+          <input type="radio" name="final-strategy" data-strategy="${s.id}" ${round.strategy === s.id ? "checked" : ""}>
+          <span><b>${esc(s.name)}</b><small>${esc(s.text)}</small></span></label>`).join("")}
+        <p class="hint">신사업 매출 범위 0~1억 4,000만원 · 안전 운영 매출 범위 4,000~6,000만원</p>
+      </fieldset>` : ""}
       <label class="field">사장님 지시
-        <span class="counter" data-for="order">0 / ${ORDER_MAX}</span>
-        <textarea id="order" maxlength="${ORDER_MAX}" rows="4" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 오늘 안에 해결해. 고객에게는 솔직하게 사과하고, 원인은 내일 아침까지 보고해."></textarea>
+        <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span>
+        <textarea id="order" maxlength="${ORDER_MAX}" rows="4" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 오늘 안에 해결해. 고객에게는 솔직하게 사과하고, 원인은 내일 아침까지 보고해.">${esc(round.order)}</textarea>
       </label>
       <p class="field-label">이 지시를 듣는 순서 <span class="hint">♥ 충성심</span></p>
       <ol class="chain">${chain}</ol>
@@ -238,13 +279,14 @@ async function renderReports() {
   document.getElementById("result-box").innerHTML = `
     <div class="card">
       <div class="messenger" id="room"><p class="room">📈 보고 라인</p></div>
-    </div>`;
+    </div><div id="decision-tools"></div>`;
   const room = document.getElementById("room");
-  const up = [...staffOf(c)].reverse();
+  const up = [...c.rounds[game.round].chain].reverse().map(id => candidateById(c, id));
   for (let k = 0; k < up.length; k++) {
     const isFinal = k === up.length - 1;
     await addBubble(room, `${up[k].rank} ${up[k].name}${isFinal ? " → 사장님께" : ""}`, r.up[k].say, isFinal ? "final" : "");
   }
+  renderDecisionTools();
 }
 
 async function renderTruth() {
@@ -252,6 +294,7 @@ async function renderTruth() {
   const round = c.rounds[game.round];
   const r = round.result;
   const closed = round.choice === "closed";
+  document.getElementById("decision-tools")?.remove();
   const staff = round.chain.map(id => candidateById(c, id)); // 이번 분기에 있던 직원 (퇴사자 포함)
   document.getElementById("result-title").textContent = closed ? "🚪 직원 부재로 영업을 중단했습니다" : round.choice === "dig" ? "🔍 파고들어 보니…" : "👏 칭찬했습니다. 그런데 진실은…";
   document.getElementById("result-lead").textContent = closed ? "직원이 없어 이번 이벤트를 수행하지 못했습니다. 4분기까지 결산은 이어집니다." : "🤥 표시는 일부러 말을 바꾸거나 거짓말한 직원입니다.";
@@ -285,9 +328,12 @@ async function renderTruth() {
     <p class="choice-result ${round.penalty ? "bad" : round.choice === "dig" && round.success ? "warn" : "good"}">
       ${closed ? "🚪 영업 중단" : round.choice === "dig" ? "🔍 파고들기" : "👏 칭찬하기"} → ${esc(round.loyaltyNote)}</p>
     ${round.quits.length ? `<p class="choice-result bad">🚪 충성심이 바닥난 ${round.quits.map(esc).join(", ")}이(가) 퇴사했습니다</p>` : ""}
+    ${round.power ? `<p class="hint">이번 분기 필살기: ${esc(CEO_POWERS.find(p => p.id === round.power).name)}</p>` : ""}
     <table class="ledger">
-      <tr><td>매출 (성과 ${r.score}점)</td><td>${money(round.revenue)}</td></tr>
+      <tr><td>기본 매출 (성과 ${r.score}점)</td><td>${money(round.baseRevenue)}</td></tr>
+      ${round.strategy && !closed ? `<tr><td>${esc(FINAL_STRATEGIES.find(s => s.id === round.strategy).name)} 매출 조정</td><td>${money(round.strategyDelta)}</td></tr>` : ""}
       <tr><td>인건비</td><td>${money(-round.cost)}</td></tr>
+      ${round.powerCost ? `<tr><td>회식 비용</td><td>${money(-round.powerCost)}</td></tr>` : ""}
       ${round.penalty ? `<tr class="bad"><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
       <tr class="sum"><td>이번 분기 수익</td><td class="${round.profit < 0 ? "neg" : "pos"}">${money(round.profit)}</td></tr>
       <tr><td>누적 수익</td><td class="${totalProfit(c) < 0 ? "neg" : "pos"}">${money(totalProfit(c))}</td></tr>
@@ -317,6 +363,7 @@ function renderFinal(placed) {
   const topLiar = everyone.reduce((best, x) => (lies.get(x.id) > (best ? lies.get(best.id) : 0) ? x : best), null);
   const honest = everyone.filter(x => lies.get(x.id) === 0 && !x.quit);
   const profit = totalProfit(c);
+  const ending = endingFor(c);
 
   const banner = placed
     ? `<p class="placed">${medal(placed.rank)} 같은 업종 <b>${placed.rank}위</b> <span>/ ${placed.total}명</span></p>`
@@ -338,6 +385,15 @@ function renderFinal(placed) {
         <p class="score big ${profit < 0 ? "neg" : "pos"}">${money(profit)}</p>
         <ol class="rounds">${rows}</ol>
         ${twist ? `<p class="twist ${twist.kind}">${esc(twist.text)}</p>` : ""}
+      </article>
+      <article class="news ending-card">
+        <p class="paper">경희경제신문 · 사장님 특별호</p>
+        <p class="tag">올해의 사장 유형</p><h3 class="ending-title">${esc(ending.title)}</h3>
+        <p>${esc(ending.headline)}</p><p>${esc(ending.text)}</p>
+        <p class="hint">칭찬 ${c.rounds.filter(r => r.choice === "praise").length}회 · 추궁 ${c.rounds.filter(r => r.choice === "dig").length}회 · 재직 직원 ${staffOf(c).length}명</p>
+        <button class="secondary" data-action="copy-ending">📋 내 결산 복사하기</button>
+        <details class="ending-share"><summary>공유할 결산 문구 보기</summary>
+          <textarea id="ending-share" rows="5" readonly aria-label="공유할 결산 문구">${esc(endingShareText(c))}</textarea></details>
       </article>
       <div class="card awards">
         ${topLiar ? `<p>🤥 <b>1년간의 거짓말왕</b> ${esc(topLiar.rank)} ${esc(topLiar.name)} <small>(${lies.get(topLiar.id)}번, 정직도 ${topLiar.honesty})</small></p>` : ""}

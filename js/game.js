@@ -36,11 +36,14 @@ const REVENUE_PER_POINT = 100;   // 성과 1점당 매출
 const COST_PER_SALARY = 200;     // 연봉 1당 분기 인건비
 const SUCCESS_LINE = 60;         // 성과 60점 이상이면 "잘 수행함"
 const PRAISE_FAIL_PENALTY = 3000; // 잘 못했는데 칭찬하면 큰 불이익
-// 정상 경영의 최대 분기 손실(최대 인건비 28 x 200 + 불이익 3000 = 8600)보다 크게.
+// 최대 분기 손실(인건비 28 x 200 + 불이익 3000 + 회식 300 = 8900)보다 크게.
 // 전원 퇴사로 적자 분기를 피하는 전략이 이득이 되지 않게 합니다.
 const CLOSED_PENALTY = 9000;     // 영업 중단 분기의 임대료·위약금
 const LOYALTY_START = 5;
 const LOYALTY_MAX = 10;
+const DINNER_COST = 300;
+const VENTURE_LINE = 70;
+const VENTURE_SWING = 4000;
 
 function quarterLabel(i) {
   return `${Math.floor(i / 4) + 1}년차 ${(i % 4) + 1}분기`;
@@ -49,7 +52,8 @@ function quarterLabel(i) {
 function newCompany() {
   return {
     player: "", emoji: "", industry: "", detail: "", name: "", motto: "", funding: "angel",
-    rolls: 0, news: "", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: false
+    rolls: 0, news: "", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: false,
+    powerUsed: null
   };
 }
 
@@ -215,6 +219,75 @@ function payroll(c) {
   return staffOf(c).reduce((sum, x) => sum + x.salary, 0);
 }
 
+// 전달 과정만 건너뛰며, 재직 직원과 급여 계산에는 영향을 주지 않습니다.
+function transmissionStaff(c) {
+  const staff = staffOf(c);
+  return c.rounds[game.round]?.power === "direct" ? staff.slice(-1) : staff;
+}
+
+function usePower(c, id) {
+  const round = c.rounds[game.round];
+  const staff = staffOf(c);
+  if (!CEO_POWERS.some(p => p.id === id)) return "필살기를 골라 주세요.";
+  if (!round || round.choice || !staff.length) return "업무를 진행 중일 때만 사용할 수 있어요.";
+  if (c.powerUsed) return "사장 필살기는 한 판에 한 번만 사용할 수 있어요.";
+  if (id === "visit" && !round.result) return "현장 출동은 보고를 받은 뒤 사용할 수 있어요.";
+  if (id !== "visit" && round.result) return "회식과 직통 전화는 지시 전에 사용해 주세요.";
+  if (id === "direct" && staff.length < 2) return "직원이 한 명이면 이미 직통으로 전달돼요.";
+  if (id === "dinner" && staff.every(x => x.loyalty === LOYALTY_MAX)) return "이미 모두 충성심이 가득해요.";
+  round.power = id;
+  round.powerCost = id === "dinner" ? DINNER_COST : 0;
+  if (id === "dinner") staff.forEach(x => { x.loyalty = Math.min(LOYALTY_MAX, x.loyalty + 2); });
+  c.powerUsed = { id, round: game.round };
+  return null;
+}
+
+function setFinalStrategy(c, id) {
+  const round = c.rounds[game.round];
+  if (game.round !== ROUNDS - 1 || !round || round.result || !FINAL_STRATEGIES.some(s => s.id === id)) return false;
+  round.strategy = id;
+  return true;
+}
+
+// 일부 증거만 보여 줍니다. 중간 구간은 성공과 실패가 겹쳐 정답을 확정할 수 없습니다.
+function cluesFor(round) {
+  const r = round.result;
+  if (!r) return [];
+  const customer = r.score <= 45
+    ? "문의함: 같은 문제로 다시 연락한 고객이 눈에 띕니다. 답변을 기다리는 글도 남아 있습니다."
+    : r.score >= 80
+    ? "문의함: 처리됐다는 답장이 여럿 도착했습니다. 아직 답이 없는 고객도 있습니다."
+    : "문의함: 감사 인사와 재문의가 섞여 있습니다. 일부 고객은 아직 연락이 없습니다.";
+  const record = r.up.some(x => x.lie)
+    ? "현장 메모: 최종 보고에서 언급하지 않은 수정 요청이 남아 있습니다. 단순 보완일 수도 있습니다."
+    : "현장 메모: 보고와 비슷한 작업 기록이 있습니다. 기록만으로 업무 품질까지 확인되지는 않습니다.";
+  return [customer, record];
+}
+
+function endingFor(c) {
+  const staff = staffOf(c);
+  const avg = staff.length ? staff.reduce((sum, x) => sum + x.loyalty, 0) / staff.length : 0;
+  const profit = totalProfit(c);
+  const digs = c.rounds.filter(r => r.choice === "dig").length;
+  const badPraises = c.rounds.filter(r => r.choice === "praise" && !r.success).length;
+  const last = c.rounds[ROUNDS - 1];
+  let id, title, text;
+  if (!staff.length) { id = "closed"; title = "불 꺼진 사무실"; text = "사장님만 출근했습니다. 커피 머신이 마지막 동료가 됐습니다."; }
+  else if (profit < 0 && avg >= 7) { id = "welfare"; title = "복지는 대기업, 장부는 적자"; text = "직원 만족도는 상장했습니다. 회사 통장은 상장폐지 직전입니다."; }
+  else if (profit < 0 && badPraises >= 2) { id = "paper"; title = "보고서만 대기업"; text = "보고서에는 우상향 그래프, 통장에는 하향 곡선이 남았습니다."; }
+  else if (profit >= 0 && last?.strategy === "venture" && last.strategyDelta > 0) { id = "comeback"; title = "막판 한 방의 승부사"; text = "마지막 분기 신사업이 터졌습니다. 사장님의 무릎이 먼저 풀렸습니다."; }
+  else if (profit >= 0 && avg >= 7) { id = "happy"; title = "직원도 웃는 흑자 기업"; text = "월급날도 사장님 등장도 반갑다는 드문 회사가 탄생했습니다."; }
+  else if (profit >= 0 && digs >= 3) { id = "detective"; title = "현미경 경영의 달인"; text = "영수증 한 장까지 확인했습니다. 직원들은 사장님의 발소리를 외웠습니다."; }
+  else if (profit >= 0) { id = "survivor"; title = "작지만 단단한 생존 기업"; text = "대박 소문은 없어도 통장에 돈은 남았습니다. 내년에도 문을 엽니다."; }
+  else { id = "retry"; title = "다음 투자를 기다리는 사장"; text = "수익보다 경험이 쌓였습니다. 투자 제안서의 글꼴부터 바꿔 봅니다."; }
+  return { id, title, text, headline: `'${c.name}', ${title}… 사장 ${c.player}의 1년` };
+}
+
+function endingShareText(c) {
+  const ending = endingFor(c);
+  return `🏢 10자 사원 주식회사 · 1년 4턴 결산\n${c.name} / 사장 ${c.player}\n${ending.title}\n누적 수익 ${money(totalProfit(c))}\n${ending.text}`;
+}
+
 function hireCandidate(c, rank, id) {
   if (!HIRE_RANKS.includes(rank)) return "채용할 직급을 확인해 주세요.";
   if (id !== null) {
@@ -271,11 +344,17 @@ function settleRound(c, choice) {
     });
   }
 
-  const revenue = score * REVENUE_PER_POINT;
+  const baseRevenue = choice === "closed" ? 0 : score * REVENUE_PER_POINT;
+  let revenue = baseRevenue;
+  if (choice !== "closed" && game.round === ROUNDS - 1) {
+    if (round.strategy === "safe") revenue = Math.max(4000, Math.min(6000, baseRevenue));
+    if (round.strategy === "venture") revenue = Math.max(0, baseRevenue + (score >= VENTURE_LINE ? VENTURE_SWING : -VENTURE_SWING));
+  }
+  const powerCost = round.powerCost || 0;
   const cost = staff.reduce((s, x) => s + x.salary, 0) * COST_PER_SALARY;
   Object.assign(round, {
-    choice, success, revenue, cost, penalty,
-    profit: revenue - cost - penalty,
+    choice, success, baseRevenue, revenue, strategyDelta: revenue - baseRevenue, cost, penalty, powerCost,
+    profit: revenue - cost - penalty - powerCost,
     loyaltyNote: note, quits
   });
   return round;
@@ -333,8 +412,8 @@ function money(n, signed = true) {
 
 // ===== 순위표 (이 노트북 브라우저에 저장) =====
 
-// 이전 8분기 기록과 4분기 수익을 비교하지 않도록 저장 공간을 분리합니다.
-const BOARD_KEY = "company_battle_leaderboard_v4";
+// 필살기·최종 전략이 없는 이전 규칙의 기록과 수익을 비교하지 않게 분리합니다.
+const BOARD_KEY = "company_battle_leaderboard_v5";
 
 function loadBoard() {
   try {
@@ -359,9 +438,11 @@ function recordResult(c) {
   if (isPractice(c) || c.rounds.length !== ROUNDS || c.rounds.some(r => !r.choice)) return null;
   if (c.placement) return c.placement;
   const last = c.rounds[c.rounds.length - 1].result;
+  const ending = endingFor(c);
   const entry = {
     player: c.player.trim(), name: c.name, emoji: c.emoji, industry: c.industry,
-    profit: totalProfit(c), news: last.news, model: last.model || "", at: Date.now()
+    profit: totalProfit(c), news: ending.headline, ending: ending.title,
+    model: last.model || "", at: Date.now()
   };
   const list = loadBoard();
   list.push(entry);

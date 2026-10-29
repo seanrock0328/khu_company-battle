@@ -144,7 +144,7 @@ test("충성심이 낮은 직원을 전원 퇴사시키는 전략이 정상 경�
 
 test("영업 중단으로 정상 경영의 최악 손실도 피할 수 없다", () => {
   const run = setup();
-  assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY"));
+  assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY + DINNER_COST"));
   for (const salary of [14, 18, 22, 28]) {
     for (const score of [0, 20, 59, 60, 70, 100]) {
       // 충성심 2와 첫 2분기 성과를 고정. 남은 2분기의 운영과 중단을 비교.
@@ -180,10 +180,125 @@ test("AI 창업 요청과 연습 모드가 모두 1년 이벤트 4개를 만든�
 test("이전 8턴 순위는 보관하면서 새로운 4턴 순위에서 제외한다", () => {
   const run = setup();
   run('localStorage.setItem("company_battle_leaderboard_v3", JSON.stringify([{ industry: "붕어빵", profit: 99999 }]))');
+  run('localStorage.setItem("company_battle_leaderboard_v4", JSON.stringify([{ industry: "붕어빵", profit: 88888 }]))');
   assert.equal(run("loadBoard().length"), 0);
   run('saveBoard([{ industry: "붕어빵", profit: 1000 }])');
   assert.equal(run("loadBoard()[0].profit"), 1000);
   assert.equal(run('JSON.parse(localStorage.getItem("company_battle_leaderboard_v3"))[0].profit'), 99999);
+  assert.equal(run('JSON.parse(localStorage.getItem("company_battle_leaderboard_v4"))[0].profit'), 88888);
+});
+
+test("회식은 판당 한 번 충성심을 회복하고 비용을 중복 없이 결산한다", () => {
+  const run = setup();
+  hire(run);
+  run('c.rounds[0] = { order: "주문 처리", result: null };');
+  assert.match(run('usePower(c, "visit")'), /보고/);
+  assert.match(run('usePower(c, "direct")'), /한 명/);
+  assert.equal(run('usePower(c, "dinner")'), null);
+  assert.equal(run("employee.loyalty"), 7);
+  assert.match(run('usePower(c, "dinner")'), /한 번/);
+  run('c.rounds[0].result = { score: 80 }; settleRound(c, "praise"); settleRound(c, "praise");');
+  assert.equal(run("employee.loyalty"), 8);
+  assert.equal(run("c.rounds[0].powerCost"), 300);
+  assert.equal(run("totalProfit(c)"), run("8000 - employee.salary * 200 - 300"));
+  run('game.round = 1; c.rounds[1] = { result: { score: 50 } };');
+  assert.match(run('usePower(c, "visit")'), /한 번/);
+  run("resetGame()");
+  assert.equal(run("game.company.powerUsed"), null);
+});
+
+test("회식은 충성심 10을 넘지 않으며 이미 가득하면 필살기를 쓰지 않는다", () => {
+  const run = setup();
+  hire(run);
+  run('c.rounds[0] = { result: null }; employee.loyalty = 10;');
+  assert.match(run('usePower(c, "dinner")'), /가득/);
+  assert.equal(run("c.powerUsed"), null);
+  run('employee.loyalty = 9; usePower(c, "dinner");');
+  assert.equal(run("employee.loyalty"), 10);
+});
+
+test("직통 전화는 말단에게만 전달하되 전 직원 인건비를 유지한다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  run(`
+    const executive = c.candidates["임원"][0];
+    askCandidate(c, "임원", executive.id, "motivation"); hireCandidate(c, "임원", executive.id);
+    c.events = [{ type: "위기", title: "주문", text: "처리하세요" }];
+    c.rounds[0] = { order: "고객 주문 처리", result: null };
+  `);
+  assert.equal(run('usePower(c, "direct")'), null);
+  assert.equal(run("transmissionStaff(c).length"), 1);
+  assert.equal(run("transmissionStaff(c)[0].id"), run("employee.id"));
+  assert.doesNotMatch(run("buildEventRequest()"), /"rank":"임원"/);
+  run('c.rounds[0].chain = transmissionStaff(c).map(x => x.id); practiceEvent();');
+  assert.equal(run("c.rounds[0].result.down.length"), 1);
+  run('applyEvent(JSON.stringify({ down: [{ say: "처리해", lie: false }], up: [{ say: "처리함", lie: false }], score: 80 }), "테스트"); settleRound(c, "praise");');
+  assert.equal(run("c.rounds[0].result.up.length"), 1);
+  assert.equal(run("c.rounds[0].cost"), run("(employee.salary + executive.salary) * COST_PER_SALARY"));
+});
+
+test("현장 출동은 보고 후 결산 전에만 쓰고 결과를 바꾸지 않는다", () => {
+  const run = setup();
+  hire(run);
+  run('c.rounds[0] = { result: { score: 59, action: "실제 업무", audit: "감춘 사실" } };');
+  assert.match(run('usePower(c, "dinner")'), /지시 전/);
+  assert.equal(run('usePower(c, "visit")'), null);
+  assert.equal(run("c.rounds[0].result.score"), 59);
+  run('settleRound(c, "dig")');
+  assert.match(run('usePower(c, "visit")'), /진행 중/);
+});
+
+test("추리 단서는 점수·진실 원문을 노출하지 않고 성공·실패 경계에서 겹친다", () => {
+  const run = setup();
+  const a = run('JSON.stringify(cluesFor({ result: { score: 59, action: "비밀 실제 업무", audit: "비밀 감사", up: [{ lie: true }] } }))');
+  const b = run('JSON.stringify(cluesFor({ result: { score: 60, action: "다른 업무", up: [{ lie: true }] } }))');
+  assert.equal(a, b);
+  assert.doesNotMatch(a, /59|60|비밀|실패|성공/);
+});
+
+for (const [strategy, score, expected] of [
+  ["safe", 0, 4000], ["safe", 100, 6000],
+  ["venture", 0, 0], ["venture", 69, 2900], ["venture", 70, 11000], ["venture", 100, 14000]
+]) {
+  test(`마지막 분기 ${strategy} 전략의 성과 ${score}점 매출은 ${expected}만원이다`, () => {
+    const run = setup();
+    hire(run);
+    run('c.rounds[0] = { result: null };');
+    assert.equal(run(`setFinalStrategy(c, "${strategy}")`), false);
+    run('game.round = 3; c.rounds[3] = { result: null };');
+    assert.equal(run(`setFinalStrategy(c, "${strategy}")`), true);
+    run(`c.rounds[3].result = { score: ${score} }; settleRound(c, "dig");`);
+    assert.equal(run("c.rounds[3].revenue"), expected);
+    assert.equal(run("c.rounds[3].baseRevenue + c.rounds[3].strategyDelta"), expected);
+    assert.equal(run('setFinalStrategy(c, "safe")'), false);
+  });
+}
+
+test("영업 중단 분기에는 최종 안전 전략의 최소 매출도 발생하지 않는다", () => {
+  const run = setup();
+  hire(run);
+  run('game.round = 3; c.rounds[3] = { result: null, strategy: "safe" }; employee.quit = true; closeUnstaffedRound(c);');
+  assert.equal(run("c.rounds[3].revenue"), 0);
+  assert.equal(run("c.rounds[3].profit"), -9000);
+});
+
+test("수익·충성심·선택에 따른 엔딩과 공유 문구를 일관되게 만든다", () => {
+  const run = setup();
+  hire(run);
+  run('c.rounds = Array.from({ length: 4 }, () => ({ profit: 1000, choice: "praise", success: true })); employee.loyalty = 8;');
+  assert.equal(run("endingFor(c).id"), "happy");
+  assert.match(run("endingShareText(c)"), /1년 4턴 결산/);
+  assert.match(run("endingShareText(c)"), /\+4,000만원/);
+  run('c.rounds[3].strategy = "venture"; c.rounds[3].strategyDelta = 4000;');
+  assert.equal(run("endingFor(c).id"), "comeback");
+  run('c.rounds.forEach(r => { r.profit = -1000; });');
+  assert.equal(run("endingFor(c).id"), "welfare");
+  run('employee.loyalty = 5; c.rounds.forEach(r => { r.success = false; });');
+  assert.equal(run("endingFor(c).id"), "paper");
+  run('employee.quit = true;');
+  assert.equal(run("endingFor(c).id"), "closed");
+  assert.equal(run("endingShareText(c)"), run("endingShareText(c)"));
 });
 
 test("연습 모드에서 전원 퇴사해도 정식 순위에 기록하지 않는다", () => {

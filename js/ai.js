@@ -211,7 +211,9 @@ function buildEventRequest() {
     quarter: `${quarterLabel(i)} (${i + 1}/${ROUNDS})`,
     event: c.events[i],
     ceoOrder: round.order,
-    staff: staffOf(c).map(x => ({
+    ceoPower: round.power === "direct" ? "직통 전화: 중간 직급을 건너뛰고 가장 낮은 직급에게 직접 지시" : round.power === "dinner" ? "회식으로 충성심 회복" : "없음",
+    finalStrategy: FINAL_STRATEGIES.find(s => s.id === round.strategy)?.name || "일반 운영",
+    staff: transmissionStaff(c).map(x => ({
       rank: x.rank, name: x.name, mbti: x.mbti, attachment: attachmentLabel(x),
       skill: x.skill, honesty: x.honesty, luck: x.luck, loyalty: x.loyalty, chars: rankInfo(x.rank).chars
     })),
@@ -240,6 +242,7 @@ function buildEventRequest() {
 5. news: 결과를 다룬 경제 뉴스 헤드라인 1문장 (60자 이내). 이전 라운드가 있으면 이어지는 이야기로.
 6. reason: 점수 이유 한 줄 (50자 이내). 결정적이었던 직원 이름을 넣어라.
 7. audit: 사장이 "제대로 했는지 파고들었을 때" 드러나는 사실 한 문장 (50자 이내). 거짓말이 있었다면 누가 무엇을 숨겼는지.
+8. score는 순수한 업무 수행 성과만 판정하라. 최종 전략의 매출 조정과 필살기 비용은 게임이 따로 계산한다. ceoPower가 직통 전화이면 staff에 있는 마지막 직원만 연기하며 중간 직급을 추가하지 마라.
 
 [상황]
 ${JSON.stringify(input)}
@@ -255,7 +258,7 @@ function applyEvent(text, model) {
   const score = Math.round(Number(d.score));
   if (!Number.isFinite(score)) throw new Error("score가 숫자가 아니에요.");
 
-  const staff = staffOf(c);
+  const staff = transmissionStaff(c);
   let over = 0;
   const fit = (item, rank) => {
     const limit = rankInfo(rank).chars;
@@ -282,7 +285,7 @@ const LIES_UP = ["완벽하게 끝냈습니다!", "반응 폭발입니다", "목
 
 function practiceEvent() {
   const c = game.company;
-  const staff = staffOf(c);
+  const staff = transmissionStaff(c);
   const down = [];
   let heard = c.rounds[game.round].order;
   for (const x of staff) {
