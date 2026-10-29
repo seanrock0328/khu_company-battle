@@ -11,7 +11,8 @@
   const base = TEAM_SERVER_URL.replace(/\/+$/, "");
   const KEY_TOKEN = "company_battle_token";
   const KEY_ID = "company_battle_id";
-  const auth = { enabled: false, id: "", token: "" };
+  const KEY_GUEST = "company_battle_guest";
+  const auth = { enabled: false, id: "", token: "", guest: false };
 
   const keep = {
     get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
@@ -48,6 +49,9 @@
     .resume-card p { margin: 4px 0; }
     .pill.user { background: var(--accent-soft); border-color: #ebc7ce; }
     .locked-note { font-weight: 400; color: var(--muted); font-size: 12px; }
+    .guest-box { background: var(--accent-soft); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+    .guest-box .row input { flex: 1; min-width: 0; width: auto; margin-top: 0; }
+    .auth-or { text-align: center; color: var(--muted); font-size: 13px; margin: 0 0 10px; }
   `;
   document.head.appendChild(style);
 
@@ -57,6 +61,16 @@
       <h2>사장님 로그인</h2>
       <p class="lead">아이디가 순위표 닉네임이 됩니다. 하던 게임은 어느 기기에서든 이어서 할 수 있어요.</p>
       <div class="solo"><form class="card" id="login-form" autocomplete="on">
+        <div class="guest-box" id="guest-box">
+          <p class="field-label" style="margin-top:0">👋 가입 없이 바로 하기</p>
+          <div class="row">
+            <input id="guest-name" maxlength="10" autocomplete="nickname" placeholder="닉네임 (2~10자)">
+            <button type="button" id="btn-guest" class="primary small">바로 시작</button>
+          </div>
+          <p class="hint">순위표에 "닉네임(손님)"으로 올라가요. 손님은 다른 기기에서 이어하기가 안 돼요.</p>
+          <p id="guest-error" class="error" role="alert"></p>
+        </div>
+        <p class="auth-or">또는 계정으로 (이어하기 가능)</p>
         <div class="auth-tabs">
           <button type="button" data-mode="login" class="on">로그인</button>
           <button type="button" data-mode="signup">처음이에요 (가입)</button>
@@ -109,6 +123,29 @@
     errBox.textContent = "";
   }));
 
+  // 손님으로 바로 시작
+  const guestErr = document.getElementById("guest-error");
+  async function startAsGuest() {
+    const name = document.getElementById("guest-name").value.trim();
+    const btn = document.getElementById("btn-guest");
+    btn.disabled = true;
+    guestErr.textContent = "";
+    try {
+      const data = await api("/guest", { name });
+      setAuth(data.id, data.token, true);
+      toast(`${data.id} 손님, 환영합니다!`);
+      startGame();
+    } catch (err) {
+      guestErr.textContent = err.status ? err.message : "서버에 접속하지 못했어요. 인터넷 연결을 확인해 주세요.";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  document.getElementById("btn-guest").addEventListener("click", startAsGuest);
+  document.getElementById("guest-name").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); startAsGuest(); }
+  });
+
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const id = document.getElementById("login-id").value.trim();
@@ -122,7 +159,7 @@
     errBox.textContent = "";
     try {
       const data = await api(mode === "signup" ? "/signup" : "/login", { id, password });
-      setAuth(data.id, data.token);
+      setAuth(data.id, data.token, false);
       document.getElementById("login-pw").value = "";
       document.getElementById("login-pw2").value = "";
       toast(mode === "signup" ? `환영합니다, ${data.id} 사장님!` : `${data.id} 사장님, 어서 오세요!`);
@@ -134,20 +171,28 @@
     }
   });
 
-  function setAuth(id, token) {
+  function userLabel() {
+    return auth.guest ? `👤 ${auth.id}(손님)` : `👤 ${auth.id}`;
+  }
+
+  function setAuth(id, token, guest) {
     auth.id = id;
     auth.token = token;
+    auth.guest = !!guest;
     keep.set(KEY_ID, id);
     keep.set(KEY_TOKEN, token);
-    userBtn.textContent = `👤 ${id}`;
+    if (auth.guest) keep.set(KEY_GUEST, "1"); else keep.remove(KEY_GUEST);
+    userBtn.textContent = userLabel();
     userBtn.hidden = false;
   }
 
   function clearAuth() {
     auth.id = "";
     auth.token = "";
+    auth.guest = false;
     keep.remove(KEY_ID);
     keep.remove(KEY_TOKEN);
+    keep.remove(KEY_GUEST);
     userBtn.hidden = true;
   }
 
@@ -157,15 +202,16 @@
     if (!logoutArmed) {
       logoutArmed = true;
       userBtn.textContent = "로그아웃? 한 번 더 누르기";
-      setTimeout(() => { logoutArmed = false; if (auth.id) userBtn.textContent = `👤 ${auth.id}`; }, 3000);
+      setTimeout(() => { logoutArmed = false; if (auth.id) userBtn.textContent = userLabel(); }, 3000);
       return;
     }
     logoutArmed = false;
+    const wasGuest = auth.guest;
     api("/logout", { token: auth.token }).catch(() => {});
     clearAuth();
     startGame();
     showScreen("screen-login");
-    toast("로그아웃했어요. 하던 게임은 저장돼 있어요.");
+    toast(wasGuest ? "손님 플레이를 마쳤어요." : "로그아웃했어요. 하던 게임은 저장돼 있어요.");
   });
 
   // ===== 이어하기 =====
@@ -182,7 +228,8 @@
       me = { id: auth.id, save: null };
     }
     auth.id = me.id;
-    userBtn.textContent = `👤 ${me.id}`;
+    if (me.guest) auth.guest = true;
+    userBtn.textContent = userLabel();
     pendingSave = me.save && me.save.phase && me.save.company ? me.save : null;
     if (pendingSave) {
       renderResume(pendingSave);
@@ -257,7 +304,7 @@
   // ===== 저장 시점 (기존 함수 감싸기) =====
 
   function save(phase) {
-    if (!auth.enabled || !auth.token) return;
+    if (!auth.enabled || !auth.token || auth.guest) return; // 손님은 이어하기 저장 안 함
     const snapshot = {
       v: 1, phase, savedAt: Date.now(), round: game.round,
       nextCandidateId, company: game.company
@@ -314,7 +361,7 @@
 
   wrap("renderFinal", original => function () {
     original.apply(this, arguments);
-    if (auth.enabled && auth.token) api("/save-clear", { token: auth.token }).catch(() => {});
+    if (auth.enabled && auth.token && !auth.guest) api("/save-clear", { token: auth.token }).catch(() => {});
   });
 
   // ===== 시작: 서버가 로그인을 지원하는지 확인 =====
@@ -335,7 +382,7 @@
     }
     auth.enabled = true;
     if (savedToken) {
-      setAuth(keep.get(KEY_ID), savedToken);
+      setAuth(keep.get(KEY_ID), savedToken, keep.get(KEY_GUEST) === "1");
       await afterLogin();
     } else {
       showScreen("screen-login");
