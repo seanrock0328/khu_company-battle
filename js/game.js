@@ -5,7 +5,7 @@
 // 한 판 = 플레이어 한 명이 1년(4분기) 동안 회사 하나를 운영. 4분기 누적 수익으로 순위.
 // 회사:
 // {
-//   player, emoji, industry, detail(세부정보), name, motto, funding,
+//   gameId(한 판 번호), player, emoji, industry, detail(세부정보), name, motto, funding,
 //   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x4,
 //   candidates: { 임원: [후보 x3], ... }, hires: { 임원: 후보id | null, ... },
 //   rounds: [{ order, result, choice:"dig"|"praise", success, revenue, cost, penalty, profit, loyaltyNote, quits:[이름] }]
@@ -56,7 +56,9 @@ function newCompany() {
   return {
     player: "", emoji: "", industry: "", detail: "", name: "", motto: "", funding: "savings",
     rolls: 0, news: "", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: false,
-    powerUsed: null, initialCash: null, fundingLine: "", financeVersion: CASH_RULE_VERSION
+    powerUsed: null, initialCash: null, fundingLine: "", financeVersion: CASH_RULE_VERSION,
+    // 한 판 번호: 이어하기로 결산을 다시 열어도 공유 순위표에 같은 판이 두 번 올라가지 않게
+    gameId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   };
 }
 
@@ -199,10 +201,13 @@ function shuffle(list) {
   return a;
 }
 
-// 후보 셋은 각각 능력형, 정직형, 운형. 세 능력치 합은 항상 17이라 밸런스가 맞습니다.
+// 후보 셋은 각각 능력형, 정직형, 운형. 세 능력치 합은 15~19 중 무작위 (평균 17)라 밸런스가 맞습니다.
+const STAT_SUM_MIN = 15;
+const STAT_SUM_MAX = 19;
+
 function makeCandidate(rank, type) {
   const main = randInt(7, 9);
-  const rest = 17 - main;
+  const rest = randInt(STAT_SUM_MIN, STAT_SUM_MAX) - main; // 6~12라서 나머지 두 능력치도 1~9
   const a = randInt(Math.max(1, rest - 9), Math.min(9, rest - 1));
   const stats = { skill: 0, honesty: 0, luck: 0 };
   const others = ["skill", "honesty", "luck"].filter(k => k !== type);
@@ -280,6 +285,16 @@ function payroll(c) {
   return staffOf(c).reduce((sum, x) => sum + x.salary, 0);
 }
 
+// 직원은 최소 MIN_STAFF명 (빈자리는 2자리까지). '면접 끝, 업무 시작' 버튼에서 확인합니다 (main.js).
+// 아래 4직급(차장~사원)은 가장 비싼 후보로 골라도 연봉 합 13 이하라 부모님 돈(예산 18)으로도 채울 수 있습니다.
+const MIN_STAFF = 4;
+
+function checkStaffing(c) {
+  const count = staffOf(c).length;
+  if (count < MIN_STAFF) return `직원을 ${MIN_STAFF}명 이상 뽑아 주세요. 지금 ${count}명이에요. 지시가 여러 직급을 거쳐 내려가야 해요.`;
+  return null;
+}
+
 // 전달 과정만 건너뛰며, 재직 직원과 급여 계산에는 영향을 주지 않습니다.
 function transmissionStaff(c) {
   const staff = staffOf(c);
@@ -306,6 +321,7 @@ function usePower(c, id) {
 }
 
 // 일부 증거만 보여 줍니다. 중간 구간은 성공과 실패가 겹쳐 정답을 확정할 수 없습니다.
+// 45·80은 js/ai.js 이벤트 요청문의 점수 구간(0~45 망함, 80~100 대성공)과 같은 숫자입니다. 바꾸면 요청문도 같이 바꾸세요.
 function cluesFor(round) {
   const r = round.result;
   if (!r) return [];
@@ -496,7 +512,7 @@ function recordResult(c) {
   const entry = {
     player: c.player.trim(), name: c.name, emoji: c.emoji, industry: c.industry,
     profit: totalProfit(c), news: CASH_RULE_VERSION + ending.headline, ending: ending.title,
-    model: last.model || "", at: Date.now()
+    model: last.model || "", at: Date.now(), gameId: c.gameId || ""
   };
   const list = loadBoard();
   list.push(entry);
