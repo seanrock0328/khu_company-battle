@@ -245,12 +245,13 @@ function buildEventRequest() {
     })),
     // 최근 3분기만 (요청문이 너무 길어지지 않게)
     previousRounds: c.rounds.slice(Math.max(0, i - 3), i).map((r, k) => ({
-      event: String(c.events[Math.max(0, i - 3) + k].title).slice(0, 30), score: r.result.score, news: String(r.result.news || "").slice(0, 80),
+      event: String(c.events[Math.max(0, i - 3) + k].title).slice(0, 30), score: r.result.score, news: String(r.result.news || "").slice(0, 60),
       ceoReaction: r.choice === "praise" ? "칭찬" : "파고듦"
     }))
   };
   // 점수 구간은 game.js와 맞춥니다: SUCCESS_LINE(칭찬·파고들기·투자 회수 판정), cluesFor의 단서 구간(45 이하, 80 이상)
-  // 9번 clues는 AI가 쓰는 추리 단서입니다. 없거나 답이 새는 단서는 game.js cluesFor의 준비된 문장으로 바뀝니다
+  // 9번 clues: AI는 결과를 정하기 전에 경우별 단서(low·mid·high, lie·honest)를 다 쓰고, 게임이 실제 점수 구간·거짓말 여부로 하나씩 고릅니다.
+  // 그래서 AI가 쓴 글이어도 46~79점은 같은 단서가 나와 정답이 새지 않습니다. 빠지거나 걸러진 칸은 game.js cluesFor의 준비된 문장으로 채웁니다
   return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.
 사장의 지시가 staff를 거쳐 내려가고, 결과가 다시 보고로 올라가는 과정을 각 직원의 성격대로 연기하고 판정하라.
 
@@ -275,13 +276,13 @@ function buildEventRequest() {
 6. reason: 점수 이유 한 줄 (50자 이내). 결정적이었던 직원 이름을 넣어라.
 7. audit: 사장이 "제대로 했는지 파고들었을 때" 드러나는 사실 한 문장 (50자 이내). 거짓말이 있었다면 누가 무엇을 숨겼는지.
 8. ceoPower가 직통 전화이면 staff에 있는 마지막 직원만 연기하며 중간 직급을 추가하지 마라.
-9. clues: 보고와 비교할 간접 단서 2개, 각 "출처: 내용" 45자 이내. 첫째 바깥 반응(손님·SNS 등), 둘째 회사 안 기록(회의록·메신저 등). 점수·숫자·성공/실패·거짓말한 사람은 쓰지 말고, 0~45 나쁜 신호, 80~ 좋은 신호, 그 사이는 섞어서.
+9. clues(결과 정하기 전 먼저): low·mid·high는 바깥 반응(손님·SNS 등)이 나쁠·애매할(섞기)·좋을 때, lie·honest는 회사 안 기록(회의록 등)이 보고를 부풀렸을·아닐 때의 단서. 각 "출처: 내용" 40자 이내, 숫자·점수·성공·실패·거짓말·이름·큰따옴표 금지.
 
 [상황]
 ${JSON.stringify(input)}
 
 설명 없이 아래 JSON 형식만 출력하라.
-{"down":[{"say":"...","lie":false}],"action":"...","up":[{"say":"...","lie":false}],"score":0,"news":"...","reason":"...","audit":"...","clues":["...","..."]}`;
+{"clues":{"low":"...","mid":"...","high":"...","lie":"...","honest":"..."},"down":[{"say":"...","lie":false}],"action":"...","up":[{"say":"...","lie":false}],"score":0,"news":"...","reason":"...","audit":"..."}`;
 }
 
 function applyEvent(text, model) {
@@ -307,23 +308,24 @@ function applyEvent(text, model) {
     news: String(d.news || ""),
     reason: String(d.reason || ""),
     audit: String(d.audit || "특별히 숨긴 것은 없었습니다."),
-    clues: readClues(d.clues),
+    clues: readClues(d.clues, staff.map(x => x.name)),
     over, practice: !model, model: model || "" // 붙여넣기(model 없음)는 연습으로
   };
 }
 
-// AI가 쓴 추리 단서 (최대 2개). 점수·숫자·성공/실패·거짓말을 대놓고 말한 단서는 답이 새므로 버리고,
-// 빈자리는 game.js의 cluesFor가 준비된 문장으로 채웁니다.
-function readClues(value) {
-  const list = Array.isArray(value) ? value
-    : value && typeof value === "object" ? Object.values(value)
-    : typeof value === "string" && value.trim() ? value.split(/\n/)
-    : [];
-  return list
-    .map(x => String(typeof x === "object" && x ? x.text ?? x.say ?? "" : x ?? "").replace(/\s+/g, " ").trim())
-    .filter(x => x.length >= 4 && !/\d|성공|실패|점수|거짓말/.test(x))
-    .map(x => x.length > 60 ? x.slice(0, 59) + "…" : x)
-    .slice(0, 2);
+// AI가 경우별로 쓴 추리 단서 { low, mid, high, lie, honest }. 점수·숫자·성공/실패·거짓말·직원 이름을 대놓고 쓴 칸은
+// 답이 새므로 비워 두고, 빈 칸은 game.js의 cluesFor가 준비된 문장으로 채웁니다. 경우를 나누지 않은 답(배열 등)은 쓰지 않습니다.
+function readClues(value, names = []) {
+  const out = { low: "", mid: "", high: "", lie: "", honest: "" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+  const leak = /\d|점수|성공|실패|거짓|속였|속임|허위|조작|숨겼/;
+  for (const key of Object.keys(out)) {
+    const real = Object.keys(value).find(k => k.toLowerCase() === key);
+    const text = String(real && typeof value[real] === "string" ? value[real] : "").replace(/\s+/g, " ").trim();
+    if (text.length < 4 || leak.test(text) || names.some(n => n && n.length >= 2 && text.includes(n))) continue;
+    out[key] = text.length > 60 ? text.slice(0, 59) + "…" : text;
+  }
+  return out;
 }
 
 // score 검사: null·""·빈칸·숫자 아님은 오류로 돌려보내 다시 시도·붙여넣기·연습 모드를 고르게 합니다.

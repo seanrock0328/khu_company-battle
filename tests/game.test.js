@@ -346,32 +346,43 @@ test("추리 단서는 분기마다 다른 출처로 나오고, 같은 분기는
   assert.deepEqual(clues(1, 59, true, "서버 다운"), clues(1, 60, true, "서버 다운"));
   assert.equal(src(clues(1, 10, false, "서버 다운")[0]), src(clues(1, 95, true, "서버 다운")[0]));
   assert.equal(src(clues(1, 10, false, "서버 다운")[1]), src(clues(1, 95, true, "서버 다운")[1]));
-  assert.match(clues(0, 59, true, "서버 다운")[0], /\('서버 다운' 건\)/);
-  assert.doesNotMatch(clues(0, 59, true, "아주 긴 이벤트 제목이 여기까지 이어집니다")[0], /건\)/);
   assert.notDeepEqual(clues(0, 59, true, "서버 다운"), JSON.parse(run('JSON.stringify(cluesFor({ result: { score: 59, up: [{ lie: true }] } }, { seed: "판-8", quarter: 0, event: { title: "서버 다운" } }))')));
 });
 
-test("AI가 쓴 단서를 먼저 쓰고, 답이 새는 단서는 버린 뒤 준비된 문장으로 채운다", () => {
+test("AI가 경우별로 미리 쓴 단서 중 실제 결과에 맞는 칸을 고르고, 답이 새는 칸은 준비된 문장으로 채운다", () => {
   const run = setup();
   run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
   hire(run);
   run('c.events = [{ type: "위기", title: "서버 다운", text: "서버가 멈췄다" }]; c.rounds[0] = { order: "복구해", result: null };');
-  const clues = extra => {
-    run(`applyEvent(${JSON.stringify(JSON.stringify({ down: [{ say: "복구해" }], up: [{ say: "복구함" }], score: 70, ...extra }))}, "테스트")`);
+  const written = {
+    low: "SNS 반응: 아직도 안 열린다는 글이 이어짐", mid: "SNS 반응: 된다는 글과 느리다는 글이 섞임", high: "SNS 반응: 빨리 고쳤다는 칭찬 글이 보임",
+    lie: "사내 메신저: 보고 직전 문구를 몇 번 고쳤음", honest: "사내 메신저: 작업 기록이 보고와 비슷함"
+  };
+  const clues = (score, lie, extra) => {
+    run(`applyEvent(${JSON.stringify(JSON.stringify({ down: [{ say: "복구해" }], up: [{ say: "복구함", lie }], score, ...extra }))}, "테스트")`);
     return JSON.parse(run('JSON.stringify(cluesFor(c.rounds[0], { seed: "판-1", quarter: 0, event: c.events[0] }))'));
   };
-  const both = clues({ clues: ["SNS 반응: 접속된다는 글과 아직 느리다는 글이 섞임", "사내 메신저: 새벽 내내 '재부팅' 이야기만 오감"] });
-  assert.deepEqual(both, ["SNS 반응: 접속된다는 글과 아직 느리다는 글이 섞임", "사내 메신저: 새벽 내내 '재부팅' 이야기만 오감"]);
-  // 점수·성공·거짓말을 대놓고 말한 단서는 버리고 그 자리는 준비된 문장
-  const leaky = clues({ clues: ["손님 반응: 대성공! 70점짜리 대응", "회의록: 부장이 거짓말을 했다"] });
-  assert.doesNotMatch(leaky.join(" "), /70|성공|거짓말/);
-  assert.equal(leaky.length, 2);
-  // 대문자 키·한 개만 와도 읽고, 빈자리는 채운다
-  const one = clues({ Clues: ["거래처 메일: 복구됐냐는 문의가 계속 옴"] });
-  assert.equal(one[0], "거래처 메일: 복구됐냐는 문의가 계속 옴");
-  assert.ok(one[1].length > 4);
-  // 단서가 없으면 예전처럼 준비된 문장 두 개
-  assert.equal(clues({}).length, 2);
+  assert.deepEqual(clues(20, false, { clues: written }), [written.low, written.honest]);
+  assert.deepEqual(clues(90, true, { clues: written }), [written.high, written.lie]);
+  // AI가 쓴 글이어도 46~79점은 같은 칸을 써서 성공선(60) 양쪽이 똑같이 보인다
+  assert.deepEqual(clues(59, true, { clues: written }), clues(60, true, { clues: written }));
+  assert.deepEqual(clues(46, false, { clues: written }), [written.mid, written.honest]);
+  // 점수·숫자·성공·거짓말·직원 이름을 쓴 칸은 버리고 그 칸만 준비된 문장 (다른 칸 자리는 그대로)
+  const name = run("staffOf(c)[0].name");
+  const leaky = clues(70, true, { clues: { ...written, mid: "손님 반응: 대성공! 칠십점짜리 대응", lie: `회의록: ${name}가 문구를 고치자고 함` } });
+  assert.notEqual(leaky[0], written.mid);
+  assert.notEqual(leaky[1], `회의록: ${name}가 문구를 고치자고 함`);
+  assert.doesNotMatch(leaky.join(" "), /성공|거짓말/);
+  for (const bad of ["회의록: 거짓 보고라는 말이 돎", "회의록: 속였다는 이야기", "SNS: 문의 3건"]) {
+    assert.notEqual(clues(70, true, { clues: { ...written, mid: bad, lie: bad } }).join("|").includes(bad), true, bad);
+  }
+  // 대문자 키도 읽고, 경우를 나누지 않은 배열·빈 값은 쓰지 않고 준비된 문장 두 개
+  assert.equal(clues(70, true, { Clues: written })[0], written.mid);
+  for (const extra of [{ clues: ["SNS: 섞임", "메신저: 고침"] }, { clues: "SNS: 섞임" }, {}]) {
+    const two = clues(70, true, extra);
+    assert.equal(two.length, 2);
+    assert.ok(two.every(x => x.length > 4 && !/섞임$|고침$/.test(x)), JSON.stringify(extra));
+  }
 });
 
 test("모든 추리 단서 문장은 점수 숫자나 성공·실패를 직접 말하지 않는다", () => {
