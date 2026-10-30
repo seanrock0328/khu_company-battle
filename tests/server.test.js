@@ -67,7 +67,7 @@ function realPrompts() {
     URL, URLSearchParams, location: new URL("file:///C:/game/index.html"),
     localStorage: { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v), removeItem: k => saved.delete(k) }
   });
-  for (const file of ["data/presets.js", "js/game.js", "js/ai.js"]) vm.runInContext(read(file), context);
+  for (const file of ["data/presets.js", "js/game.js", "js/economy.js", "js/ai.js"]) vm.runInContext(read(file), context);
   return vm.runInContext(`
     var rep = n => '"'.repeat(n);
     var c = game.company;
@@ -79,6 +79,10 @@ function realPrompts() {
     var prompts = { industry: buildIndustryRequest(), founding: buildFoundingRequest() };
     for (let i = 0; i < 3; i++) c.rounds[i] = { order: rep(ORDER_MAX), result: { score: 100, news: rep(60) }, choice: "praise" };
     game.round = 3; c.rounds[3] = { order: rep(ORDER_MAX), result: null, investment: 1000, power: "dinner" };
+    c.business = makeBusiness({ type:"ads", positioning:"balanced" });
+    prepareBusinessRound(c);
+    prompts.plan = buildPlanRequest();
+    applyPlan(JSON.stringify({ action:emptyAction() }), "테스트");
     prompts.event = buildEventRequest();
     prompts;
   `, context);
@@ -195,13 +199,13 @@ test("서버: 실제 게임 요청문은 통과하고, 머리말로 시작하지
     assert.ok(prompt.length * 2 <= max, `${name} 요청문 ${prompt.length}자: 제한 ${max}자의 절반 이하`);
     assert.equal((await w.call("/", { body: { prompt } })).status, 200, name);
   }
-  assert.equal(w.chatkhu.length, 3);
-  assert.equal(w.chatkhu[2].messages[0].content, prompts.event);
+  assert.equal(w.chatkhu.length, 4);
+  assert.equal(w.chatkhu[3].messages[0].content, prompts.event);
   for (const prompt of ["아무 질문. " + header, "10자 사원 주식회사 아무 질문", header + "가".repeat(max)]) {
     assert.equal((await w.call("/", { body: { prompt } })).status, 400);
   }
   assert.match((await w.call("/", { body: { prompt: header + "가".repeat(max) } })).data.error, /너무 길어요/);
-  assert.equal(w.chatkhu.length, 3, "막힌 요청은 ChatKHU로 가지 않음");
+  assert.equal(w.chatkhu.length, 4, "막힌 요청은 ChatKHU로 가지 않음");
 });
 
 // ===== 4. 시간 제한 =====

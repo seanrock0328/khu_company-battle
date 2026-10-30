@@ -221,7 +221,7 @@ function savedCompany() {
   return {
     player: "", emoji: "🐟", industry: "붕어빵", detail: "붕어빵", name: "저장된 회사", motto: "사훈", funding: "savings",
     rolls: 1, news: "창업 기사", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: true, powerUsed: null,
-    initialCash: 10000, fundingLine: "", financeVersion: "통장 결산 · ", gameId: "savedgame1"
+    initialCash: 10000, fundingLine: "", financeVersion: "사업 수익 v2 · ", gameId: "savedgame1"
   };
 }
 
@@ -474,7 +474,7 @@ test("앞사람 기록 업로드가 실패했다가 다음 사람이 로그인�
   const token = await member(server, "사장사");
   const app = await boot(server, loggedIn(token, "사장사"));
   await idle(server);
-  const entry = (player, name, at) => `{ player: "${player}", name: "${name}", emoji: "🐟", industry: "붕어빵", profit: 500, news: "통장 결산 · n", ending: "e", model: "", at: ${at} }`;
+  const entry = (player, name, at) => `{ player: "${player}", name: "${name}", emoji: "🐟", industry: "붕어빵", profit: 500, news: "사업 수익 v2 · n", ending: "e", model: "", at: ${at} }`;
   server.fail["/board"] = 429; // 같은 와이파이의 요청 제한 같은 일시 오류
   app.run(`saveBoard(loadBoard().concat([${entry("사장사", "A회사", "Date.now()")}]))`);
   await idle(server);
@@ -495,12 +495,13 @@ test("앞사람 기록 업로드가 실패했다가 다음 사람이 로그인�
 
 // ===== 7. 면접 끝 버튼: 최소 인원 =====
 
-test("면접 끝 버튼은 직원이 4명보다 적으면 안내만 하고, 4명이면 1분기로 넘어간다", async () => {
+test("면접 끝 버튼은 6자리가 다 차지 않으면 안내만 하고, 6명이면 1분기로 넘어간다", async () => {
   const server = makeServer();
   server.env.BOARD = undefined; // 로그인 없이
   const app = await boot(server);
   app.run(`
     var c = game.company;
+    c.funding = "lottery";
     makeCandidates(c);
     var hireRank = rank => { const x = c.candidates[rank][0]; askCandidate(c, rank, x.id, "motivation"); return hireCandidate(c, rank, x.id); };
     hireRank("사원");
@@ -509,8 +510,8 @@ test("면접 끝 버튼은 직원이 4명보다 적으면 안내만 하고, 4명
   const done = () => app.el("interview").dispatch("click", { target: { closest: () => ({ dataset: { action: "done" } }) } });
   await done();
   assert.equal(app.screen(), "screen-interview");
-  assert.match(app.toasts.at(-1), /4명 이상.*지금 1명/);
-  app.run('["차장", "과장", "대리"].forEach(hireRank);');
+  assert.match(app.toasts.at(-1), /6자리.*지금 1명/);
+  app.run('["임원", "부장", "차장", "과장", "대리"].forEach(hireRank);');
   await done();
   assert.equal(app.screen(), "screen-event");
 });

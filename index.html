@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5efe4" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#15121c" media="(prefers-color-scheme: dark)">
-  <title>10자 사원 주식회사</title>
+  <title>MZ상사</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
   <!-- 배포할 때마다 아래 ?v= 값을 함께 바꿔 주세요. 브라우저가 예전 CSS·JS를 쓰지 않고 바로 새 파일을 받습니다 -->
-  <link rel="stylesheet" href="css/style.css?v=20261030-3">
+  <link rel="stylesheet" href="css/style.css?v=20261030-7">
 </head>
 <body data-screen="screen-found">
   <!-- HUD: 왼쪽 = 목표·진행, 오른쪽 = 자원·버튼 -->
   <header class="hud" id="hud">
     <div class="hud-bar">
-      <h1 class="logo" aria-label="10자 사원 주식회사"><span class="logo-stamp" aria-hidden="true">10자</span><span class="logo-name" aria-hidden="true">사원 주식회사</span></h1>
+      <h1 class="logo" aria-label="MZ상사"><span class="logo-stamp" aria-hidden="true">MZ</span><span class="logo-name" aria-hidden="true">상사</span></h1>
       <ol class="steps" aria-label="게임 진행 단계">
         <li data-step="found"><span class="step-dot" aria-hidden="true">1</span><span class="step-name">창업</span></li>
         <li data-step="interview"><span class="step-dot" aria-hidden="true">2</span><span class="step-name">면접</span></li>
@@ -56,19 +56,19 @@
     <section id="screen-found" class="screen active intro" data-step="found">
       <div class="title-screen" id="title-screen">
         <div class="title-logo">
-          <span class="title-stamp" aria-hidden="true">10자</span>
-          <h2 class="title-name">사원 주식회사</h2>
+          <span class="title-stamp" aria-hidden="true">MZ</span>
+          <h2 class="title-name">상사</h2>
         </div>
         <p class="title-tag"><span>지시는 내려갈수록 짧아지고,</span> <span>보고는 올라갈수록 부풀려진다</span></p>
         <div class="demo" id="title-demo" aria-hidden="true"></div>
         <button id="btn-start" class="primary cta pulse" type="button">게임 시작</button>
-        <p class="title-meta">1년 4분기 · 직원 4~6명 · 한 판 5분</p>
+        <p class="title-meta">1년 4분기 · 직원 6명 · 한 판 5분</p>
         <div class="title-ranks" id="title-ranks"></div>
       </div>
 
       <div class="found-form">
         <h2>회사를 차리세요</h2>
-        <p class="lead">업종은 ChatKHU가 랜덤으로 뽑고, 무슨 일을 하는 회사인지는 사장님이 정합니다. 순위는 업종 상관없이 수익으로!</p>
+        <p class="lead">업종은 ChatKHU가 랜덤으로 뽑고, 회사 이름·사훈·일하는 방식은 사장님이 정합니다. 순위는 업종 상관없이 수익으로!</p>
         <div class="found-layout">
           <div class="card found-card" id="found-box"></div>
           <div class="found-side">
@@ -166,7 +166,7 @@
         <h2 id="event-heading"></h2>
         <div class="profit-now" id="profit-now"></div>
       </div>
-      <p class="lead">사장님, 100자 안에 지시를 내려 주세요. 이 말이 직원들을 거쳐 내려갑니다.</p>
+      <p class="lead">사장님, 30자 안에 짧고 굵게 지시를 내려 주세요. 이 말이 직원들을 거쳐 내려갑니다.</p>
       <div id="event-box"></div>
       <div class="cta-dock">
         <button id="btn-run" class="primary block cta">지시 내리기</button>
@@ -184,19 +184,19 @@
         <div class="card choice">
           <p class="choice-q">보고를 받았습니다. 사장님, 어떻게 하시겠어요?</p>
           <div class="choice-buttons">
-            <button id="btn-dig" class="choice-btn dig"><span class="cb-ico" aria-hidden="true">🔍</span><span class="cb-name">파고들기</span><small>잘했으면 <b>충성심 −1</b><br>못했으면 <b>손실을 막음</b></small></button>
+            <button id="btn-dig" class="choice-btn dig"><span class="cb-ico" aria-hidden="true">🔍</span><span class="cb-name">파고들기</span><small>지시를 지켰으면 <b>충성심 −1</b><br>다르게 했다면 <b>충성심 +1</b></small></button>
             <span class="vs" aria-hidden="true">VS</span>
-            <button id="btn-praise" class="choice-btn praise"><span class="cb-ico" aria-hidden="true">👏</span><span class="cb-name">칭찬하기</span><small>잘했으면 <b>충성심 +1</b><br>못했으면 <b>−3,000만원</b></small></button>
+            <button id="btn-praise" class="choice-btn praise"><span class="cb-ico" aria-hidden="true">👏</span><span class="cb-name">칭찬하기</span><small>지시를 지켰으면 <b>충성심 +1</b><br>다르게 했다면 <b>충성심 그대로</b></small></button>
           </div>
           <details class="rules">
             <summary>선택 규칙 자세히 보기</summary>
             <ul class="rule-grid">
-              <li class="rule good"><span class="rule-when">👏 칭찬 + <b>잘했으면</b></span><b class="rule-then">충성심 +1</b></li>
-              <li class="rule bad"><span class="rule-when">👏 칭찬 + <b>못했으면</b></span><b class="rule-then">회사에 큰 불이익 (−3,000만원)</b></li>
-              <li class="rule warn"><span class="rule-when">🔍 파고듦 + <b>잘했으면</b></span><b class="rule-then">서운해서 충성심 −1 (0이 되면 퇴사)</b></li>
-              <li class="rule good"><span class="rule-when">🔍 파고듦 + <b>못했으면</b></span><b class="rule-then">문제를 미리 잡아 불이익 없음</b></li>
+              <li class="rule good"><span class="rule-when">👏 칭찬 + <b>지시를 지켰으면</b></span><b class="rule-then">충성심 +1</b></li>
+              <li class="rule bad"><span class="rule-when">👏 칭찬 + <b>다르게 했다면</b></span><b class="rule-then">충성심 그대로</b></li>
+              <li class="rule warn"><span class="rule-when">🔍 파고듦 + <b>지시를 지켰으면</b></span><b class="rule-then">서운해서 충성심 −1 (0이 되면 퇴사)</b></li>
+              <li class="rule good"><span class="rule-when">🔍 파고듦 + <b>다르게 했다면</b></span><b class="rule-then">전달을 바로잡아 충성심 +1</b></li>
             </ul>
-            <p class="hint">성과 60점 이상이면 잘 수행한 것입니다. 실패를 잡아내도 낮은 매출과 인건비는 그대로 남습니다. 단서를 보고 판단하거나, 남은 필살기로 현장 출동을 하면 실제 성과를 확인할 수 있어요.</p>
+            <p class="hint">실제 행동을 먼저 고르면 정답일 때 판단 보너스 100만원을 받습니다. 회사 영업이익은 이미 실행한 행동으로 계산됩니다. 칭찬·추궁은 직원 충성심을 바꾸며, 높은 충성심은 다음 지시를 그대로 전달할 확률을 높입니다.</p>
           </details>
         </div>
       </div>
@@ -258,12 +258,13 @@
   <div id="toast" role="status"></div>
 
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결. ?v= 값은 위 CSS 줄과 같이 바꿔 주세요 -->
-  <script src="data/presets.js?v=20261030-3"></script>
-  <script src="js/game.js?v=20261030-3"></script>
-  <script src="js/ai.js?v=20261030-3"></script>
-  <script src="js/ui.js?v=20261030-3"></script>
-  <script src="js/board-sync.js?v=20261030-3"></script>
-  <script src="js/main.js?v=20261030-3"></script>
-  <script src="js/account.js?v=20261030-3"></script>
+  <script src="data/presets.js?v=20261030-7"></script>
+  <script src="js/game.js?v=20261030-7"></script>
+  <script src="js/economy.js?v=20261030-7"></script>
+  <script src="js/ai.js?v=20261030-7"></script>
+  <script src="js/ui.js?v=20261030-7"></script>
+  <script src="js/board-sync.js?v=20261030-7"></script>
+  <script src="js/main.js?v=20261030-7"></script>
+  <script src="js/account.js?v=20261030-7"></script>
 </body>
 </html>

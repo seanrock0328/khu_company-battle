@@ -764,7 +764,7 @@ input:disabled, textarea:disabled { opacity: .7; }
 .chip.secure { background: var(--money-soft); color: var(--money); }
 .chip.avoid { background: var(--sunken); color: var(--muted); }
 
-/* 글자 수 미터: 1칸 = 10자. 직급 색으로 채운 둥근 칸 (빈 원고지 칸은 지시서 미터 .om-cells에서만) */
+/* 글자 수 미터: 1칸 = 5자 (js/ui.js CELL_CHARS). 직급 색으로 채운 둥근 칸 (빈 원고지 칸은 지시서 미터 .om-cells에서만) */
 .cells { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
 .cells i {
   width: 7px;
@@ -916,9 +916,10 @@ input:disabled, textarea:disabled { opacity: .7; }
 .demo-lift { animation: demoY 8s infinite; }
 .demo-cells { display: flex; align-items: center; gap: 2px; }
 .demo-cells i { width: max(6px, calc(8 * var(--u))); height: max(6px, calc(7 * var(--u))); border-radius: 2px; background: var(--rank-0); box-shadow: inset 0 0 0 1px var(--outline); }
-.demo-cells i:nth-child(n+6) { animation: dropA 8s infinite; }
-.demo-cells i:nth-child(n+3):nth-child(-n+5) { animation: dropB 8s infinite; }
-.demo-cells i:nth-child(2) { animation: dropC 8s infinite; }
+/* 30자 → 22자 → 13자 → 10자: 10칸 중 3칸, 다음 3칸, 다음 1칸이 차례로 떨어짐 */
+.demo-cells i:nth-child(n+8) { animation: dropA 8s infinite; }
+.demo-cells i:nth-child(n+5):nth-child(-n+7) { animation: dropB 8s infinite; }
+.demo-cells i:nth-child(4) { animation: dropC 8s infinite; }
 .demo-lim {
   position: absolute;
   left: 50%;
@@ -2275,7 +2276,7 @@ body.writing .composer { box-shadow: var(--sh), 0 0 0 5px color-mix(in srgb, var
   min-height: 96px;
 }
 .order-meter { margin-bottom: var(--s3); }
-.om-cells { display: grid; grid-template-columns: repeat(10, 1fr); border: var(--bw-s) solid var(--outline); border-radius: 6px; overflow: hidden; background: var(--paper); }
+.om-cells { display: grid; grid-template-columns: repeat(var(--n, 6), 1fr); border: var(--bw-s) solid var(--outline); border-radius: 6px; overflow: hidden; background: var(--paper); }
 .om-cell { position: relative; height: 18px; border-right: 1px solid var(--grid-line); }
 .om-cell:last-child { border-right: 0; }
 .om-cell i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--rank-0); transition: width .15s; }
@@ -3171,3 +3172,46 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 
 /* 휴대폰 시작 화면: 제목 데모의 도장 연출이 화면을 5px 넓히지 않게 */
 #screen-found { overflow-x: clip; }
+
+/* 지시서 미터 아래 안내: 지금 길이로 누가 줄여서 전하는지 */
+.om-state { margin: 2px 0 0; font-size: var(--fs-s); font-weight: 700; color: var(--muted); min-height: 1.4em; }
+.om-state.ok { color: var(--money); }
+.om-state.cut { color: var(--stamp); }
+
+/* 창업: 한 번에 한 페이지 (1 업종 → 2 회사 → 3 창업 자금) */
+.found-steps { display: flex; gap: var(--s2); list-style: none; margin: 0 0 var(--s4); padding: 0; }
+.found-steps li { flex: 1; text-align: center; padding: 6px 4px; border-radius: 999px; border: var(--bw-s) solid var(--line); color: var(--muted); font-weight: 700; font-size: var(--fs-s); white-space: nowrap; }
+.found-steps li.on { border-color: var(--outline); color: var(--ink); background: var(--rank-0); box-shadow: var(--sh-s); }
+.found-steps li.done { color: var(--money); border-color: var(--money); }
+#found-box .found-page { display: none; }
+#found-box .found-page.on { display: block; animation: riseIn .25s var(--ease) both; }
+#found-box .found-page + .found-page { margin-top: 0; padding-top: 0; border-top: 0; }
+.found-nav { display: flex; justify-content: space-between; gap: var(--s3); margin-top: var(--s5); }
+.found-nav button { min-width: 120px; }
+#screen-found:not(.found-p3) #btn-found { display: none; }
+/* 로그인·손님이면 닉네임은 아이디로 정해져서 칸을 숨깁니다 (로그인 없이 할 때만 보임) */
+#found-box .found-player:has(input:disabled) { display: none; }
+.report-wait .rw-how { display: block; margin-top: 4px; font-weight: 500; color: var(--muted); }
+/* 회사 수익구조·행동 추리 */
+.business-card { margin: 14px 0; }
+.business-card p, .business-explanation p { overflow-wrap: anywhere; }
+.business-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.business-metrics div { padding: 8px; background: var(--surface-2); border-radius: 6px; }
+.business-metrics dt { font-size: var(--fs-xs); color: var(--muted); }
+.business-metrics dd { margin: 4px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.action-guess { margin: 16px 0; padding: 14px; border: 2px solid var(--money); border-radius: 10px; }
+.action-guess legend { font-weight: 800; }
+.action-guess label { display: flex; align-items: center; gap: 8px; padding: 12px 8px; margin: 6px 0; background: var(--surface-2); border-radius: 6px; cursor: pointer; }
+.action-guess input { flex: 0 0 auto; width: 18px; height: 18px; }
+.action-guess label:has(input:checked) { outline: 2px solid var(--money); }
+.business-explanation { margin: 12px 0; padding: 12px; background: var(--surface-2); border-radius: 8px; }
+
+/* MZ상사 로고: 크고 진한 '상사' 왼쪽 위에 빨간 MZ 도장을 비스듬히 찍은 모양 */
+#screen-found .title-logo { position: relative; display: inline-block; padding: clamp(26px, 4.2vw, 40px) 0 0 clamp(48px, 7vw, 74px); }
+#screen-found .title-name { margin: 0; font-size: calc(var(--fs-hero) * 1.9); line-height: 1; letter-spacing: .02em; -webkit-text-stroke: 3px currentColor; }
+#screen-found .title-stamp { position: absolute; left: 0; top: 0; z-index: 2; font-size: calc(var(--fs-hero) * .62); height: 1.3em; padding: 0 .28em; border-width: 5px; rotate: -14deg; }
+.logo-stamp { position: relative; z-index: 2; height: 24px; padding: 0 5px; font-size: 15px; border-width: 2px; translate: 0 -8px; margin-right: -12px; rotate: -10deg; }
+.logo-name { font-size: 1.3em; -webkit-text-stroke: .6px currentColor; }
+/* 도장이 글자 위에 겹쳐도 MZ가 또렷하게 보이게 (곱하기 섞기 대신 종이색 바탕) */
+#screen-found .title-stamp, .logo-stamp { mix-blend-mode: normal; background: color-mix(in srgb, var(--paper, #fffdf7) 88%, transparent); }
+.logo-stamp { height: 26px; font-size: 16px; }
