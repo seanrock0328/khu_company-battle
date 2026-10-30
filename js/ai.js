@@ -28,7 +28,11 @@ const store = {
 };
 
 function getApiKey() { return store.get("chatkhu_key"); }
-function getModel() { return store.get("chatkhu_model") || CHATKHU_MODELS[0].id; }
+// 플레이어는 Gemini(첫 번째 모델)로 고정해요. 다른 모델은 개발용 주소(?dev)에서만 골라 쓸 수 있어요
+function getModel() {
+  const dev = typeof document !== "undefined" && !!document.documentElement?.classList?.contains("dev");
+  return (dev && store.get("chatkhu_model")) || CHATKHU_MODELS[0].id;
+}
 function saveApiSettings(key, model) {
   if (key) store.set("chatkhu_key", key.trim());
   if (model) store.set("chatkhu_model", model);

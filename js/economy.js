@@ -160,10 +160,18 @@ function parseHeardAction(text, c) {
   return a;
 }
 
+// 보기 3개 = 실제 행동(정답) + 사장님 지시에서 나온 그럴듯한 오답: 지시대로 / 그대로 운영 / 지시 중 하나만 / 세기만 다르게 / 반대로.
+// 지시와 상관없는 보기가 섞이지 않게, 요금 보기는 지시가 비어 있어 오답이 모자랄 때만 씁니다.
 function actionOptions(r) {
   const options = [];
-  const add = a => { if (!options.some(x => sameAction(x, a))) options.push({ ...a }); };
-  add(r.execution.action); add(r.plan.action); add(emptyAction());
+  const add = a => { if (a && !options.some(x => sameAction(x, a))) options.push({ ...a }); };
+  const plan = r.plan.action;
+  const keys = ACTION_FIELDS.filter(k => plan[k]);
+  const range = k => k === "price" || k === "ads" ? [-30, 30] : k === "quality" ? [-20, 30] : [0, 30];
+  const tweak = (k, v) => { const [lo, hi] = range(k); const n = clamp(Math.round(v / 5) * 5, lo, hi); return n && n !== plan[k] ? { ...plan, [k]: n } : null; };
+  add(r.execution.action); add(plan); add(emptyAction());
+  if (keys.length > 1) keys.forEach(k => add({ ...emptyAction(), [k]: plan[k] }));
+  if (keys.length) { const k = keys[0]; add(tweak(k, Math.abs(plan[k]) >= 10 ? plan[k] / 2 : plan[k] * 2)); add(tweak(k, -plan[k])); }
   for (const pct of [-10, 10, 20]) { const a = emptyAction(); a.price = pct; add(a); }
   // 같은 행동을 중복 제시하지 않고 정답 위치도 섞습니다. 생성한 배열 자체를 저장합니다.
   return shuffle(options.slice(0, 3));
