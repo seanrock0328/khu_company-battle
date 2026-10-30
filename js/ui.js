@@ -2230,14 +2230,14 @@ function aiThoughts() {
 
 function aiTips() {
   return [
-    `💡 성과 ${SUCCESS_LINE}점 이상이면 '잘 수행함'으로 판정해요`,
-    `💡 못한 일을 칭찬하면 ${money(-PRAISE_FAIL_PENALTY)} 불이익!`,
+    "💡 회사 매출은 실제 고객·광고·계약에서 나와요",
+    `💡 실제 행동을 맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}!`,
     `💡 사원은 지시를 ${rankInfo("사원").chars}자까지만 전달해요`,
     "💡 정직도는 입사 후에야 알 수 있어요",
     "💡 충성심이 0이 되면 짐을 싸서 퇴사해요",
     "💡 사장 필살기는 한 판에 딱 한 번!",
     "💡 보고는 올라갈수록 부풀려져요. 단서를 의심하세요",
-    `💡 분기마다 ${money(INVESTMENT_COST, false)} 투자 가능! 성과 ${SUCCESS_LINE}점 이상이면 ${money(INVESTMENT_WIN, false)} 회수`,
+    `💡 분기마다 ${money(INVESTMENT_COST, false)} 투자 가능! 영업이익이 흑자면 ${money(INVESTMENT_WIN, false)} 회수`,
     "💡 통장이 마이너스면 새 투자와 회식이 막혀요",
     "💡 창업자금은 통장 잔액일 뿐, 순위는 순이익으로 겨뤄요"
   ];
@@ -2291,6 +2291,7 @@ function renderFoundingNews() {
       <p class="detail">${esc(c.detail)}</p>
       ${stamp("창업 승인", "news-stamp")}
     </article>
+    ${businessCard(c)}
     ${envelopeOpen(c)}
     <section class="roadmap" aria-label="1년 로드맵">
       <p class="roadmap-title"><b>1년 = 4개 레벨</b> <span>위기 ${EVENT_ORDER.filter(t => t === "위기").length} · 기회 ${EVENT_ORDER.filter(t => t === "기회").length}</span></p>
@@ -2459,6 +2460,39 @@ function splitIcon(name) {
 // ===== 회사 통장 (돈 계산은 game.js, 여기서는 통장처럼 보여 주기만) =====
 
 // 통장 한 권: 잔액(크게) → 순이익·창업자금 → 이번 분기 출금 예정 → 쓸 수 있는 돈
+function businessCard(c) {
+  const b = c.business;
+  if (!b) return "";
+  const state = businessState(c);
+  const baseline = calculateBusiness(c, emptyAction());
+  return `<section class="business-card card" aria-label="우리 회사 수익구조">
+    <h3>🏢 ${esc(b.name)}로 돈을 벌어요</h3>
+    <p><b>${esc(b.formula)}</b></p><p>고객: ${esc(b.customer)}</p>
+    <p class="hint">${esc(b.rationale)}</p>
+    <dl class="business-metrics"><div><dt>현재 건당 수입</dt><dd>${Math.round(b.price * state.price * 10000).toLocaleString()}원</dd></div>
+      <div><dt>기초 고객 규모</dt><dd>${Math.round(b.quantity * state.customers).toLocaleString()}${b.type === "ads" ? "회 이용" : b.unit}</dd></div>
+      <div><dt>현재 인력 처리 한도</dt><dd>${baseline.capacity.toLocaleString()}${b.type === "ads" ? "회 이용" : b.unit}</dd></div>
+      <div><dt>분기 고정비</dt><dd>${money(b.fixed, false)}</dd></div></dl>
+    <p class="hint">${b.positioning === "value" ? "가격에 민감한 고객: 할인하면 수요가 크게 늘 수 있어요." : b.positioning === "premium" ? "품질을 중시하는 고객: 요금보다 서비스 경험에 더 민감해요." : "가격과 품질을 함께 보는 고객이에요."}
+      ${b.type === "ads" ? "광고를 늘리면 노출은 늘지만 이용자가 이탈할 수 있어요." : "요금을 올리면 건당 수입이 늘지만 고객은 줄 수 있어요."}</p>
+    <details><summary>운영 범위와 비용 보기</summary><p class="hint">초기 기준 매출은 1억원, 기본 원가는 건당 수입의 25%예요. 매 분기 수요·처리량에 따라 실제 매출과 원가가 달라지고 급여도 빠집니다.
+      고객·광고주 지출 한도는 분기 1억 2,500만원. 한 분기 변화는 최대 30%, 누적 요금은 시작의 70~180%, 광고량은 50~180%예요.
+      홍보 1%에 30만원, 품질 1%에 40만원, 원가 절감 1%에 30만원, 시설 1%에 40만원이 들며 실행비는 최대 1,000만원입니다. 절감은 품질도 조금 낮춥니다.
+      요금·품질·시설·고객 유지 효과는 다음 분기로 이어져요. 홍보는 해당 분기에만 적용돼요.</p></details>
+    </section>`;
+}
+
+function economicsDetail(round) {
+  const e = round.economics;
+  if (!e) return "";
+  return `<section class="business-explanation"><p><b>사장 지시 해석:</b> ${esc(actionLabel(round.plan.action))}</p>
+    <p class="hint">${esc(round.plan.explanation)} ${round.plan.notes.map(esc).join(" · ")}</p>
+    <p><b>직원 실제 행동:</b> ${esc(actionLabel(round.execution.action))}</p>
+    <p><b>매출 계산:</b> ${esc(e.formula)} = ${money(e.revenue, false)}</p>
+    <p class="hint">${esc(e.demandNote)} 요금·품질·광고량 변화와 이번 시장 수요 ${Math.round(e.market * 100)}%를 반영했어요.</p>
+    <p><b>행동 추리:</b> ${round.judgmentCorrect ? "정답!" : "아쉬워요."} 판단 보너스 ${money(round.judgmentBonus)}</p></section>`;
+}
+
 function bankCard(c, variant) {
   const round = c.rounds[game.round];
   const balance = cashBalance(c);
@@ -2474,7 +2508,7 @@ function bankCard(c, variant) {
     </div>
     <p class="bank-sub"><span>순이익 <b class="${profit < 0 ? "neg" : profit > 0 ? "pos" : ""}">${money(profit, profit !== 0)}</b></span><span>받은 창업자금 ${money(initialCapital(c), false)}</span></p>
     ${planned ? `<ul class="bank-plan" aria-label="이번 분기 말 출금 예정">
-      ${planRow("급여 예정", salary)}${planRow("투자 예정", round.investment || 0, "invest")}${planRow("회식 예정", round.powerCost || 0)}
+      ${planRow("급여 예정", salary)}${planRow("고정비 예정", c.business?.fixed || 0)}${planRow("투자 예정", round.investment || 0, "invest")}${planRow("회식 예정", round.powerCost || 0)}
       <li class="bank-free ${availableCash(c) < 0 ? "neg" : ""}"><span>예정 지출을 남긴 사용 가능 금액</span><b>${money(availableCash(c), false)}</b></li>
     </ul>` : ""}
     ${balance < 0 ? '<p class="bank-alert"><span class="bank-alert-tag">마이너스</span> 잔액이 부족해 통장이 마이너스입니다. 새 투자와 회식은 제한되며 4분기까지 결산은 계속됩니다.</p>' : ""}
@@ -2494,9 +2528,11 @@ function moneyReason(round) {
   const items = [
     { key: "rev", label: "매출", v: round.revenue ?? round.baseRevenue ?? 0 },
     { key: "cost", label: "인건비", v: -(round.cost || 0) },
+    { key: "operation", label: "원가·고정비·실행비", v: -(round.operatingCost || 0) },
+    { key: "bonus", label: "판단 보너스", v: round.judgmentBonus || 0 },
     { key: "inv", label: "투자 손익", v: (round.investmentReturn || 0) - (round.investmentCost || 0) },
     { key: "power", label: "회식비", v: -(round.powerCost || 0) },
-    { key: "pen", label: round.choice === "closed" ? "영업 중단 손실" : "칭찬 실패 불이익", v: -(round.penalty || 0) }
+    { key: "pen", label: round.choice === "closed" ? "영업 중단 손실" : "영업 중단 손실", v: -(round.penalty || 0) }
   ];
   const loss = round.profit < 0;
   const pool = items.filter(x => loss ? x.v < 0 : x.v > 0);
@@ -2556,6 +2592,9 @@ function financeMarkup(c, selected) {
         <tr><td>기초 잔액</td><td>${money(row.opening, false)}</td></tr>
         <tr class="in${top("rev")}"><td>매출 입금</td><td>${money(row.round.revenue)}</td></tr>
         <tr class="out${top("cost")}"><td>3개월치 급여</td><td>${money(-row.round.cost)}</td></tr>
+        <tr class="out"><td>원가·고정비·실행비</td><td>${money(-row.round.operatingCost)}</td></tr>
+        <tr><td>회사 영업이익</td><td>${money(row.round.operatingProfit)}</td></tr>
+        <tr class="in"><td>사장 판단 보너스</td><td>${money(row.round.judgmentBonus)}</td></tr>
         ${row.round.investmentCost ? `<tr class="out${top("inv")}"><td>투자금 출금</td><td>${money(-row.round.investmentCost)}</td></tr><tr class="in${top("inv")}"><td>투자금 회수</td><td>${money(row.round.investmentReturn)}</td></tr>` : ""}
         ${row.round.powerCost ? `<tr class="out${top("power")}"><td>회식비</td><td>${money(-row.round.powerCost)}</td></tr>` : ""}
         ${row.round.penalty ? `<tr class="out bad${top("pen")}"><td>불이익·영업 중단 손실</td><td>${money(-row.round.penalty)}</td></tr>` : ""}
@@ -2593,14 +2632,18 @@ function renderDecisionTools() {
   box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
     <h3>📎 보고 옆에 놓인 단서</h3>
     <div class="clue-list">${cluesFor(round, { seed: game.company.gameId || `${game.company.player}|${game.company.name}`, quarter: game.round, event: game.company.events?.[game.round] }).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
-    <p class="hint">일부 상황만 담긴 단서입니다. 보고와 비교해 보세요. 성공 여부를 확정하는 증거는 아닙니다.</p>
+    <p class="hint">매출이 늘었다고 지시대로 했다는 뜻은 아니에요. 보고와 단서로 실제 행동을 추리하세요.</p>
     </section>${powerPanel("after")}
     ${round.power === "visit" ? `<section class="visit-result" aria-label="현장 출동 결과">
       <h3>🔎 사장님이 직접 확인한 현장</h3>
       <p>${esc(round.result.action)}</p><p>${esc(round.result.audit)}</p>
-      <p class="visit-score"><b>성과 ${round.result.score}점 · ${round.result.score >= SUCCESS_LINE ? "잘 수행함" : "수행 실패"}</b></p>
+      <p><b>${round.execution.followed ? "지시대로 실행" : "지시와 다르게 실행"}</b> · 영업이익 ${money(round.economics.operatingProfit)}</p>
       ${stamp("현장 확인", "visit-stamp")}
-      <p class="hint">확인한 사실을 바탕으로 칭찬·추궁을 선택하세요.</p></section>` : ""}`;
+      <p class="hint">확인한 사실을 바탕으로 행동을 고르고 칭찬·추궁을 선택하세요.</p></section>` : ""}
+    <fieldset class="action-guess"><legend>직원은 실제로 무엇을 했을까요?</legend>
+      <p class="hint">맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}. 회사 영업이익은 실행한 행동에서 이미 결정돼요.</p>
+      ${round.guessOptions.map((a, i) => `<label><input type="radio" name="action-guess" data-guess value="${i}" ${round.guess === i ? "checked" : ""}> <span>${esc(actionLabel(a))}</span></label>`).join("")}
+    </fieldset>`;
   if (round.power === "visit") {
     sfx("stamp");
     const m = office.mates.get(0);
@@ -2699,11 +2742,12 @@ function renderEvent() {
       <p class="mission-tag"><span class="alert">${chance ? "✨ CHANCE" : "⚠ WARNING"}</span><span>이번 분기 목표</span></p>
       <h3>${esc(ev.title)}</h3>
       <p class="mission-text">${esc(ev.text)}</p>
-      <p class="goal-line"><span>🎯 성과 <b>${SUCCESS_LINE}점</b> 이상</span><span>💸 분기 급여 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
+      <p class="goal-line"><span>🎯 고객과 비용을 관리해 영업이익 만들기</span><span>💸 분기 급여 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
     </article>
+    ${businessCard(c)}
     <div class="composer">
       <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span></span>
-        <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 오늘 안에 해결해. 고객에게는 솔직하게 사과하고, 원인은 내일 아침까지 보고해.">${esc(round.order)}</textarea>
+        <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 요금을 10% 내려 고객을 모아. / 광고량을 20% 줄여 이용자를 늘려.">${esc(round.order)}</textarea>
       </label>
       ${activeStaff.length ? orderMeter(line) : ""}
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
@@ -2722,12 +2766,12 @@ function renderEvent() {
           <label class="invest-option bet ${invested ? "picked" : ""} ${cantInvest ? "locked" : ""}">
             <input type="radio" name="investment" data-invest="yes" ${invested ? "checked" : ""} ${cantInvest ? "disabled" : ""}>
             <span class="iv-ico" aria-hidden="true">📈</span>
-            <span class="iv-text"><b>${money(INVESTMENT_COST, false)} 투자</b><small>성과 ${SUCCESS_LINE}점 이상이면 ${money(INVESTMENT_WIN, false)} 회수(${money(gain)}), 미달이면 ${money(INVESTMENT_LOSS, false)} 회수(${money(lossBack)}).</small></span>
-            <span class="iv-odds"><em class="pos">${SUCCESS_LINE}점↑ ${money(gain)}</em><em class="neg">미달 ${money(lossBack)}</em></span>
+            <span class="iv-text"><b>${money(INVESTMENT_COST, false)} 투자</b><small>회사 영업이익이 흑자면 ${money(INVESTMENT_WIN, false)} 회수(${money(gain)}), 적자·본전이면 ${money(INVESTMENT_LOSS, false)} 회수(${money(lossBack)}).</small></span>
+            <span class="iv-odds"><em class="pos">흑자 ${money(gain)}</em><em class="neg">적자·본전 ${money(lossBack)}</em></span>
             ${cantInvest ? '<span class="iv-lock">잔액 부족</span>' : ""}
           </label>
         </div>
-        <p class="hint">급여·회식비를 남긴 금액으로 투자합니다. 출금과 회수는 이번 분기 말에 함께 정산해요.</p>
+        <p class="hint">급여·고정비·회식비를 남긴 금액으로 투자합니다. 출금과 회수는 이번 분기 말에 함께 정산해요.</p>
       </fieldset>` : ""}
       ${bankCard(c)}
     </section>
@@ -3052,11 +3096,11 @@ async function renderTruth() {
     const verdict = document.createElement("article");
     verdict.className = `news verdict ${round.success ? "good" : "bad"}`;
     verdict.innerHTML = `
-      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `ChatKHU 판정${r.model ? " · " + esc(r.model) : ""}`}</span></p>
+      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `직원 연기${r.model ? " · " + esc(r.model) : ""}`}</span></p>
       <h3>${esc(r.news)}</h3>
       <div class="verdict-row">
         ${stamp(closed ? "휴업" : round.success ? "승인" : "반려", `verdict-stamp ${round.success ? "ok" : "no"}`)}
-        <p class="outcome ${round.success ? "good" : "bad"}">${round.success ? "✅ 잘 수행함" : "❌ 수행 실패"} <small>성과 <b class="score-count">0</b>점 · ${esc(r.reason)}</small></p>
+        <p class="outcome ${round.success ? "good" : "bad"}">${closed ? "🚪 영업 중단" : round.success ? "✅ 지시대로 실행" : "↪ 지시와 다르게 실행"} <small>${esc(r.reason)}</small></p>
       </div>
       <p class="choice-result ${round.penalty ? "bad" : round.choice === "dig" && round.success ? "warn" : "good"}">
         ${closed ? "🚪 영업 중단" : round.choice === "dig" ? "🔍 파고들기" : "👏 칭찬하기"} → ${esc(round.loyaltyNote)}</p>
@@ -3068,13 +3112,19 @@ async function renderTruth() {
         </div>` : ""}
       ${round.quits.length ? `<p class="choice-result bad">🚪 충성심이 바닥난 ${round.quits.map(esc).join(", ")}이(가) 퇴사했습니다</p>` : ""}
       ${round.power ? `<p class="hint">이번 분기 필살기: ${esc(CEO_POWERS.find(p => p.id === round.power).name)}</p>` : ""}
+      ${economicsDetail(round)}
       ${reasonLine(reason)}
       <table class="ledger">
-        <tr${cls("rev")}><td>기본 매출 (성과 ${r.score}점)</td><td>${money(round.baseRevenue)}</td></tr>
+        <tr${cls("rev")}><td>회사 매출</td><td>${money(round.baseRevenue)}</td></tr>
         <tr${cls("cost")}><td>인건비</td><td>${money(-round.cost)}</td></tr>
+        <tr><td>직접 원가</td><td>${money(-(round.economics?.variableCost || 0))}</td></tr>
+        <tr><td>고정 운영비</td><td>${money(-(round.economics?.fixedCost || 0))}</td></tr>
+        <tr><td>지시 실행비</td><td>${money(-(round.economics?.executionCost || 0))}</td></tr>
+        <tr><td><b>회사 영업이익</b></td><td><b>${money(round.operatingProfit)}</b></td></tr>
+        <tr><td>사장 판단 보너스</td><td>${money(round.judgmentBonus)}</td></tr>
         ${round.investmentCost ? `<tr${cls("inv")}><td>투자금 출금</td><td>${money(-round.investmentCost)}</td></tr><tr${cls("inv")}><td>투자금 회수</td><td>${money(round.investmentReturn)}</td></tr>` : ""}
         ${round.powerCost ? `<tr${cls("power")}><td>회식 비용</td><td>${money(-round.powerCost)}</td></tr>` : ""}
-        ${round.penalty ? `<tr${cls("pen", "bad")}><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "칭찬 실패 불이익"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
+        ${round.penalty ? `<tr${cls("pen", "bad")}><td>${closed ? "영업 중단 손실 (임대료·위약금)" : "영업 중단 손실"}</td><td>${money(-round.penalty)}</td></tr>` : ""}
         <tr class="sum"><td>이번 분기 순이익</td><td class="${round.profit < 0 ? "neg" : "pos"}"><span class="profit-count">${money(0)}</span></td></tr>
         ${round.support ? `<tr class="support"><td>부모님 긴급 용돈 (순이익 제외)</td><td>${money(round.support)}</td></tr>` : ""}
         <tr class="bank-row"><td><span aria-hidden="true">🏦</span> 통장 잔액</td><td class="${round.closingCash < 0 ? "neg" : ""}">${money(round.closingCash, false)}</td></tr>
@@ -3088,17 +3138,14 @@ async function renderTruth() {
       if (!closed) officeMood(round.success ? "cheer" : "slump");
     });
 
-    const scoreEl = verdict.querySelector(".score-count");
     const profitEl = verdict.querySelector(".profit-count");
     await safely(async () => {
-      await countUp(scoreEl, r.score, pace(600), v => String(Math.round(v)));
       await countUp(profitEl, round.profit, pace(900));
       if (round.profit < 0) { replay(profitEl, "drop"); sfx("fail"); }
       else sfx("coin");
       if (round.profit <= BIG_LOSS) shakeScreen();
       if (round.profit >= BIG_WIN) burst(26);
     });
-    if (scoreEl) scoreEl.textContent = String(r.score);
     if (profitEl) profitEl.textContent = money(round.profit);
     guard(renderHud);
 
@@ -3220,7 +3267,7 @@ function renderFinal(placed) {
       <div class="front-col">
       <article class="news win front-page ${profit < 0 ? "loss" : "gain"}">
         <div class="masthead"><span>1년 결산 특별호</span><b>경희경제신문</b><span>${esc(today())}</span></div>
-        <p class="paper">사장님 특별호 · ${esc(c.industry)} <span>${isPractice(c) ? "연습 모드" : "ChatKHU 판정"}</span></p>
+        <p class="paper">사장님 특별호 · ${esc(c.industry)} <span>${isPractice(c) ? "연습 모드" : "회사 수익 결산"}</span></p>
         <h3 class="front-headline">${esc(ending.headline)}</h3>
         <div class="ending-line">
           <p class="tag">올해의 사장 유형</p>
@@ -3231,6 +3278,7 @@ function renderFinal(placed) {
           <div class="front-money">
             <p class="tag">1년 누적 수익 <small>순이익 · 순위 기준</small></p>
             <p class="score big ${profit < 0 ? "neg" : "pos"}"><span class="total-count">${money(0)}</span></p>
+            <p class="hint">회사 영업이익 ${money(c.rounds.reduce((n, r) => n + r.operatingProfit, 0))} · 판단 보너스 ${money(c.rounds.reduce((n, r) => n + r.judgmentBonus, 0))}</p>
             <p class="stars" aria-label="별 ${finalStars(profit)}개">${[1, 2, 3].map(k => `<span class="star ${k <= finalStars(profit) ? "on" : ""}" style="--k:${k}">★</span>`).join("")}</p>
             <p class="hint">칭찬 ${c.rounds.filter(r => r.choice === "praise").length}회 · 추궁 ${c.rounds.filter(r => r.choice === "dig").length}회 · 재직 직원 ${staffOf(c).length}명</p>
           </div>

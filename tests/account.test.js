@@ -221,7 +221,7 @@ function savedCompany() {
   return {
     player: "", emoji: "🐟", industry: "붕어빵", detail: "붕어빵", name: "저장된 회사", motto: "사훈", funding: "savings",
     rolls: 1, news: "창업 기사", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: true, powerUsed: null,
-    initialCash: 10000, fundingLine: "", financeVersion: "통장 결산 · ", gameId: "savedgame1"
+    initialCash: 10000, fundingLine: "", financeVersion: "사업 수익 v2 · ", gameId: "savedgame1"
   };
 }
 
@@ -474,7 +474,7 @@ test("앞사람 기록 업로드가 실패했다가 다음 사람이 로그인�
   const token = await member(server, "사장사");
   const app = await boot(server, loggedIn(token, "사장사"));
   await idle(server);
-  const entry = (player, name, at) => `{ player: "${player}", name: "${name}", emoji: "🐟", industry: "붕어빵", profit: 500, news: "통장 결산 · n", ending: "e", model: "", at: ${at} }`;
+  const entry = (player, name, at) => `{ player: "${player}", name: "${name}", emoji: "🐟", industry: "붕어빵", profit: 500, news: "사업 수익 v2 · n", ending: "e", model: "", at: ${at} }`;
   server.fail["/board"] = 429; // 같은 와이파이의 요청 제한 같은 일시 오류
   app.run(`saveBoard(loadBoard().concat([${entry("사장사", "A회사", "Date.now()")}]))`);
   await idle(server);
