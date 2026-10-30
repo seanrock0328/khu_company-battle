@@ -3208,10 +3208,15 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 
 /* MZ상사 로고: 크고 진한 '상사' 왼쪽 위에 빨간 MZ 도장을 비스듬히 찍은 모양 */
 #screen-found .title-logo { position: relative; display: inline-block; padding: clamp(26px, 4.2vw, 40px) 0 0 clamp(48px, 7vw, 74px); }
-#screen-found .title-name { margin: 0; font-size: calc(var(--fs-hero) * 1.9); line-height: 1; letter-spacing: .02em; -webkit-text-stroke: 3px currentColor; }
+#screen-found .title-name { margin: 0; font-size: calc(var(--fs-hero) * 1.9); line-height: 1; letter-spacing: .02em; -webkit-text-stroke: .012em currentColor; paint-order: stroke fill; } /* 테두리를 글자 크기에 맞추고 글자 밑에 칠해서 상의 ㅇ 구멍이 메워지지 않게 */
 #screen-found .title-stamp { position: absolute; left: 0; top: 0; z-index: 2; font-size: calc(var(--fs-hero) * .62); height: 1.3em; padding: 0 .28em; border-width: 5px; rotate: -14deg; }
 .logo-stamp { position: relative; z-index: 2; height: 24px; padding: 0 5px; font-size: 15px; border-width: 2px; translate: 0 -8px; margin-right: -12px; rotate: -10deg; }
-.logo-name { font-size: 1.3em; -webkit-text-stroke: .6px currentColor; }
+.logo-name { font-size: 1.3em; -webkit-text-stroke: .03em currentColor; paint-order: stroke fill; }
 /* 도장이 글자 위에 겹쳐도 MZ가 또렷하게 보이게 (곱하기 섞기 대신 종이색 바탕) */
 #screen-found .title-stamp, .logo-stamp { mix-blend-mode: normal; background: color-mix(in srgb, var(--paper, #fffdf7) 88%, transparent); }
 .logo-stamp { height: 26px; font-size: 16px; }
+
+/* ChatKHU가 필수라 대기 화면을 깔끔하게: 연습 모드·복사 붙여넣기 버튼은 숨기고(코드는 테스트용으로 남김),
+   쓰는 중 안내는 타이머 한 줄(⏱ N초 · 보통 10~40초)로 합칩니다. 글은 화면 읽기 프로그램에는 그대로 읽혀요 */
+#manual-box, #screen-ai .practice-row { display: none; }
+#screen-ai[data-state="busy"] #ai-status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }

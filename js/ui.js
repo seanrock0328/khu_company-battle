@@ -2198,7 +2198,7 @@ function renderAIScreen(step) {
 function setAIState(state, message) {
   document.getElementById("ai-spinner").hidden = state !== "busy";
   document.getElementById("ai-status-text").textContent = {
-    busy: `ChatKHU가 쓰는 중… 보통 10~40초 걸려요. (${getModel()})`,
+    busy: "ChatKHU가 쓰는 중… 보통 10~40초 걸려요.",
     error: "ChatKHU에서 결과를 받지 못했어요.",
     nokey: "ChatKHU API 키가 아직 없어요. 연결하면 버튼 없이 자동으로 진행돼요."
   }[state];
@@ -2207,7 +2207,7 @@ function setAIState(state, message) {
   document.getElementById("btn-ai-connect").hidden = state !== "nokey";
   document.getElementById("btn-practice").disabled = state === "busy";
   document.getElementById("screen-ai").dataset.state = state;
-  // 실패해도 복사·붙여넣기 안내는 접어 둡니다: 바로 아래 '다시 시도'와 '연습 모드'가 먼저 보이게
+  // 연습 모드·복사 붙여넣기 버튼은 화면에서 숨겨 두었어요 (ChatKHU가 필수). 실패하면 '다시 시도'만 보입니다
   if (state === "busy") { aiStarted = Date.now(); startAIWait(); }
   else stopAIWait();
 }
@@ -2295,7 +2295,7 @@ function startAIWait() {
   const step = () => {
     const sec = Math.floor((Date.now() - started) / 1000);
     if (fill) fill.style.width = `${Math.min(95, 4 + (1 - Math.exp(-sec / 15)) * 92).toFixed(1)}%`;
-    if (clock) clock.textContent = `⏱ ${sec}초`;
+    if (clock) clock.textContent = `⏱ ${sec}초 · 보통 10~40초`;
     if (tick % 3 === 0 && thought && lines.length && aiKind !== "event") {
       const line = lines[(tick / 3 + offset) % lines.length];
       thought.innerHTML = `<div class="thought-pop">${avatar(line.person)}<p class="thought-bubble"><b>${esc(line.who)}</b> ${esc(line.text)}</p></div>`;
