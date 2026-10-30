@@ -197,6 +197,8 @@ document.getElementById("interview").addEventListener("click", e => {
 
 function startRound() {
   game.company.rounds[game.round] ||= { order: "", result: null, investment: 0 };
+  // 예전 규칙(100자)으로 저장된 지시 초안은 지금 한도까지만 (화면과 AI가 받는 지시가 같게)
+  game.company.rounds[game.round].order = String(game.company.rounds[game.round].order || "").slice(0, ORDER_MAX);
   if (game.company.rounds[game.round].committed) return continueBusinessRound();
   renderEvent();
   document.getElementById("btn-run").textContent = staffOf(game.company).length ? "지시 내리기" : "영업 중단 분기 결산하기";

@@ -1887,7 +1887,7 @@ const CHAT = {
     임원: ["보고서 표지 색이 마음에 안 드는데", "회의는 짧게, 결론은 길게", "골프 약속은 미뤘습니다"],
     부장: ["또 회의야…", "내가 들은 거랑 좀 다른데?", "다들 자리에 있죠?"],
     차장: ["부장님 말씀 19자로 요약하는 중", "점심 뭐 먹지", "엑셀 파일명 최종_진짜최종"],
-    과장: ["30자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다", "과장이라 과하게 일함"],
+    과장: ["16자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다", "과장이라 과하게 일함"],
     대리: ["13자면 이모티콘은 포기", "'알아서 잘'이라고 전하자", "대리 출석 ✋"],
     사원: ["10자면 '네 알겠습니다'도 빠듯", "아무도 설명을 안 해 줘요", "저 사원인데 이거 제가 해요?"]
   },
@@ -2228,7 +2228,7 @@ const AI_THOUGHTS = {
     임원: ["보고서 표지 색이 마음에 안 드는데", "이 정도면 잘됐다고 하자"],
     부장: ["또 회의야…", "내가 들은 거랑 좀 다른데?"],
     차장: ["부장님 말을 19자로 요약하라고?", "점심 뭐 먹지"],
-    과장: ["30자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다"],
+    과장: ["16자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다"],
     대리: ["13자면 이모티콘은 포기", "'알아서 잘'이라고 전하자"],
     사원: ["10자면 '네 알겠습니다'도 빠듯해", "아무도 나한테 설명을 안 해 줘"]
   }
@@ -2708,10 +2708,10 @@ function quarterPop(c, ev) {
 
 function orderMeter(staff) {
   return `<div class="order-meter" id="order-meter" aria-hidden="true">
+    <p class="om-state" id="om-state"></p>
     <div class="om-cells" style="--n:${Math.ceil(ORDER_MAX / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_MAX / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
     <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_MAX * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
     <p class="om-note">1칸 = ${CELL_CHARS}자 · 동그라미 = 그 직급이 요약해서 전할 수 있는 글자 수</p>
-    <p class="om-state" id="om-state"></p>
   </div>`;
 }
 
@@ -2731,7 +2731,7 @@ function paintOrderMeter(len) {
     state.textContent = !len ? "짧고 굵게! 길게 쓸수록 아래 직급이 요약하다 말이 바뀌어요."
       : !cut.length ? `✅ ${len}자: 막내까지 그대로 갈 수 있어요`
       : cut.length === marks.length ? `📝 ${len}자: 모든 직원이 요약해서 전해요. 핵심만 남겨요!`
-      : `📝 ${len}자: ${cut.join("·")}은(는) 요약해서 전해요. 핵심만 남겨요!`;
+      : `📝 ${len}자: ${cut.join("·")}${(String(cut[cut.length - 1]).charCodeAt(String(cut[cut.length - 1]).length - 1) - 0xAC00) % 28 ? "이" : "가"} 요약해서 전해요. 핵심만 남겨요!`;
   }
   meter.classList.toggle("full", len >= ORDER_MAX);
 }
@@ -2786,7 +2786,7 @@ function renderEvent() {
     ${businessCard(c)}
     <div class="composer">
       <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span></span>
-        <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 요금을 10% 내려 고객을 모아. / 광고량을 20% 줄여 이용자를 늘려.">${esc(round.order)}</textarea>
+        <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 요금 10% 내려서 손님 모아">${esc(round.order)}</textarea>
       </label>
       ${activeStaff.length ? orderMeter(line) : ""}
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
