@@ -257,3 +257,24 @@ test("연습 모드도 말이 와전되며 내려가고, 일부러 '쉬어도 �
   assert.equal(run("c.rounds[0].execution.followed"), false);
   assert.ok(run("c.rounds[0].result.down.every(x => x.lie)"));
 });
+
+test("연습 모드 와전 규칙으로 1년(4분기)을 끝까지 진행하고 결산 숫자가 정상이다", () => {
+  for (const type of ["sales", "subscription", "ads"]) {
+    const run = setup(type);
+    run(`
+      for (let q = 0; q < ROUNDS; q++) {
+        game.round = q;
+        c.rounds[q] = { order: q % 2 ? "요금 10% 내리고 홍보 늘려" : "품질 개선해", result: null, investment: 0, committed: true };
+        prepareBusinessRound(c);
+        practicePlan();
+        practiceEvent();
+        guess(q % 2 === 0);
+        settleRound(c, q % 2 ? "dig" : "praise");
+      }
+    `);
+    assert.ok(Number.isFinite(run("totalProfit(c)")), type);
+    assert.ok(Number.isFinite(run("cashBalance(c)")), type);
+    assert.equal(run("c.rounds.filter(r => r.execution && r.execution.relay).length"), 4, type);
+    assert.ok(run("c.rounds.every(r => r.result && r.result.down.length === r.chain.length)"), type);
+  }
+});
