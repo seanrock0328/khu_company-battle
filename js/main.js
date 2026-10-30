@@ -175,10 +175,12 @@ document.getElementById("interview").addEventListener("click", e => {
       // 뽑으면 다음 직급으로 넘어갑니다
       return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
     }
-    case "vacant":
-      hireCandidate(c, rank, null);
+    case "vacant": {
+      const error = hireCandidate(c, rank, null); // 6자리를 모두 채워야 해서 지금은 항상 안내만 나옵니다
+      if (error) return toast(error);
       checkpointGame("interview");
       return interviewIndex < HIRE_RANKS.length - 1 ? go(interviewIndex + 1) : renderInterview(interviewIndex);
+    }
     case "prev": return go(interviewIndex - 1);
     case "next": return go(interviewIndex + 1);
     case "done": {

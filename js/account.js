@@ -212,7 +212,7 @@
     #screen-login .g-lead > span { display: inline-block; text-wrap: balance; } /* 문장 단위로 줄바꿈 */
     #screen-login .g-lead b { color: var(--g-ink); background: linear-gradient(transparent 58%, var(--g-boss-soft) 58%); padding: 0 2px; }
 
-    /* 예시: 사내 단톡방에서 지시가 내려가며 짧아짐 (사장 100자 → 부장 50자 → 사원 10자) */
+    /* 예시: 사내 단톡방에서 지시가 내려가며 짧아짐 (사장 30자 → 부장 22자 → 사원 10자) */
     #screen-login .gate-demo {
       grid-area: demo; overflow: hidden; border-radius: var(--r-l, 18px); background: var(--g-room);
       box-shadow: inset 0 0 0 2px rgba(48, 70, 90, .22), 0 12px 28px -14px var(--g-soft);
@@ -245,7 +245,7 @@
     }
     #screen-login .gd-ceo .gd-bubble { background: var(--g-boss); color: var(--g-boss-ink); border-radius: var(--r, 12px) 4px var(--r, 12px) var(--r, 12px); }
     #screen-login .gd-low .gd-bubble { background: var(--g-stamp-soft); color: var(--g-ink); box-shadow: inset 0 0 0 2px var(--g-stamp); }
-    /* 글자 수 칩은 늘 말풍선 위에: 사장 말풍선이 "통" 커질 때 "100자"를 덮지 않게 */
+    /* 글자 수 칩은 늘 말풍선 위에: 사장 말풍선이 "통" 커질 때 "30자"를 덮지 않게 */
     #screen-login .gd-limit {
       position: relative; z-index: 1;
       flex: none; padding: 1px 7px; border-radius: 999px; background: var(--g-stamp); color: var(--g-white);
@@ -639,8 +639,8 @@
         <figure class="gate-demo" aria-label="예시: 사장 지시가 부장, 사원으로 내려가며 짧아져요">
           <figcaption class="gd-head"><b>💬 사내 단톡방</b><span>지시 전달 중<span class="gd-dots" aria-hidden="true"><i></i><i></i><i></i></span></span></figcaption>
           <ol class="gd-feed">
-            <li class="gd-msg gd-ceo"><span class="gd-ava">사장</span><span class="gd-bubble">고객 불만 원인 찾아서 내일까지 해결책 보고해요</span><span class="gd-limit">100자</span></li>
-            <li class="gd-msg gd-mid"><span class="gd-ava">부장</span><span class="gd-bubble">불만 원인 찾아 보고</span><span class="gd-limit">50자</span></li>
+            <li class="gd-msg gd-ceo"><span class="gd-ava">사장</span><span class="gd-bubble">고객 불만 원인 찾아서 내일까지 해결책 보고해요</span><span class="gd-limit">30자</span></li>
+            <li class="gd-msg gd-mid"><span class="gd-ava">부장</span><span class="gd-bubble">불만 원인 찾아 보고</span><span class="gd-limit">22자</span></li>
             <li class="gd-msg gd-low"><span class="gd-ava">사원</span><span class="gd-bubble">불 찾아옴?! 🔥</span><span class="gd-limit">10자</span></li>
           </ol>
         </figure>

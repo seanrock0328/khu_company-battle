@@ -112,7 +112,7 @@ function renderHud() {
   let items = [];
   if (id === "screen-interview") {
     items = [
-      { ico: "👥", label: `채용 · 최소 ${minStaff}명`, value: `${hired} / ${HIRE_RANKS.length}`, tone: hired < minStaff ? "neg" : "pos" },
+      { ico: "👥", label: `채용 · ${minStaff}자리 모두`, value: `${hired} / ${HIRE_RANKS.length}`, tone: hired < minStaff ? "neg" : "pos" },
       { ico: "💰", label: "분기 급여", value: money(payroll(c) * COST_PER_SALARY, false), tone: payroll(c) / budgetOf(c) >= .9 ? "neg" : "" },
       { ico: "🏦", label: "통장", value: money(cashBalance(c), false), key: "bank" }
     ];
@@ -237,7 +237,8 @@ function rankChip(rank) {
   return `<span class="rank rk-${rankNo(rank)}">${esc(rank)}</span>`;
 }
 
-// 원고지 글자칸 미터 (1칸 = 10자). cls에 rk-N을 주면 그 직급 색으로 채운 칸
+// 원고지 글자칸 미터 (1칸 = CELL_CHARS자). cls에 rk-N을 주면 그 직급 색으로 채운 칸
+const CELL_CHARS = 5;
 function cells(n, cls) {
   return `<span class="cells ${cls || ""}" aria-hidden="true">${"<i></i>".repeat(Math.max(0, n))}</span>`;
 }
@@ -876,7 +877,7 @@ function plateHtml(c, i, person) {
   const frozen = person && office.holdQuit && office.shownLoyalty && office.shownLoyalty.has(person.id);
   const hv = Number(frozen ? office.shownLoyalty.get(person.id) : person ? person.loyalty : 0);
   return `<span class="pl-row"><b class="rank rk-${i}">${esc(rank)}</b><span class="pn${gone ? " gone" : ""}">${esc(name)}</span></span>
-    <span class="pl-row pl-chars">${cells(chars / 10, `rk-${i}`)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
+    <span class="pl-row pl-chars">${cells(Math.round(chars / CELL_CHARS), `rk-${i}`)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
 }
 
 // 사람이 바뀐 자리만 고칩니다. animate면 새 직원은 입구 문으로 걸어 들어옵니다.
@@ -1474,7 +1475,7 @@ async function officePaper(order, chain) {
   const letters = Array.from(String(order || ""));
   const showText = n => letters.slice(0, n).join("") + (letters.length > n ? "…" : "");
   fx.innerHTML = "";
-  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(ORDER_MAX / 10)}</span><b class="fly-limit">${ORDER_MAX}자</b></div>`;
+  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(Math.ceil(ORDER_MAX / CELL_CHARS))}</span><b class="fly-limit">${ORDER_MAX}자</b></div>`;
   fly.querySelector(".fly-text").textContent = showText(12);
   // 데스크톱: 머리 위 / 휴대폰 지도: 몸 오른쪽 (지도 위쪽이 잘리지 않게)
   const head = i => { const s = planSeat(P, i); return office.strip ? { x: Math.min(P.W - 50, s.x + P.mate * .95), y: s.y - P.mate * .35 } : { x: s.x + 6, y: Math.max(46, s.y - P.mate * 1.45 - 2) }; };
@@ -1520,10 +1521,10 @@ async function officePaper(order, chain) {
       fly.style.transform = tf(to, sc);
     }
     // 착지: 잘린 칸과 글자가 떨어짐
-    const keep = chars / 10;
+    const keep = Math.round(chars / CELL_CHARS);
     fly.querySelectorAll(".fly-cells i").forEach((cell, k) => cell.classList.toggle("drop", k >= keep));
     fly.querySelector(".fly-limit").textContent = `✂ ${chars}자`;
-    fly.querySelector(".fly-text").textContent = showText(Math.max(2, Math.round(12 * keep / 10)));
+    fly.querySelector(".fly-text").textContent = showText(Math.max(2, Math.round(12 * chars / ORDER_MAX)));
     if (!skipping && !reduceMotion()) {
       const cut = letters.slice(chars, keepChars).filter(ch => ch.trim());
       cut.filter((_, k) => k % Math.max(1, Math.floor(cut.length / 4)) === 0).slice(0, 4).forEach((ch, k) => {
@@ -1883,9 +1884,9 @@ const CHAT = {
   rank: {
     임원: ["보고서 표지 색이 마음에 안 드는데", "회의는 짧게, 결론은 길게", "골프 약속은 미뤘습니다"],
     부장: ["또 회의야…", "내가 들은 거랑 좀 다른데?", "다들 자리에 있죠?"],
-    차장: ["부장님 말씀 40자로 줄이는 중", "점심 뭐 먹지", "엑셀 파일명 최종_진짜최종"],
+    차장: ["부장님 말씀 19자로 줄이는 중", "점심 뭐 먹지", "엑셀 파일명 최종_진짜최종"],
     과장: ["30자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다", "과장이라 과하게 일함"],
-    대리: ["20자면 이모티콘은 포기", "'알아서 잘'이라고 전하자", "대리 출석 ✋"],
+    대리: ["13자면 이모티콘은 포기", "'알아서 잘'이라고 전하자", "대리 출석 ✋"],
     사원: ["10자면 '네 알겠습니다'도 빠듯", "아무도 설명을 안 해 줘요", "저 사원인데 이거 제가 해요?"]
   },
   skill: ["제가 맡을게요 💪", "자료 벌써 정리해 뒀어요", "엑셀 켜 놨습니다"],
@@ -2026,7 +2027,7 @@ function demoHtml() {
     <svg class="plan-bg" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${P.bg}</svg>
     <div class="plan-items">${P.items.map(itemHtml).join("")}${desks}</div>
     <div class="demo-track"><div class="demo-lift"><span class="demo-paper"><span class="demo-cells">${"<i></i>".repeat(10)}</span>
-      <b class="demo-lim l0">100자</b><b class="demo-lim l1">✂ 50자</b><b class="demo-lim l2">✂ 20자</b><b class="demo-lim l3">✂ 10자</b></span></div></div>
+      <b class="demo-lim l0">${ORDER_MAX}자</b><b class="demo-lim l1">✂ ${rankInfo("부장").chars}자</b><b class="demo-lim l2">✂ ${rankInfo("대리").chars}자</b><b class="demo-lim l3">✂ ${rankInfo("사원").chars}자</b></span></div></div>
     ${says.map(([cls, x, y, text]) => `<span class="demo-say ${cls}" style="--x:${x};--y:${y}">${esc(text)}</span>`).join("")}
     <span class="demo-stamp stamp" style="--x:438;--y:62">🤥 거짓말</span>
   </div>`;
@@ -2201,9 +2202,9 @@ const AI_THOUGHTS = {
   event: {
     임원: ["보고서 표지 색이 마음에 안 드는데", "이 정도면 잘됐다고 하자"],
     부장: ["또 회의야…", "내가 들은 거랑 좀 다른데?"],
-    차장: ["부장님 말을 40자로 줄이라고?", "점심 뭐 먹지"],
+    차장: ["부장님 말을 19자로 줄이라고?", "점심 뭐 먹지"],
     과장: ["30자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다"],
-    대리: ["20자면 이모티콘은 포기", "'알아서 잘'이라고 전하자"],
+    대리: ["13자면 이모티콘은 포기", "'알아서 잘'이라고 전하자"],
     사원: ["10자면 '네 알겠습니다'도 빠듯해", "아무도 나한테 설명을 안 해 줘"]
   }
 };
@@ -2415,23 +2416,21 @@ function renderInterview(index) {
 
   const cellsTotal = Math.max(budget, used);
   const last = index === HIRE_RANKS.length - 1;
-  // PR #14 규칙 (검사는 main.js·game.js가 '면접 끝'에서 함): 최소 MIN_STAFF명, 빈자리는 나머지까지
+  // 6자리 모두 채용 (검사는 main.js·game.js가 '면접 끝'에서 함)
   const minStaff = minStaffRule();
-  const maxVacant = Math.max(0, HIRE_RANKS.length - minStaff);
   const hiredNow = staffOf(c).length;
   const short = Math.max(0, minStaff - hiredNow);
   document.getElementById("interview").innerHTML = `
-    <p class="hire-rule"><span class="hr-tag">채용 규칙</span><span>최소 <b>${minStaff}명</b> 채용 · 빈자리는 <b>${maxVacant}자리</b>까지</span></p>
+    <p class="hire-rule"><span class="hr-tag">채용 규칙</span><span><b>${HIRE_RANKS.length}자리 모두</b> 채용 · 연봉 합은 <b>채용 한도</b> 안에서</span></p>
     <div class="tabs" role="list">${tabs}</div>
     <div class="budget-wrap">
-      <p class="hire-count ${short ? "short" : "ok"}" aria-live="polite"><span aria-hidden="true">👥</span> 채용 <b>${hiredNow}</b> / ${HIRE_RANKS.length}명 <small>· 최소 ${minStaff}명${short ? "" : " ✓"}</small></p>
+      <p class="hire-count ${short ? "short" : "ok"}" aria-live="polite"><span aria-hidden="true">👥</span> 채용 <b>${hiredNow}</b> / ${HIRE_RANKS.length}명 <small>${short ? `· ${short}자리 남음` : "✓"}</small></p>
       <p class="spent"><span><span aria-hidden="true">💰</span> 분기 급여 <b>${money(used * COST_PER_SALARY, false)}</b></span><span>/ 채용 한도 ${money(budget * COST_PER_SALARY, false)}</span><small class="spent-bank">🏦 통장 ${money(cashBalance(c), false)}</small></p>
       <div class="budget ${used / budget >= .9 ? "tight" : ""}" role="img" aria-label="분기 급여 ${money(used * COST_PER_SALARY, false)} / 채용 한도 ${money(budget * COST_PER_SALARY, false)}">${Array.from({ length: cellsTotal }, (_, k) => `<i class="${k < used ? "on" : ""}"></i>`).join("")}</div>
     </div>
-    <h3 class="rank-title rk-${rankNo(rank)}"><span class="rank rk-${rankNo(rank)}">${esc(rank)}</span> 면접 <small>지시를 ${info.chars}자까지 전달 ${cells(info.chars / 10, `rk-${rankNo(rank)}`)}</small></h3>
+    <h3 class="rank-title rk-${rankNo(rank)}"><span class="rank rk-${rankNo(rank)}">${esc(rank)}</span> 면접 <small>지시를 ${info.chars}자까지 전달 ${cells(Math.round(info.chars / CELL_CHARS), `rk-${rankNo(rank)}`)}</small></h3>
     <div class="candidates ${entering ? "enter" : ""}">${cards}</div>
     <div class="interview-nav">
-      <button class="text-btn" data-action="vacant">이 자리는 비워 두기 (최대 ${maxVacant}자리, 지시가 건너뜀)</button>
       <div class="row">
         ${index > 0 ? `<button class="secondary" data-action="prev">← ${esc(HIRE_RANKS[index - 1])}</button>` : ""}
         <button class="primary ${last && short ? "not-ready" : ""}" data-action="${last ? "done" : "next"}" ${last && short ? 'aria-describedby="hire-short"' : ""}>${last ? "면접 끝, 업무 시작" : `${esc(HIRE_RANKS[index + 1])} 면접 →`}</button>
@@ -2638,9 +2637,10 @@ function quarterPop(c, ev) {
 
 function orderMeter(staff) {
   return `<div class="order-meter" id="order-meter" aria-hidden="true">
-    <div class="om-cells">${Array.from({ length: Math.ceil(ORDER_MAX / 10) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
-    <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_MAX * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
-    <p class="om-note">1칸 = 10자 · 동그라미에서 그 직급이 지시를 자릅니다</p>
+    <div class="om-cells" style="--n:${Math.ceil(ORDER_MAX / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_MAX / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
+    <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_MAX * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
+    <p class="om-note">칸이 찬 만큼 지시가 길어요 · 동그라미 = 그 직급이 전할 수 있는 글자 수</p>
+    <p class="om-state" id="om-state"></p>
   </div>`;
 }
 
@@ -2648,9 +2648,20 @@ function paintOrderMeter(len) {
   const meter = document.getElementById("order-meter");
   if (!meter) return;
   meter.querySelectorAll(".om-cell i").forEach((cell, k) => {
-    cell.style.width = `${Math.max(0, Math.min(1, (len - k * 10) / 10)) * 100}%`;
+    cell.style.width = `${Math.max(0, Math.min(1, (len - k * CELL_CHARS) / CELL_CHARS)) * 100}%`;
   });
   meter.querySelectorAll(".om-mark").forEach(m => m.classList.toggle("cut", len > Number(m.dataset.chars)));
+  // 지금 길이로는 누가 줄여서 전해야 하는지 바로 알려 줍니다 (직원들은 넘치는 글자를 알아서 줄여 전하다가 말이 바뀜)
+  const state = document.getElementById("om-state");
+  if (state) {
+    const cut = [...meter.querySelectorAll(".om-mark.cut")].sort((a, b) => b.dataset.chars - a.dataset.chars).map(m => m.dataset.rank);
+    const marks = meter.querySelectorAll(".om-mark");
+    state.className = `om-state ${!len ? "" : cut.length ? "cut" : "ok"}`;
+    state.textContent = !len ? "짧고 굵게! 길게 쓸수록 아래 직급에서 줄여서 전해요."
+      : !cut.length ? `✅ ${len}자: 막내까지 그대로 갈 수 있어요`
+      : cut.length === marks.length ? `✂ ${len}자: 모든 직원이 줄여서 전해요. 핵심은 앞에!`
+      : `✂ ${len}자: ${cut.join("·")}은(는) 줄여서 전해요. 핵심은 앞에!`;
+  }
   meter.classList.toggle("full", len >= ORDER_MAX);
 }
 

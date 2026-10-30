@@ -163,8 +163,8 @@ function buildFoundingRequest() {
 2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개 (1년 동안 분기마다 하나). 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황. 서로 겹치지 않게, 뒤로 갈수록 규모가 커지게.
 3. candidates: 면접 후보 전원(id 그대로)에 대해
    - name: 한국식 이름 3글자. 성격이 드러나는 웃긴 이름도 좋음 (예: 김대충). 실존 유명인 이름 금지.
-   - intro: 면접 자기소개 30자 이내. MBTI, 애착 유형, 능력치가 은근히 드러나게, 웃기게.
-   - answer: "우리 회사에서 무엇을 하고 싶나요?"에 대한 답 40자 이내. 회사가 하는 일을 반영.
+   - intro: 면접 자기소개 20자 이내. MZ 말투로 짧고 익살스럽게(밈·이모지 OK, 비하·욕설 금지). MBTI, 애착 유형, 능력치가 은근히 드러나게.
+   - answer: "우리 회사 왜 왔어요? 한 줄로!"에 대한 답 25자 이내. 같은 말투로, 회사가 하는 일을 반영.
    - honesty가 낮은 후보는 면접에서 허세나 그럴듯한 거짓말을 섞되, 정직도 숫자를 말하지는 마라.
    - 능력치 숫자를 그대로 말하지 마라.
 
@@ -206,13 +206,16 @@ function applyFounding(text, model) {
 
 function practiceFounding() {
   const c = game.company;
-  c.news = `[단독] '${c.name}', "${c.motto}" 사훈 내걸고 ${c.industry} 시장 출사표… ${fundingOf(c).name}로 시작`;
+  const fund = fundingOf(c).name;
+  const last = fund.charCodeAt(fund.length - 1) - 0xAC00;
+  const ro = last >= 0 && last < 11172 && last % 28 !== 0 && last % 28 !== 8 ? "으로" : "로"; // 받침 있으면 '으로' (ㄹ받침은 '로')
+  c.news = `[단독] '${c.name}', "${c.motto}" 사훈 내걸고 ${c.industry} 시장 출사표… ${fund}${ro} 시작`;
   c.events = EVENT_ORDER.map(type => ({ type, ...pick(FALLBACK_EVENTS[type]) }));
   const names = shuffle(FALLBACK_NAMES);
   allCandidates(c).forEach((x, i) => {
     x.name = names[i % names.length];
     x.intro = pick(FALLBACK_INTROS[x.type]);
-    x.answer = x.honesty <= 3 ? "제가 오면 매출 10배입니다. 진짜로요." : "맡겨 주시는 일 성실히 하겠습니다.";
+    x.answer = x.honesty <= 3 ? "제가 오면 매출 10배임. 진짜임 ㅋ" : "시키는 거 잘함. 칼퇴는 덤";
   });
   c.foundingByAI = false;
 }
@@ -236,7 +239,7 @@ function buildEventRequest() {
     quarter: `${quarterLabel(i)} (${i + 1}/${ROUNDS})`,
     // AI가 만든 글은 요청문에 넣을 때만 잘라 길이를 일정하게 (화면에 보이는 글은 그대로)
     event: { type: c.events[i].type, title: String(c.events[i].title).slice(0, 30), text: String(c.events[i].text).slice(0, 100) },
-    ceoOrder: round.order,
+    ceoOrder: String(round.order || "").slice(0, ORDER_MAX),
     ceoPower: round.power === "direct" ? "직통 전화: 중간 직급을 건너뛰고 가장 낮은 직급에게 직접 지시" : round.power === "dinner" ? "회식으로 충성심 회복" : "없음",
     investment: round.investment ? "이번 분기 1,000만원 투자. 성과에 따른 회수액은 게임이 따로 계산" : "투자 없음",
     staff: transmissionStaff(c).map(x => ({

@@ -764,7 +764,7 @@ input:disabled, textarea:disabled { opacity: .7; }
 .chip.secure { background: var(--money-soft); color: var(--money); }
 .chip.avoid { background: var(--sunken); color: var(--muted); }
 
-/* 글자 수 미터: 1칸 = 10자. 직급 색으로 채운 둥근 칸 (빈 원고지 칸은 지시서 미터 .om-cells에서만) */
+/* 글자 수 미터: 1칸 = 5자 (js/ui.js CELL_CHARS). 직급 색으로 채운 둥근 칸 (빈 원고지 칸은 지시서 미터 .om-cells에서만) */
 .cells { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
 .cells i {
   width: 7px;
@@ -916,9 +916,10 @@ input:disabled, textarea:disabled { opacity: .7; }
 .demo-lift { animation: demoY 8s infinite; }
 .demo-cells { display: flex; align-items: center; gap: 2px; }
 .demo-cells i { width: max(6px, calc(8 * var(--u))); height: max(6px, calc(7 * var(--u))); border-radius: 2px; background: var(--rank-0); box-shadow: inset 0 0 0 1px var(--outline); }
-.demo-cells i:nth-child(n+6) { animation: dropA 8s infinite; }
-.demo-cells i:nth-child(n+3):nth-child(-n+5) { animation: dropB 8s infinite; }
-.demo-cells i:nth-child(2) { animation: dropC 8s infinite; }
+/* 30자 → 22자 → 13자 → 10자: 10칸 중 3칸, 다음 3칸, 다음 1칸이 차례로 떨어짐 */
+.demo-cells i:nth-child(n+8) { animation: dropA 8s infinite; }
+.demo-cells i:nth-child(n+5):nth-child(-n+7) { animation: dropB 8s infinite; }
+.demo-cells i:nth-child(4) { animation: dropC 8s infinite; }
 .demo-lim {
   position: absolute;
   left: 50%;
@@ -2275,7 +2276,7 @@ body.writing .composer { box-shadow: var(--sh), 0 0 0 5px color-mix(in srgb, var
   min-height: 96px;
 }
 .order-meter { margin-bottom: var(--s3); }
-.om-cells { display: grid; grid-template-columns: repeat(10, 1fr); border: var(--bw-s) solid var(--outline); border-radius: 6px; overflow: hidden; background: var(--paper); }
+.om-cells { display: grid; grid-template-columns: repeat(var(--n, 6), 1fr); border: var(--bw-s) solid var(--outline); border-radius: 6px; overflow: hidden; background: var(--paper); }
 .om-cell { position: relative; height: 18px; border-right: 1px solid var(--grid-line); }
 .om-cell:last-child { border-right: 0; }
 .om-cell i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--rank-0); transition: width .15s; }
@@ -3171,3 +3172,8 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 
 /* 휴대폰 시작 화면: 제목 데모의 도장 연출이 화면을 5px 넓히지 않게 */
 #screen-found { overflow-x: clip; }
+
+/* 지시서 미터 아래 안내: 지금 길이로 누가 줄여서 전하는지 */
+.om-state { margin: 2px 0 0; font-size: var(--fs-s); font-weight: 700; color: var(--muted); min-height: 1.4em; }
+.om-state.ok { color: var(--money); }
+.om-state.cut { color: var(--stamp); }

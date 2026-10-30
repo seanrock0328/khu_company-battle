@@ -495,12 +495,13 @@ test("앞사람 기록 업로드가 실패했다가 다음 사람이 로그인�
 
 // ===== 7. 면접 끝 버튼: 최소 인원 =====
 
-test("면접 끝 버튼은 직원이 4명보다 적으면 안내만 하고, 4명이면 1분기로 넘어간다", async () => {
+test("면접 끝 버튼은 6자리가 다 차지 않으면 안내만 하고, 6명이면 1분기로 넘어간다", async () => {
   const server = makeServer();
   server.env.BOARD = undefined; // 로그인 없이
   const app = await boot(server);
   app.run(`
     var c = game.company;
+    c.funding = "lottery";
     makeCandidates(c);
     var hireRank = rank => { const x = c.candidates[rank][0]; askCandidate(c, rank, x.id, "motivation"); return hireCandidate(c, rank, x.id); };
     hireRank("사원");
@@ -509,8 +510,8 @@ test("면접 끝 버튼은 직원이 4명보다 적으면 안내만 하고, 4명
   const done = () => app.el("interview").dispatch("click", { target: { closest: () => ({ dataset: { action: "done" } }) } });
   await done();
   assert.equal(app.screen(), "screen-interview");
-  assert.match(app.toasts.at(-1), /4명 이상.*지금 1명/);
-  app.run('["차장", "과장", "대리"].forEach(hireRank);');
+  assert.match(app.toasts.at(-1), /6자리.*지금 1명/);
+  app.run('["임원", "부장", "차장", "과장", "대리"].forEach(hireRank);');
   await done();
   assert.equal(app.screen(), "screen-event");
 });

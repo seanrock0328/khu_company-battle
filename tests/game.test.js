@@ -40,7 +40,7 @@ function hire(run) {
 
 test("면접을 본 같은 직급의 후보만 예산 안에서 채용한다", () => {
   const run = setup();
-  run('const c = game.company; makeCandidates(c); const x = c.candidates["임원"][0];');
+  run('const c = game.company; c.funding = "lottery"; makeCandidates(c); const x = c.candidates["임원"][0];');
   assert.match(run('hireCandidate(c, "임원", x.id)'), /질문/);
   assert.equal(run('askCandidate(c, "사원", x.id, "mistake")'), false);
   assert.equal(run('askCandidate(c, "임원", x.id, "unknown")'), false);
@@ -48,38 +48,42 @@ test("면접을 본 같은 직급의 후보만 예산 안에서 채용한다", (
   assert.equal(run("x.interviewed.length"), 1);
   assert.match(run('hireCandidate(c, "사원", x.id)'), /직급/);
   assert.equal(run('hireCandidate(c, "임원", x.id)'), null);
-  assert.equal(run('hireCandidate(c, "임원", null)'), null);
-  run('x.salary = 100;');
-  assert.match(run('hireCandidate(c, "임원", x.id)'), /예산/);
-  assert.equal(run('c.hires["임원"]'), null);
+  assert.match(run('hireCandidate(c, "임원", null)'), /모두 채워야/); // 빈자리는 없음
+  assert.equal(run('c.hires["임원"]'), run("x.id"));
+  run('const y = c.candidates["임원"][1]; y.salary = 100; askCandidate(c, "임원", y.id, "mistake");');
+  assert.match(run('hireCandidate(c, "임원", y.id)'), /예산/);
+  assert.equal(run('c.hires["임원"]'), run("x.id")); // 예산을 넘으면 바꾸지 않고 앞 사람 그대로
   assert.match(run('attachmentLabel(x)'), /안정형 \d+% · 회피형 \d+%/);
 });
 
-test("직원이 4명보다 적으면 업무를 시작할 수 없고, 부모님 돈으로도 4명은 항상 뽑을 수 있다", () => {
+test("6자리를 모두 채워야 업무를 시작하고, 어느 봉투든 6명은 항상 뽑을 수 있다", () => {
   const run = setup();
   hire(run); // 사원 1명
-  assert.equal(run("MIN_STAFF"), 4);
-  assert.match(run("checkStaffing(c)"), /4명 이상.*지금 1명/);
+  assert.equal(run("MIN_STAFF"), 6);
+  assert.match(run("checkStaffing(c)"), /6자리.*지금 1명/);
   run(`
-    for (const rank of ["차장", "과장", "대리"]) {
-      const x = c.candidates[rank][0];
+    c.funding = "lottery";
+    for (const rank of ["임원", "부장", "차장", "과장", "대리"]) {
+      const x = [...c.candidates[rank]].sort((a, b) => a.salary - b.salary)[0];
       askCandidate(c, rank, x.id, "motivation");
       hireCandidate(c, rank, x.id);
     }
   `);
   assert.equal(run("checkStaffing(c)"), null);
-  // 가장 비싼 후보로만 골라도 아래 4직급은 부모님 예산(18) 안에 들어온다
-  for (let i = 0; i < 200; i++) {
-    run(`
-      c.funding = "parents"; makeCandidates(c);
-      var hireErrors = HIRE_RANKS.slice(-MIN_STAFF).map(rank => {
-        const x = [...c.candidates[rank]].sort((a, b) => b.salary - a.salary)[0];
-        askCandidate(c, rank, x.id, "motivation");
-        return hireCandidate(c, rank, x.id);
-      });
-    `);
-    assert.equal(run("JSON.stringify(hireErrors)"), "[null,null,null,null]");
-    assert.equal(run("checkStaffing(c)"), null);
+  // 위 직급부터 가장 비싼 후보를 먼저 시도하고, 안 되면 다음으로 싼 후보를 고른다 → 언제나 6명이 채워진다
+  for (const funding of ["parents", "savings", "lottery"]) {
+    for (let i = 0; i < 300; i++) {
+      run(`
+        c.funding = "${funding}"; makeCandidates(c);
+        var filled = HIRE_RANKS.every(rank => [...c.candidates[rank]].sort((a, b) => b.salary - a.salary).some(x => {
+          askCandidate(c, rank, x.id, "motivation");
+          return hireCandidate(c, rank, x.id) === null;
+        }));
+      `);
+      assert.equal(run("filled"), true, funding);
+      assert.equal(run("checkStaffing(c)"), null);
+      assert.ok(run("payroll(c) <= budgetOf(c)"));
+    }
   }
 });
 
@@ -175,7 +179,8 @@ test("충성심이 낮은 직원을 전원 퇴사시키는 전략이 정상 경�
 
 test("영업 중단으로 정상 경영의 최악 손실도 피할 수 없다", () => {
   const run = setup();
-  assert.ok(run("CLOSED_PENALTY > Math.max(...FUNDING.map(f => f.budget)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY + DINNER_COST + INVESTMENT_COST - INVESTMENT_LOSS"));
+  // 인건비는 예산과 6직급 최고 연봉 합 중 작은 쪽까지만 나올 수 있다 (능력 9 후보만 뽑아도 연봉 합 28)
+  assert.ok(run("CLOSED_PENALTY > Math.min(Math.max(...FUNDING.map(f => f.budget)), HIRE_RANKS.reduce((s, r) => s + Math.max(1, Math.round(rankInfo(r).base * (0.6 + 9 * 0.08))), 0)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY + DINNER_COST + INVESTMENT_COST - INVESTMENT_LOSS"));
   for (const salary of [14, 18, 22, 28]) {
     for (const score of [0, 20, 59, 60, 70, 100]) {
       // 충성심 2와 첫 2분기 성과를 고정. 남은 2분기의 운영과 중단을 비교.
@@ -423,7 +428,7 @@ test("수익·충성심·선택에 따른 엔딩과 공유 문구를 일관되�
   hire(run);
   run('c.rounds = Array.from({ length: 4 }, () => ({ profit: 1000, choice: "praise", success: true })); employee.loyalty = 8;');
   assert.equal(run("endingFor(c).id"), "happy");
-  assert.match(run("endingShareText(c)"), /1년 4턴 결산/);
+  assert.match(run("endingShareText(c)"), /1년 4분기 결산/);
   assert.match(run("endingShareText(c)"), /\+4,000만원/);
   run('c.rounds[3].investmentCost = 1000; c.rounds[3].investmentReturn = 1600;');
   assert.equal(run("endingFor(c).id"), "comeback");

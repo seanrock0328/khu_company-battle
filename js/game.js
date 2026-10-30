@@ -13,12 +13,12 @@
 // 후보: { id, rank, name, mbti, secure(안정형 %), skill, luck, honesty(숨김), loyalty(충성심, 5에서 시작), quit, salary, intro, answer, interviewed:[질문id] }
 
 const RANKS = [
-  { name: "사장", chars: 100, base: 0 },  // 플레이어
-  { name: "임원", chars: 60, base: 6 },
-  { name: "부장", chars: 50, base: 5 },
-  { name: "차장", chars: 40, base: 4 },
-  { name: "과장", chars: 30, base: 3 },
-  { name: "대리", chars: 20, base: 2 },
+  { name: "사장", chars: 30, base: 0 },  // 플레이어 (지시 최대 글자 수 = ORDER_MAX)
+  { name: "임원", chars: 25, base: 6 },
+  { name: "부장", chars: 22, base: 5 },
+  { name: "차장", chars: 19, base: 4 },
+  { name: "과장", chars: 16, base: 3 },
+  { name: "대리", chars: 13, base: 2 },
   { name: "사원", chars: 10, base: 1 }
 ];
 const HIRE_RANKS = RANKS.filter(r => r.name !== "사장").map(r => r.name);
@@ -27,7 +27,7 @@ const PLAYER_MAX = 10;
 const DETAIL_MAX = 40;
 const NAME_MAX = 12;
 const MOTTO_MAX = 20;
-const ORDER_MAX = 100;
+const ORDER_MAX = 30;
 const ROUNDS = EVENT_ORDER.length; // 4분기
 
 // ===== 경제 규칙 (단위: 만원) =====
@@ -227,12 +227,24 @@ function makeCandidate(rank, type) {
 }
 
 function makeCandidates(c) {
-  c.candidates = {};
-  c.hires = {};
+  // 직급마다 가장 싼 후보로 6명을 예산 안에 채울 수 있을 때까지 다시 뽑습니다 (부모님 돈 26에서도 드물게만 다시 뽑음)
+  for (let tries = 0; tries < 50; tries++) {
+    c.candidates = {};
+    c.hires = {};
+    for (const rank of HIRE_RANKS) {
+      c.candidates[rank] = shuffle(["skill", "honesty", "luck"]).map(t => makeCandidate(rank, t));
+      if (c.funding === "savings") c.candidates[rank].forEach(x => { x.loyalty = Math.min(LOYALTY_MAX, LOYALTY_START + 2); });
+      c.hires[rank] = null;
+    }
+    if (!c.funding || cheapestRest(c) <= budgetOf(c)) return;
+  }
+  // 50번 모두 넘치면(사실상 없음) 가장 비싼 직급부터 연봉을 낮춰 맞춥니다
   for (const rank of HIRE_RANKS) {
-    c.candidates[rank] = shuffle(["skill", "honesty", "luck"]).map(t => makeCandidate(rank, t));
-    if (c.funding === "savings") c.candidates[rank].forEach(x => { x.loyalty = Math.min(LOYALTY_MAX, LOYALTY_START + 2); });
-    c.hires[rank] = null;
+    while (cheapestRest(c) > budgetOf(c)) {
+      const x = c.candidates[rank].reduce((a, b) => (a.salary <= b.salary ? a : b));
+      if (x.salary <= 1) break;
+      x.salary--;
+    }
   }
 }
 
@@ -251,14 +263,14 @@ function attachmentLabel(x) {
 function interviewAnswer(x, questionId) {
   if (questionId === "motivation") return x.answer;
   if (questionId === "mistake") {
-    if (x.honesty <= 3) return "실수요? 제 사전에 없습니다. 전 직장도 제가 살렸죠.";
-    if (x.secure < 50) return "일단 혼자 고쳐 보고… 보고서는 커피 마시고 쓰겠습니다.";
-    return "바로 보고하고 수습하겠습니다. 시말서 양식도 즐겨찾기 해 뒀죠.";
+    if (x.honesty <= 3) return "실수요? 저 그런 거 안 함 ㅎ 전 직장도 제가 살림";
+    if (x.secure < 50) return "일단 조용히 수습… 보고는 내일 할게요 🫠";
+    return "바로 보고! 시말서 양식 즐찾해 둠";
   }
   if (questionId === "handoff") {
-    if (x.skill >= 7) return "목표와 마감부터 남깁니다. 제 점심 메뉴는 지우고요.";
-    if (x.luck >= 7) return "핵심 단어를 남기고 행운을 빕니다. 지금까지는 통했어요.";
-    return "중요해 보이는 말부터요. 느낌표는 꼭 세 개 남깁니다!!!";
+    if (x.skill >= 7) return "목표·마감만 남김. 끝.";
+    if (x.luck >= 7) return "느낌대로 감. 근데 늘 됨 ㅋ";
+    return "중요해 보이는 거!!! (아마)";
   }
   return "";
 }
@@ -285,14 +297,20 @@ function payroll(c) {
   return staffOf(c).reduce((sum, x) => sum + x.salary, 0);
 }
 
-// 직원은 최소 MIN_STAFF명 (빈자리는 2자리까지). '면접 끝, 업무 시작' 버튼에서 확인합니다 (main.js).
-// 아래 4직급(차장~사원)은 가장 비싼 후보로 골라도 연봉 합 13 이하라 부모님 돈(예산 18)으로도 채울 수 있습니다.
-const MIN_STAFF = 4;
+// 6자리(임원~사원)를 모두 채워야 업무를 시작합니다. '면접 끝, 업무 시작' 버튼에서 확인합니다 (main.js).
+// 후보를 만들 때 직급마다 가장 싼 후보로 예산 안에 6명을 채울 수 있게 하고(makeCandidates),
+// 채용할 때도 남은 자리를 가장 싼 후보로 채울 돈이 남는지 봅니다(hireCandidate). 그래서 항상 6명을 뽑을 수 있습니다.
+const MIN_STAFF = HIRE_RANKS.length;
 
 function checkStaffing(c) {
   const count = staffOf(c).length;
-  if (count < MIN_STAFF) return `직원을 ${MIN_STAFF}명 이상 뽑아 주세요. 지금 ${count}명이에요. 지시가 여러 직급을 거쳐 내려가야 해요.`;
+  if (count < MIN_STAFF) return `${MIN_STAFF}자리를 모두 채워야 업무를 시작할 수 있어요. 지금 ${count}명이에요.`;
   return null;
+}
+
+// 아직 안 뽑은 직급을 가장 싼 후보로 채울 때 드는 연봉 합
+function cheapestRest(c) {
+  return HIRE_RANKS.filter(r => !c.hires[r]).reduce((sum, r) => sum + Math.min(...(c.candidates[r] || []).map(x => x.salary)), 0);
 }
 
 // 전달 과정만 건너뛰며, 재직 직원과 급여 계산에는 영향을 주지 않습니다.
@@ -416,21 +434,24 @@ function endingFor(c) {
 
 function endingShareText(c) {
   const ending = endingFor(c);
-  return `🏢 10자 사원 주식회사 · 1년 4턴 결산\n${c.name} / 사장 ${c.player}\n${ending.title}\n통장 잔액 ${money(cashBalance(c), false)} · 순이익 ${money(totalProfit(c))}\n${ending.text}`;
+  return `🏢 10자 사원 주식회사 · 1년 4분기 결산\n${c.name} / 사장 ${c.player}\n${ending.title}\n통장 잔액 ${money(cashBalance(c), false)} · 순이익 ${money(totalProfit(c))}\n${ending.text}`;
 }
 
 function hireCandidate(c, rank, id) {
   if (!HIRE_RANKS.includes(rank)) return "채용할 직급을 확인해 주세요.";
-  if (id !== null) {
-    const x = candidateById(c, id);
-    if (!x || x.rank !== rank || x.quit) return "이 직급의 면접 후보를 골라 주세요.";
-    if (!x.interviewed.length) return "질문을 하나 이상 하고 답변을 들어 본 뒤 채용해 주세요.";
-  }
+  if (id === null) return `${HIRE_RANKS.length}자리를 모두 채워야 해요. 이 자리에도 한 명을 뽑아 주세요.`;
+  const x = candidateById(c, id);
+  if (!x || x.rank !== rank || x.quit) return "이 직급의 면접 후보를 골라 주세요.";
+  if (!x.interviewed.length) return "질문을 하나 이상 하고 답변을 들어 본 뒤 채용해 주세요.";
   const before = c.hires[rank];
   c.hires[rank] = id;
-  if (id && payroll(c) > budgetOf(c)) {
+  if (payroll(c) > budgetOf(c)) {
     c.hires[rank] = before;
     return "예산이 부족해요. 다른 후보를 고르거나 위 직급을 바꿔 보세요.";
+  }
+  if (payroll(c) + cheapestRest(c) > budgetOf(c)) {
+    c.hires[rank] = before;
+    return "이 후보를 뽑으면 남은 자리를 채울 돈이 모자라요. 조금 싼 후보를 골라 주세요.";
   }
   return null;
 }
