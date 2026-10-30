@@ -264,7 +264,7 @@ function applyPlan(text, model) {
   const d = findPlan(parseJson(text)) || {};
   const normalized = normalizeAction(d.action, c, r.actionBudget);
   r.plan = { ...normalized, explanation: String(d.explanation || "지시를 실행 항목으로 옮겼습니다.").slice(0, 120), practice: !model };
-  executePlan(c);
+  executePlan(c); // 임시 실행(예전 저장·테스트용). 실제 행동은 직원 대화가 끝난 뒤 relayExecute가 다시 정합니다
 }
 
 // ChatKHU가 action을 한 겹 더 감싸거나({"result":{"action":…}}), 대문자 키·"10"·"-20%" 같은 글자로 줄 때가 있어 맞춰 읽습니다.
@@ -312,27 +312,40 @@ function practicePlan() {
 
 function buildEventRequest() {
   const c = game.company, r = c.rounds[game.round];
-  const x = executePlan(c);
-  const input = { company:{ name:c.name, detail:c.detail, motto:c.motto }, event:c.events[game.round], order:r.order,
-    intended:actionLabel(r.plan.action), actual:actionLabel(x.action), economics:r.economics,
-    staff:x.steps.map(s => { const e=candidateById(c,s.id); return { name:e.name, rank:e.rank, mbti:e.mbti, chars:rankInfo(e.rank).chars,
-      actual:actionLabel(s.action), reportLie:s.reportLie, changed:s.changed }; }) };
+  prepareBusinessRound(c);
+  const input = { company: { name: c.name, detail: c.detail, business: c.business?.type }, event: c.events[game.round], ceoOrder: String(r.order || "").slice(0, ORDER_MAX),
+    staff: r.chain.map(id => { const e = candidateById(c, id); return { name: e.name, rank: e.rank, mbti: e.mbti, chars: rankInfo(e.rank).chars,
+      skill: e.skill, honesty: e.honesty, loyalty: e.loyalty, attachment: attachmentLabel(e) }; }) };
   return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다.
-직원 배우 역할이다. 게임이 이미 정한 actual과 economics를 바꾸지 않고 웃기게 연기하라. 점수나 수익을 판정하지 마라.
-down은 staff 순서, up은 역순으로 정확히 직원 수만큼 {say}를 쓴다. 각 chars 제한을 지킨다.
-down은 바로 윗사람 말을 자기 chars에 맞게 요약해(앞에서 자르지 말고) 해당 직원의 actual을 전달한다. changed는 전달 실수이지 고의 거짓말이 아니다.
-up은 reportLie가 false이면 실제 행동을 정직하게 요약하고, true이면 사장 지시대로 했다고 둘러댄다. 실제 행동과 수익성은 별개다.
-clues는 경우별로 미리 쓰는 간접 단서다. low/mid/high는 고객 반응이 나쁨/섞임/좋음일 때, lie/honest는 보고를 부풀림/솔직함일 때. 각 출처:내용 40자. 숫자·이름·성공·실패·거짓·정답을 직접 쓰지 마라.
+사장 지시가 staff 순서로 말로 전달되는 과정을 직원 성격대로 웃기게 연기하라. 점수나 수익을 판정하지 마라(게임이 계산한다).
+1. down: staff 순서대로, 각자 바로 윗사람 말(첫 직원은 ceoOrder)을 자기 chars 이내로 요약해 전한다. 앞에서 자르지 말 것. skill이 낮으면 요약하다 핵심을 빠뜨리거나 잘못 바꾸고, honesty·loyalty가 낮으면 일부러 바꾼다(lie:true).
+2. actual: 마지막 직원이 들은 말(down 마지막 say)에만 근거해 실제로 한 일을 숫자로. price(요금%)·ads(광고 회사의 광고량%)는 -30~30, quality -20~30, marketing·efficiency·capacity 0~30. 들은 말에 없으면 0, 쉬라는 말이면 모두 0.
+3. up: 마지막 직원부터 위로 보고. actual이 사장 지시와 다르면 honesty가 낮은 직원은 지시대로 했다고 둘러댄다(lie:true). 각 chars 이내.
+4. clues: 결과를 보기 전 경우별 간접 단서. low/mid/high=고객 반응 나쁨/섞임/좋음, lie/honest=보고 부풀림/솔직. 각 "출처: 내용" 40자, 숫자·이름·성공·실패·거짓 금지.
 입력: ${JSON.stringify(input)}
-출력 JSON: {"down":[{"say":"..."}],"up":[{"say":"..."}],"clues":{"low":"...","mid":"...","high":"...","lie":"...","honest":"..."}}`;
+설명 없이 JSON만: {"clues":{"low":"...","mid":"...","high":"...","lie":"...","honest":"..."},"down":[{"say":"...","lie":false}],"actual":{"price":0,"ads":0,"marketing":0,"quality":0,"efficiency":0,"capacity":0},"up":[{"say":"...","lie":false}]}`;
 }
 
 function applyEvent(text, model) {
-  const d = findReport(parseJson(text));
+  const raw = parseJson(text);
+  const d = findReport(raw);
   if (!d) throw new Error("직원 보고 down과 up이 없어요.");
-  const r = game.company.rounds[game.round];
+  const c = game.company, r = c.rounds[game.round];
   if (!r.plan) throw new Error("사장님 지시를 먼저 해석해 주세요.");
-  if (!r.result) r.result = businessResult(game.company, d, model || "");
+  if (r.result) return;
+  prepareBusinessRound(c);
+  const n = r.chain.length;
+  const flag = x => x === true || x === "true";
+  // 실제 행동: AI가 준 숫자(actual), 없거나 형식이 틀리면 마지막 직원이 들은 말을 단어로 해석
+  const heard = typeof d.down?.[n - 1] === "string" ? d.down[n - 1] : d.down?.[n - 1]?.say;
+  let action = null;
+  try { const found = findPlan({ action: d.actual ?? raw.actual }); action = found && normalizeAction(found.action, c, r.actionBudget).action; } catch { action = null; }
+  if (!action) action = parseHeardAction(heard, c);
+  const downLie = Array.from({ length: n }, (_, k) => flag(d.down?.[k]?.lie));
+  const reportLie = Array.from({ length: n }, (_, k) => flag(d.up?.[n - 1 - k]?.lie)); // up은 아래 직원부터
+  // 직원 대화(down)도 실제 행동(actual)도 없는 답이면 지시 해석 때 정한 임시 실행을 그대로 씁니다
+  if ((Array.isArray(d.down) && d.down.length) || (d.actual ?? raw.actual) != null) relayExecute(c, action, downLie, reportLie);
+  r.result = businessResult(c, d, model || "");
 }
 
 // AI가 경우별로 쓴 추리 단서 { low, mid, high, lie, honest }. 점수·숫자·성공/실패·거짓말·직원 이름을 대놓고 쓴 칸은
@@ -371,9 +384,34 @@ function summarizeTo(text, limit) {
   return s.length <= limit ? s : Array.from(last).slice(0, limit).join("");
 }
 
+// 연습 모드: 말이 와전되며 내려가고(일부러 바꾸기·낱말 빠짐·요약), 말단이 들은 말대로 한 행동으로 손익을 계산합니다
+const PRACTICE_LIES = ["일단 쉬어도 된대", "사장님이 알아서 하래", "대충 해도 된대", "이건 내 공으로 하자"];
 function practiceEvent() {
-  const c = game.company;
-  c.rounds[game.round].result = businessResult(c);
+  const c = game.company, r = c.rounds[game.round];
+  prepareBusinessRound(c);
+  let heard = String(r.order || "");
+  const down = [], downLie = [];
+  r.chain.forEach((id, k) => {
+    const x = candidateById(c, id);
+    const roll = r.executionRolls?.[k] || { change: Math.random(), follow: Math.random() };
+    const lie = (x.honesty <= 3 || x.loyalty <= 2) && roll.change < 0.5;
+    if (lie) heard = PRACTICE_LIES[Math.floor(roll.follow * PRACTICE_LIES.length) % PRACTICE_LIES.length];
+    else {
+      const words = heard.split(/\s+/).filter(Boolean);
+      const kept = words.filter((w, i) => i === words.length - 1 || Math.random() > (10 - x.skill) / 25);
+      heard = kept.join(" ");
+    }
+    heard = summarizeTo(heard, rankInfo(x.rank).chars) || "…";
+    down.push({ say: heard, lie });
+    downLie.push(lie);
+  });
+  const action = parseHeardAction(heard, c);
+  const reportLie = r.chain.map((id, k) => {
+    const x = candidateById(c, id);
+    return (r.executionRolls?.[k]?.honest ?? Math.random()) > Math.min(0.98, Math.max(0.25, 0.20 + x.honesty * 0.075 + x.secure * 0.001));
+  });
+  relayExecute(c, action, downLie, reportLie);
+  r.result = businessResult(c, { down }, "");
 }
 
 function findReport(obj, depth = 0) {

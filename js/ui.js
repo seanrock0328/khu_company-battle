@@ -2271,7 +2271,7 @@ function aiTips() {
     "💡 회사 매출은 실제 고객·광고·계약에서 나와요",
     `💡 실제 행동을 맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}!`,
     `💡 사원은 지시를 ${rankInfo("사원").chars}자까지만 전달해요`,
-    "💡 정직도는 입사 후에야 알 수 있어요",
+    "💡 정직도가 낮은 직원은 보고를 부풀리기 쉬워요",
     "💡 충성심이 0이 되면 짐을 싸서 퇴사해요",
     "💡 사장 필살기는 한 판에 딱 한 번!",
     "💡 보고는 올라갈수록 부풀려져요. 단서를 의심하세요",
@@ -2431,7 +2431,7 @@ function renderInterview(index) {
       <div class="stats">
         ${statBar("능력", x.skill)}
         ${statBar("운", x.luck, "luck")}
-        <div class="stat hidden-stat"><span><i aria-hidden="true">🔒</i>정직</span><div class="bar locked"><i></i></div><b>???</b></div>
+        ${statBar("정직", x.honesty)}
       </div>
       <div class="cand-foot">
         <span class="salary"><span aria-hidden="true">💰</span> 분기 급여 <b>${money(x.salary * COST_PER_SALARY, false)}</b></span>

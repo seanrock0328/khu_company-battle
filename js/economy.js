@@ -131,6 +131,35 @@ function executePlan(c) {
   return r.execution;
 }
 
+// 직원 대화가 와전되어 내려간 결과를 실행으로 확정합니다. action = 말단 사원이 들은 말대로 한 행동.
+// downLie[k]: k번째 직원이 일부러 말을 바꿨는지, reportLie[k]: 지시와 달리 했는데 지시대로 했다고 보고하는지 (staff 순서)
+function relayExecute(c, rawAction, downLie = [], reportLie = []) {
+  const r = c.rounds[game.round];
+  prepareBusinessRound(c);
+  const action = normalizeAction(rawAction, c, r.actionBudget).action;
+  const followed = sameAction(r.plan.action, action);
+  const steps = r.chain.map((id, k) => ({ id, action: { ...action }, changed: !!downLie[k], mode: downLie[k] ? "lie" : "relay",
+    downLie: !!downLie[k], reportLie: !!reportLie[k] && !followed }));
+  r.execution = { steps, action, followed, relay: true };
+  r.economics = calculateBusiness(c, action, game.round, r.marketRoll);
+  r.guessOptions = actionOptions(r);
+  return r.execution;
+}
+
+// 직원이 들은 말을 실행 항목으로 바꿉니다 (연습 모드, 그리고 AI가 실제 행동 숫자를 빠뜨렸을 때). 들은 말에 없는 항목은 0.
+function parseHeardAction(text, c) {
+  const a = emptyAction(), s = String(text || "");
+  const n = Math.min(30, Number(s.match(/(\d+)\s*(?:%|퍼센트|프로)/)?.[1] || 10));
+  const down = /줄|낮|내려|내리|할인|감소|인하|깎/.test(s);
+  if (/광고/.test(s) && c.business?.type === "ads") a.ads = down ? -n : n;
+  if (/요금|가격|구독료|수수료|받아|할인|단가|값/.test(s)) a.price = down ? -n : n;
+  if (/원가|절감|아껴/.test(s)) a.efficiency = n;
+  if (/홍보|마케팅|이벤트/.test(s) || (/광고/.test(s) && c.business?.type !== "ads")) a.marketing = n;
+  if (/시설|증설|확장|늘려 받/.test(s)) a.capacity = n;
+  if (/품질|개선|사과|점검|서비스|친절/.test(s)) a.quality = /나쁘|떨어|대충/.test(s) ? -n : n;
+  return a;
+}
+
 function actionOptions(r) {
   const options = [];
   const add = a => { if (!options.some(x => sameAction(x, a))) options.push({ ...a }); };
@@ -192,12 +221,14 @@ function businessResult(c, narrative = {}, model = "") {
     return typeof summarizeTo === "function" ? summarizeTo(text, limit) : text.slice(0, limit); // 자르지 않고 요약 (js/ai.js)
   };
   return {
-    down: steps.map((s, k) => ({ say: say(narrative.down?.[k], shortAction(s.action), s.id), lie: false })),
+    down: steps.map((s, k) => ({ say: say(narrative.down?.[k], shortAction(s.action), s.id), lie: !!s.downLie })),
     up: [...steps].reverse().map((s, k) => ({ say: say(narrative.up?.[k], s.reportLie ? "지시대로 했습니다!" : shortAction(execution.action), s.id), lie: s.reportLie })),
     action: actionLabel(execution.action), followed: execution.followed,
     news: `'${c.name}', ${BUSINESS_TYPES[c.business.type].name}로 분기 영업이익 ${money(r.economics.operatingProfit)}`,
     reason: r.economics.demandNote,
-    audit: steps.filter(s => s.changed).map(s => `${candidateById(c, s.id).name}: ${actionLabel(s.action)}`).join(" → ") || "전 직원이 지시를 그대로 전달했습니다.",
+    audit: execution.relay
+      ? `${steps.filter(s => s.downLie).map(s => candidateById(c, s.id).name).join(", ") || "아무도 일부러 바꾸진 않았지만"}${steps.some(s => s.downLie) ? "이(가) 말을 바꿨고" : ""} 말단이 들은 말대로 '${actionLabel(execution.action)}'을(를) 했습니다.`
+      : steps.filter(s => s.changed).map(s => `${candidateById(c, s.id).name}: ${actionLabel(s.action)}`).join(" → ") || "전 직원이 지시를 그대로 전달했습니다.",
     clues: readClues(narrative.clues, steps.map(s => candidateById(c, s.id).name)),
     over, practice: !model || r.plan.practice, model
   };

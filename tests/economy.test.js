@@ -227,3 +227,33 @@ test("여러 업종·전략의 4분기 수익이 수정하지 않은 서버 허�
     assert.ok(bounds.min>=-40000 && bounds.max<=42400,`${type}: ${JSON.stringify(bounds)}`);
   }
 });
+
+test("직원 대화가 와전되면 말단 사원이 들은 말대로 한 행동으로 손익을 계산한다", () => {
+  const run = setup();
+  run(`c.rounds[0] = { order: "요금 10% 내려", result: null }; prepareBusinessRound(c);
+    applyPlan(JSON.stringify({ action: { ...emptyAction(), price: -10 } }), "테스트");
+    var n = c.rounds[0].chain.length;
+    var down = Array.from({ length: n }, (_, k) => ({ say: k < n - 1 ? "요금 내려" : "홍보해", lie: k === 1 }));`);
+  run(`applyEvent(JSON.stringify({ down, actual: { price: 0, ads: 0, marketing: 10, quality: 0, efficiency: 0, capacity: 0 }, up: [] }), "테스트");`);
+  assert.equal(run("c.rounds[0].execution.action.marketing"), 10);
+  assert.equal(run("c.rounds[0].execution.action.price"), 0);
+  assert.equal(run("c.rounds[0].execution.followed"), false);
+  assert.equal(run("c.rounds[0].result.down[1].lie"), true);
+  assert.equal(run("c.rounds[0].economics.operatingProfit"), run("calculateBusiness(c, c.rounds[0].execution.action, 0, c.rounds[0].marketRoll).operatingProfit"));
+  // 실제 행동 숫자가 없으면 마지막 직원이 들은 말("홍보해")을 해석한다
+  run(`c.rounds[0].result = null; applyEvent(JSON.stringify({ down, up: [] }), "테스트");`);
+  assert.equal(run("c.rounds[0].execution.action.marketing"), 10);
+  assert.equal(run("c.rounds[0].execution.action.price"), 0);
+});
+
+test("연습 모드도 말이 와전되며 내려가고, 일부러 '쉬어도 된대'로 바뀌면 말단은 아무것도 안 한다", () => {
+  const run = setup();
+  run(`staffOf(c).forEach(x => { x.honesty = 1; });
+    c.rounds[0] = { order: "요금 10% 내려", result: null }; prepareBusinessRound(c);
+    c.rounds[0].executionRolls.forEach(r => { r.change = 0; r.follow = 0; });
+    applyPlan(JSON.stringify({ action: { ...emptyAction(), price: -10 } }), "");
+    practiceEvent();`);
+  assert.equal(run("actionLabel(c.rounds[0].execution.action)"), "기존 방식 유지");
+  assert.equal(run("c.rounds[0].execution.followed"), false);
+  assert.ok(run("c.rounds[0].result.down.every(x => x.lie)"));
+});
