@@ -2433,18 +2433,9 @@ function renderInterview(index) {
         ${statBar("운", x.luck, "luck")}
         <div class="stat hidden-stat"><span><i aria-hidden="true">🔒</i>정직</span><div class="bar locked"><i></i></div><b>???</b></div>
       </div>
-      <div class="interview-questions" aria-label="${esc(x.name)}에게 할 질문">
-        ${INTERVIEW_QUESTIONS.map(q => `<button class="secondary small q-btn" data-action="ask" data-id="${x.id}" data-question="${q.id}" aria-pressed="${x.interviewed.includes(q.id)}">${esc(q.label)}${x.interviewed.includes(q.id) ? " ✓" : ""}</button>`).join("")}
-      </div>
-      <div class="qa-list">
-      ${x.interviewed.length ? x.interviewed.map((id, k) => `<div class="qa ${newAnswer && k === x.interviewed.length - 1 ? "fresh" : ""}">
-        <p class="q">${esc(INTERVIEW_QUESTIONS.find(q => q.id === id).question)}</p>
-        <p class="a">${esc(interviewAnswer(x, id))}</p>
-      </div>`).join("") : '<p class="hint qa-empty">질문을 골라 답변을 들어 보세요. 면접 답변이 모두 진실일까요?</p>'}
-      </div>
       <div class="cand-foot">
         <span class="salary"><span aria-hidden="true">💰</span> 분기 급여 <b>${money(x.salary * COST_PER_SALARY, false)}</b></span>
-        <button class="${hired ? "secondary" : "primary"} small hire-btn" data-action="hire" data-id="${x.id}" ${!x.interviewed.length ? "disabled" : ""}>${hired ? "채용됨 ✓" : "채용"}</button>
+        <button class="${hired ? "secondary" : "primary"} small hire-btn" data-action="hire" data-id="${x.id}">${hired ? "채용됨 ✓" : "채용"}</button>
       </div>
       ${hired ? stamp("합격!", `hire-stamp${fresh === x.id ? " fresh" : ""}`) : ""}
     </article>`;

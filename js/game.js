@@ -432,7 +432,7 @@ function endingFor(c) {
 
 function endingShareText(c) {
   const ending = endingFor(c);
-  return `🏢 10자 사원 주식회사 · 1년 4분기 결산\n${c.name} / 사장 ${c.player}\n${ending.title}\n통장 잔액 ${money(cashBalance(c), false)} · 순이익 ${money(totalProfit(c))}\n${ending.text}`;
+  return `🏢 MZ상사 · 1년 4분기 결산\n${c.name} / 사장 ${c.player}\n${ending.title}\n통장 잔액 ${money(cashBalance(c), false)} · 순이익 ${money(totalProfit(c))}\n${ending.text}`;
 }
 
 function hireCandidate(c, rank, id) {
@@ -440,7 +440,6 @@ function hireCandidate(c, rank, id) {
   if (id === null) return `${HIRE_RANKS.length}자리를 모두 채워야 해요. 이 자리에도 한 명을 뽑아 주세요.`;
   const x = candidateById(c, id);
   if (!x || x.rank !== rank || x.quit) return "이 직급의 면접 후보를 골라 주세요.";
-  if (!x.interviewed.length) return "질문을 하나 이상 하고 답변을 들어 본 뒤 채용해 주세요.";
   const before = c.hires[rank];
   c.hires[rank] = id;
   if (payroll(c) > budgetOf(c)) {

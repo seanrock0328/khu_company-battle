@@ -682,7 +682,7 @@
           </div>
           <div class="idc-sheet">
             <div class="idc-strip">
-              <span class="idc-logo"><i aria-hidden="true">10자</i>사원 주식회사</span>
+              <span class="idc-logo"><i aria-hidden="true">MZ</i>상사</span>
               <span class="idc-kind"><span class="k-login">사원증</span><span class="k-signup">입사 서류</span></span>
             </div>
             <div class="idc-ranks" aria-hidden="true"></div>
@@ -728,7 +728,7 @@
         <p class="g-lead" id="resume-lead">이어서 하거나, 새 회사를 차릴 수 있어요.</p>
         <article class="doc" aria-labelledby="resume-title">
           <div class="doc-head">
-            <p class="doc-name"><small>10자 사원 주식회사</small><b>결재 서류</b></p>
+            <p class="doc-name"><small>MZ상사</small><b>결재 서류</b></p>
             <div class="doc-approve" aria-hidden="true">
               <span class="doc-stamp"></span>
               <div class="doc-sign">

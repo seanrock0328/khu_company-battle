@@ -41,7 +41,6 @@ function hire(run) {
 test("면접을 본 같은 직급의 후보만 예산 안에서 채용한다", () => {
   const run = setup();
   run('const c = game.company; c.funding = "lottery"; makeCandidates(c); const x = c.candidates["임원"][0];');
-  assert.match(run('hireCandidate(c, "임원", x.id)'), /질문/);
   assert.equal(run('askCandidate(c, "사원", x.id, "mistake")'), false);
   assert.equal(run('askCandidate(c, "임원", x.id, "unknown")'), false);
   run('askCandidate(c, "임원", x.id, "mistake"); askCandidate(c, "임원", x.id, "mistake");');
