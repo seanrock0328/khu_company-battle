@@ -258,10 +258,39 @@ function applyPlan(text, model) {
   const c = game.company, r = c.rounds[game.round];
   if (r.plan) return;
   prepareBusinessRound(c);
-  const d = parseJson(text);
+  const d = findPlan(parseJson(text)) || {};
   const normalized = normalizeAction(d.action, c, r.actionBudget);
   r.plan = { ...normalized, explanation: String(d.explanation || "지시를 실행 항목으로 옮겼습니다.").slice(0, 120), practice: !model };
   executePlan(c);
+}
+
+// ChatKHU가 action을 한 겹 더 감싸거나({"result":{"action":…}}), 대문자 키·"10"·"-20%" 같은 글자로 줄 때가 있어 맞춰 읽습니다.
+// action 없이 항목만 바로 준 답({"price":10,…})도 받습니다. 못 찾으면 null → normalizeAction이 오류를 냅니다.
+function findPlan(obj, depth = 0) {
+  if (!obj || typeof obj !== "object" || depth > 3) return null;
+  const keyOf = (o, name) => Object.keys(o).find(k => k.toLowerCase() === name);
+  const toNumbers = a => {
+    if (!a || typeof a !== "object" || Array.isArray(a)) return a;
+    const out = {};
+    for (const f of ACTION_FIELDS) {
+      const k = keyOf(a, f);
+      let v = k === undefined ? 0 : a[k];
+      if (typeof v === "string" && /^\s*[+-]?\d+(\.\d+)?\s*%?\s*$/.test(v)) v = Number(v.replace(/[%\s+]/g, ""));
+      out[f] = v;
+    }
+    return out;
+  };
+  const ak = keyOf(obj, "action");
+  if (ak && obj[ak] && typeof obj[ak] === "object") {
+    const ek = keyOf(obj, "explanation");
+    return { action: toNumbers(obj[ak]), explanation: ek ? obj[ek] : undefined };
+  }
+  if (!Array.isArray(obj) && ACTION_FIELDS.filter(f => keyOf(obj, f) !== undefined).length >= 3) return { action: toNumbers(obj) };
+  for (const v of Array.isArray(obj) ? obj : Object.values(obj)) {
+    const found = findPlan(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 function practicePlan() {
