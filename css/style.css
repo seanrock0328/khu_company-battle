@@ -3205,3 +3205,10 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 .action-guess input { flex: 0 0 auto; width: 18px; height: 18px; }
 .action-guess label:has(input:checked) { outline: 2px solid var(--money); }
 .business-explanation { margin: 12px 0; padding: 12px; background: var(--surface-2); border-radius: 8px; }
+
+/* MZ상사 로고: 크고 진한 '상사' 왼쪽 위에 빨간 MZ 도장을 비스듬히 찍은 모양 */
+#screen-found .title-logo { position: relative; display: inline-block; padding: clamp(26px, 4.2vw, 40px) 0 0 clamp(48px, 7vw, 74px); }
+#screen-found .title-name { margin: 0; font-size: calc(var(--fs-hero) * 1.9); line-height: 1; letter-spacing: .02em; -webkit-text-stroke: 3px currentColor; }
+#screen-found .title-stamp { position: absolute; left: 0; top: 0; z-index: 2; font-size: calc(var(--fs-hero) * .62); height: 1.3em; padding: 0 .28em; border-width: 5px; rotate: -14deg; }
+.logo-stamp { position: relative; z-index: 2; height: 24px; padding: 0 5px; font-size: 15px; border-width: 2px; translate: 0 -8px; margin-right: -12px; rotate: -10deg; }
+.logo-name { font-size: 1.3em; -webkit-text-stroke: .6px currentColor; }
