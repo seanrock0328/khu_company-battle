@@ -65,9 +65,10 @@ function renderSettingsButton() {
   const btn = document.getElementById("btn-settings");
   const model = CHATKHU_MODELS.find(m => m.id === getModel());
   const shown = model ? model.name.replace(/ \(.*\)/, "") : getModel();
-  const full = hasAI() ? `ChatKHU · ${shown} · ${aiSourceLabel()}` : "ChatKHU 연결";
+  const src = getApiKey() ? ` · ${aiSourceLabel()}` : ""; // 팀 서버는 플레이어에게 따로 표시하지 않아요 (개인 키일 때만)
+  const full = hasAI() ? `ChatKHU · ${shown}${src}` : "ChatKHU 연결";
   btn.innerHTML = hasAI()
-    ? `<span aria-hidden="true">🔌</span><span class="pill-text"> ChatKHU</span><small class="pill-more"> · ${esc(shown)} · ${esc(aiSourceLabel())}</small>`
+    ? `<span aria-hidden="true">🔌</span><span class="pill-text"> ChatKHU</span><small class="pill-more"> · ${esc(shown)}${esc(src)}</small>`
     : `<span aria-hidden="true">⚠️</span><span class="pill-text"> ChatKHU 연결</span>`;
   btn.title = full;
   btn.setAttribute("aria-label", full);
@@ -3474,9 +3475,12 @@ function renderSettings() {
   document.getElementById("model-select").innerHTML = CHATKHU_MODELS.map(m =>
     `<option value="${esc(m.id)}" ${m.id === getModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
   document.getElementById("key-input").value = "";
+  // 개인 키 칸은 개발용: 주소에 ?dev 를 붙였거나 이미 키가 저장된 브라우저에서만 보여요
+  const dev = new URLSearchParams(location.search).has("dev") || !!getApiKey();
+  document.querySelectorAll("#screen-settings .dev-only").forEach(el => { el.hidden = !dev; });
   document.getElementById("key-state").textContent = getApiKey()
     ? "✅ 내 키가 저장되어 있어요. 지금은 팀 서버 대신 내 키로 ChatKHU를 불러요."
-    : TEAM_SERVER_URL ? "✅ 팀 서버로 연결돼 있어요. 키를 넣지 않아도 됩니다." : "아직 연결이 없어요. 키를 넣어 주세요.";
+    : TEAM_SERVER_URL ? "✅ ChatKHU에 연결돼 있어요." : "아직 ChatKHU 연결이 없어요.";
   document.getElementById("btn-key-clear").hidden = !getApiKey();
 }
 
