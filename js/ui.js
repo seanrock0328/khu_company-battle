@@ -2533,7 +2533,7 @@ function renderDecisionTools() {
   document.body.classList.add("choosing"); // 고르는 동안은 파고들기/칭찬하기 한 쌍이 화면의 주인공
   box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
     <h3>📎 보고 옆에 놓인 단서</h3>
-    <div class="clue-list">${cluesFor(round).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
+    <div class="clue-list">${cluesFor(round, { seed: game.company.gameId || `${game.company.player}|${game.company.name}`, quarter: game.round, event: game.company.events?.[game.round] }).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
     <p class="hint">일부 상황만 담긴 단서입니다. 보고와 비교해 보세요. 성공 여부를 확정하는 증거는 아닙니다.</p>
     </section>${powerPanel("after")}
     ${round.power === "visit" ? `<section class="visit-result" aria-label="현장 출동 결과">

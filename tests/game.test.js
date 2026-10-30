@@ -333,6 +333,31 @@ test("추리 단서는 점수·진실 원문을 노출하지 않고 성공·실�
   assert.doesNotMatch(a, /59|60|비밀|실패|성공/);
 });
 
+test("추리 단서는 분기마다 다른 출처로 나오고, 같은 분기는 다시 그려도 같다", () => {
+  const run = setup();
+  const clues = (q, score, lie, title) => JSON.parse(run(`JSON.stringify(cluesFor({ result: { score: ${score}, up: [{ lie: ${lie} }] } }, { seed: "판-7", quarter: ${q}, event: { title: ${JSON.stringify(title)} } }))`));
+  const src = text => text.split(/[ :]/)[0];
+  const four = [0, 1, 2, 3].map(q => clues(q, 59, true, "서버 다운"));
+  assert.equal(new Set(four.map(x => src(x[0]))).size, 4);
+  assert.equal(new Set(four.map(x => src(x[1]))).size, 4);
+  assert.deepEqual(clues(2, 59, true, "서버 다운"), clues(2, 59, true, "서버 다운"));
+  // 출처는 점수·거짓말과 상관없이 정해져서 단서로 답이 새지 않습니다. 같은 구간 안에서는 문장도 같습니다
+  assert.deepEqual(clues(1, 46, true, "서버 다운"), clues(1, 79, true, "서버 다운"));
+  assert.deepEqual(clues(1, 59, true, "서버 다운"), clues(1, 60, true, "서버 다운"));
+  assert.equal(src(clues(1, 10, false, "서버 다운")[0]), src(clues(1, 95, true, "서버 다운")[0]));
+  assert.equal(src(clues(1, 10, false, "서버 다운")[1]), src(clues(1, 95, true, "서버 다운")[1]));
+  assert.match(clues(0, 59, true, "서버 다운")[0], /\('서버 다운' 건\)/);
+  assert.doesNotMatch(clues(0, 59, true, "아주 긴 이벤트 제목이 여기까지 이어집니다")[0], /건\)/);
+  assert.notDeepEqual(clues(0, 59, true, "서버 다운"), JSON.parse(run('JSON.stringify(cluesFor({ result: { score: 59, up: [{ lie: true }] } }, { seed: "판-8", quarter: 0, event: { title: "서버 다운" } }))')));
+});
+
+test("모든 추리 단서 문장은 점수 숫자나 성공·실패를 직접 말하지 않는다", () => {
+  const run = setup();
+  const all = JSON.parse(run("JSON.stringify([...CLUE_RESULT.flatMap(x => [...x.low, ...x.mid, ...x.high]), ...CLUE_PROCESS.flatMap(x => [...x.lie, ...x.honest])])"));
+  assert.ok(all.length >= 50);
+  for (const text of all) assert.doesNotMatch(text, /\d|성공|실패|점수/);
+});
+
 for (const [score, returned] of [[0, 500], [59, 500], [60, 1600], [100, 1600]]) {
   test(`성과 ${score}점일 때 투자금 회수는 ${returned}만원이며 원금을 한 번만 정산한다`, () => {
     const run = setup();
