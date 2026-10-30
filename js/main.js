@@ -57,7 +57,7 @@ async function autoRunAI() {
     } catch (err) {
       console.warn("ChatKHU 답변 형식 오류", attempt, err.message, answer.slice(0, 500));
       if (attempt >= 2) {
-        setAIState("error", err.message);
+        setAIState("error", "답이 이상하게 왔어요. '다시 시도'를 눌러 주세요."); // 자세한 이유는 위 console.warn에
         return;
       }
     }

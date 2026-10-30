@@ -1294,7 +1294,7 @@
       // 서버에 저장소가 없거나 접속 실패(8초 안에 답 없음 포함): 로그인 없이 지금처럼
       if (document.getElementById("screen-auth-wait").classList.contains("active")) {
         startGame();
-        if (failed) toast("팀 서버가 답하지 않아 로그인 없이 시작해요. 새로고침하면 다시 연결해요.");
+        if (failed) toast("서버에 연결하지 못해 로그인 없이 시작해요. 새로고침하면 다시 연결해요.");
       }
       return;
     }

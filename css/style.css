@@ -3216,9 +3216,10 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 #screen-found .title-stamp, .logo-stamp { mix-blend-mode: normal; background: color-mix(in srgb, var(--paper, #fffdf7) 88%, transparent); }
 .logo-stamp { height: 26px; font-size: 16px; }
 
-/* ChatKHU가 필수라 대기 화면을 깔끔하게: 연습 모드·복사 붙여넣기 버튼은 숨기고(코드는 테스트용으로 남김),
+/* 출시 화면 정리: 연습 모드·복사 붙여넣기(ChatKHU 필수), 순위표 관리자 줄은 플레이어에게 숨기고 ?dev(html.dev)에서만 보여요.
    쓰는 중 안내는 타이머 한 줄(⏱ N초 · 보통 10~40초)로 합칩니다. 글은 화면 읽기 프로그램에는 그대로 읽혀요 */
-#manual-box, #screen-ai .practice-row { display: none; }
+html:not(.dev) #manual-box, html:not(.dev) #screen-ai .practice-row,
+html:not(.dev) #screen-board .admin, html:not(.dev) #board-admin { display: none !important; }
 #screen-ai[data-state="busy"] #ai-status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
 
 /* 로딩 화면 '게임 방법' 카드: 기다리는 동안만 보여요 (실패·연결 없음 화면은 깔끔하게) */

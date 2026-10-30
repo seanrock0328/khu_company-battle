@@ -370,11 +370,11 @@ test("게임: 처음 서버 확인이 8초 안에 안 되면 로그인 없이 �
   await c.advance(0);
   assert.equal(c.state.screen, "screen-auth-wait");
   await c.advance(8000);
-  assert.match(c.run("log.join('|')"), /startGame\|팀 서버가 답하지 않아 로그인 없이 시작해요/);
+  assert.match(c.run("log.join('|')"), /startGame\|서버에 연결하지 못해 로그인 없이 시작해요/);
   assert.equal(c.requests.filter(r => r.path === "/me").length, 0);
 });
 
-test("게임: 팀 서버가 AI 답을 110초 동안 안 주면 다시 시도·붙여넣기·연습 모드 안내로 끝난다", async () => {
+test("게임: 팀 서버가 AI 답을 110초 동안 안 주면 '다시 시도' 안내로 끝난다", async () => {
   const c = loadClient({ token: "", respond: (p, body, init) => p === "/" && body ? hangingFetch(p, init) : okServer(p) });
   await c.advance(0);
   let error = null;
@@ -383,7 +383,7 @@ test("게임: 팀 서버가 AI 답을 110초 동안 안 주면 다시 시도·�
   assert.equal(error, null, "110초 전에는 기다림");
   await c.advance(1000);
   assert.match(error.message, /110초 동안 답하지 않았어요/);
-  assert.match(error.message, /연습 모드/);
+  assert.match(error.message, /다시 시도/);
 });
 
 // ===== 순위표 관리자: 하나씩 지우기·초기화 =====

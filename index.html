@@ -6,11 +6,13 @@
   <meta name="theme-color" content="#f5efe4" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#15121c" media="(prefers-color-scheme: dark)">
   <title>MZ상사</title>
+  <!-- 개발·운영용 화면(개인 키, 순위표 관리자, 붙여넣기·연습 모드)은 주소에 ?dev 를 붙였을 때만 보여요 -->
+  <script>if (new URLSearchParams(location.search).has("dev")) document.documentElement.classList.add("dev");</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
   <!-- 배포할 때마다 아래 ?v= 값을 함께 바꿔 주세요. 브라우저가 예전 CSS·JS를 쓰지 않고 바로 새 파일을 받습니다 -->
-  <link rel="stylesheet" href="css/style.css?v=20261030-10">
+  <link rel="stylesheet" href="css/style.css?v=20261030-11">
 </head>
 <body data-screen="screen-found">
   <!-- HUD: 왼쪽 = 목표·진행, 오른쪽 = 자원·버튼 -->
@@ -264,13 +266,13 @@
   <div id="toast" role="status"></div>
 
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결. ?v= 값은 위 CSS 줄과 같이 바꿔 주세요 -->
-  <script src="data/presets.js?v=20261030-10"></script>
-  <script src="js/game.js?v=20261030-10"></script>
-  <script src="js/economy.js?v=20261030-10"></script>
-  <script src="js/ai.js?v=20261030-10"></script>
-  <script src="js/ui.js?v=20261030-10"></script>
-  <script src="js/board-sync.js?v=20261030-10"></script>
-  <script src="js/main.js?v=20261030-10"></script>
-  <script src="js/account.js?v=20261030-10"></script>
+  <script src="data/presets.js?v=20261030-11"></script>
+  <script src="js/game.js?v=20261030-11"></script>
+  <script src="js/economy.js?v=20261030-11"></script>
+  <script src="js/ai.js?v=20261030-11"></script>
+  <script src="js/ui.js?v=20261030-11"></script>
+  <script src="js/board-sync.js?v=20261030-11"></script>
+  <script src="js/main.js?v=20261030-11"></script>
+  <script src="js/account.js?v=20261030-11"></script>
 </body>
 </html>

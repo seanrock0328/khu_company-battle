@@ -71,8 +71,8 @@ async function callTeamServer(prompt) {
       body: JSON.stringify({ prompt, model: getModel() })
     }, AI_TIMEOUT_MS);
   } catch (e) {
-    if (e.timeout) throw new Error(`팀 서버가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 아래 '복사·붙여넣기로 하기'나 연습 모드로 진행해 주세요.`);
-    throw new Error("팀 서버에 접속하지 못했어요. 인터넷 연결을 확인하거나 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
+    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 잠시 후 '다시 시도'를 눌러 주세요.`);
+    throw new Error("ChatKHU에 연결하지 못했어요. 인터넷 연결을 확인하고 '다시 시도'를 눌러 주세요.");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -102,8 +102,8 @@ async function callChatKHU(prompt) {
       })
     }, AI_TIMEOUT_MS);
   } catch (e) {
-    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 아래 '복사·붙여넣기로 하기'나 연습 모드로 진행해 주세요.`);
-    throw new Error("브라우저에서 ChatKHU에 접속하지 못했어요. 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
+    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 잠시 후 '다시 시도'를 눌러 주세요.`);
+    throw new Error("브라우저에서 ChatKHU에 접속하지 못했어요. 인터넷 연결을 확인하고 '다시 시도'를 눌러 주세요.");
   }
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 150);

@@ -2329,7 +2329,7 @@ function renderFoundingNews() {
   document.getElementById("founding-news").innerHTML = `
     <article class="news founding">
       <div class="masthead"><span>창간 특집</span><b>경희경제신문</b><span>${esc(today())}</span></div>
-      <p class="paper">오늘의 창업 <span>${c.foundingByAI ? `ChatKHU 작성${c.foundingModel ? " · " + esc(c.foundingModel) : ""}` : "연습 모드"}</span></p>
+      <p class="paper">오늘의 창업 <span>${c.foundingByAI ? "ChatKHU 작성" : "연습 모드"}</span></p>
       <h3>${esc(c.news)}</h3>
       ${companyTitle(c)}
       <p class="detail">${esc(c.detail)}</p>
@@ -3142,7 +3142,7 @@ async function renderTruth() {
     const verdict = document.createElement("article");
     verdict.className = `news verdict ${round.success ? "good" : "bad"}`;
     verdict.innerHTML = `
-      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `직원 연기${r.model ? " · " + esc(r.model) : ""}`}</span></p>
+      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : "직원 연기"}</span></p>
       <h3>${esc(r.news)}</h3>
       <div class="verdict-row">
         ${stamp(closed ? "휴업" : round.success ? "승인" : "반려", `verdict-stamp ${round.success ? "ok" : "no"}`)}
@@ -3482,7 +3482,7 @@ function renderSettings() {
     `<option value="${esc(m.id)}" ${m.id === getModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
   document.getElementById("key-input").value = "";
   // 개인 키 칸은 개발용: 주소에 ?dev 를 붙였거나 이미 키가 저장된 브라우저에서만 보여요
-  const dev = new URLSearchParams(location.search).has("dev") || !!getApiKey();
+  const dev = document.documentElement.classList.contains("dev") || !!getApiKey();
   document.querySelectorAll("#screen-settings .dev-only").forEach(el => { el.hidden = !dev; });
   document.getElementById("key-state").textContent = getApiKey()
     ? "✅ 내 키가 저장되어 있어요. 지금은 팀 서버 대신 내 키로 ChatKHU를 불러요."
