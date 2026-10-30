@@ -2,33 +2,80 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5efe4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15121c" media="(prefers-color-scheme: dark)">
   <title>10자 사원 주식회사</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-  <header>
-    <div class="top-buttons">
-      <button id="btn-settings" class="pill"></button>
-      <button id="btn-board" class="pill">🏆 순위표</button>
+<body data-screen="screen-found">
+  <!-- HUD: 왼쪽 = 목표·진행, 오른쪽 = 자원·버튼 -->
+  <header class="hud" id="hud">
+    <div class="hud-bar">
+      <h1 class="logo" aria-label="10자 사원 주식회사"><span class="logo-stamp" aria-hidden="true">10자</span><span class="logo-name" aria-hidden="true">사원 주식회사</span></h1>
+      <ol class="steps" aria-label="게임 진행 단계">
+        <li data-step="found"><span class="step-dot" aria-hidden="true">1</span><span class="step-name">창업</span></li>
+        <li data-step="interview"><span class="step-dot" aria-hidden="true">2</span><span class="step-name">면접</span></li>
+        <li data-step="event"><span class="step-dot" aria-hidden="true">3</span><span class="step-name">경영 4분기</span></li>
+        <li data-step="final"><span class="step-dot" aria-hidden="true">4</span><span class="step-name">결산</span></li>
+      </ol>
+      <div class="hud-goal" id="hud-goal"></div>
+      <div class="hud-res" id="hud-res"></div>
+      <div class="top-buttons">
+        <button id="btn-sound" class="icon-btn" type="button" aria-pressed="true" aria-label="효과음" title="효과음 켜기/끄기"><span aria-hidden="true">🔊</span></button>
+        <button id="btn-settings" class="pill"></button>
+        <button id="btn-board" class="pill"><span aria-hidden="true">🏆</span> 순위표</button>
+      </div>
     </div>
-    <h1>10자 사원 주식회사</h1>
-    <p class="sub">지시는 내려갈수록 짧아지고, 보고는 올라갈수록 부풀려진다</p>
-    <ol class="steps">
-      <li data-step="found">창업</li>
-      <li data-step="interview">면접</li>
-      <li data-step="event">경영 4분기</li>
-      <li data-step="final">결산</li>
-    </ol>
   </header>
 
-  <main>
-    <!-- 1. 창업 -->
-    <section id="screen-found" class="screen active" data-step="found">
-      <h2>회사를 차리세요</h2>
-      <p class="lead">업종은 ChatKHU가 랜덤으로 뽑고, 무슨 일을 하는 회사인지는 사장님이 정합니다. 순위는 업종 상관없이 수익으로!</p>
-      <div class="solo"><div class="card" id="found-box"></div></div>
-      <button id="btn-found" class="primary block">창업하기</button>
+  <main id="main">
+    <!-- 사무실 무대: 면접부터 결산까지 계속 보입니다 (ui.js가 그림) -->
+    <aside id="office" class="office" aria-label="우리 회사 사무실"></aside>
+
+    <!-- 사내 단톡방: 경영 중 계속 돌아가고, 보고와 진실도 여기로 올라옵니다 -->
+    <aside id="talk" class="talk" aria-label="사내 단톡방">
+      <button type="button" class="talk-toggle" id="talk-toggle" aria-expanded="false" aria-controls="talk-feed">
+        <span class="talk-room"><b id="talk-name">사내 단톡방</b><small id="talk-members">👥 1</small></span>
+        <span class="talk-peek" id="talk-peek"></span>
+        <span class="talk-unread" id="talk-unread" hidden>0</span>
+        <span class="talk-chev" aria-hidden="true"></span>
+      </button>
+      <div class="talk-feed" id="talk-feed" role="log" aria-label="단톡방 메시지"></div>
+      <div class="talk-foot">
+        <span class="talk-typing" id="talk-typing" aria-hidden="true"></span>
+        <button type="button" class="skip-btn" id="talk-skip" hidden>⏩ 탭하면 바로 보기</button>
+      </div>
+    </aside>
+
+    <!-- 1. 타이틀 + 창업 -->
+    <section id="screen-found" class="screen active intro" data-step="found">
+      <div class="title-screen" id="title-screen">
+        <div class="title-logo">
+          <span class="title-stamp" aria-hidden="true">10자</span>
+          <h2 class="title-name">사원 주식회사</h2>
+        </div>
+        <p class="title-tag"><span>지시는 내려갈수록 짧아지고,</span> <span>보고는 올라갈수록 부풀려진다</span></p>
+        <div class="demo" id="title-demo" aria-hidden="true"></div>
+        <button id="btn-start" class="primary cta pulse" type="button">게임 시작</button>
+        <p class="title-meta">1년 4분기 · 직원 4~6명 · 한 판 5분</p>
+        <div class="title-ranks" id="title-ranks"></div>
+      </div>
+
+      <div class="found-form">
+        <h2>회사를 차리세요</h2>
+        <p class="lead">업종은 ChatKHU가 랜덤으로 뽑고, 무슨 일을 하는 회사인지는 사장님이 정합니다. 순위는 업종 상관없이 수익으로!</p>
+        <div class="found-layout">
+          <div class="card found-card" id="found-box"></div>
+          <div class="found-side">
+            <div class="biz-card" id="found-preview" aria-live="polite"></div>
+            <button id="btn-found" class="primary block cta">창업하기</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ChatKHU 단계 (업종 뽑기, 창업, 이벤트에서 공통) -->
@@ -37,7 +84,26 @@
       <p class="lead" id="ai-lead"></p>
       <div class="solo">
         <div class="card ai-status">
-          <div id="ai-spinner" class="spinner" hidden></div>
+          <div id="ai-spinner" class="spinner ai-loader" hidden>
+            <div class="ai-desk" aria-hidden="true">
+              <div class="ai-screen">
+                <span class="ai-screen-name">ChatKHU</span>
+                <span class="ai-line l1"></span><span class="ai-line l2"></span><span class="ai-line l3"></span>
+              </div>
+              <span class="ai-paper p1"></span><span class="ai-paper p2"></span><span class="ai-paper p3"></span>
+            </div>
+            <div class="ai-crew" aria-hidden="true">
+              <span class="ava rk-1">임</span><span class="ava rk-2">부</span><span class="ava rk-3">차</span><span class="ava rk-4">과</span><span class="ava rk-5">대</span><span class="ava rk-6">사</span>
+            </div>
+            <div class="ai-progress" aria-hidden="true"><div class="ai-progress-fill" id="ai-progress-fill"></div></div>
+            <p class="ai-elapsed" id="ai-elapsed" aria-hidden="true"></p>
+            <div class="ai-thought" id="ai-thought" aria-hidden="true"></div>
+            <p class="ai-tip" id="ai-tip"></p>
+          </div>
+          <div class="ai-fail" aria-hidden="true">
+            <span class="ai-fail-ico"><span class="ai-plug">🔌</span><span class="ai-spark">⚡</span></span>
+            <span class="stamp ai-fail-stamp">연결 실패</span>
+          </div>
           <p id="ai-status-text"></p>
           <p id="ai-error" class="error" role="alert"></p>
           <div class="row center">
@@ -69,69 +135,80 @@
           </ol>
         </details>
 
-        <div class="row center">
-          <button id="btn-practice" class="secondary">ChatKHU 없이 연습 모드로 (순위 기록 안 됨)</button>
+        <div class="row center practice-row">
+          <button id="btn-practice" class="secondary">ChatKHU 없이 연습 모드로 <small class="btn-badge">연습 기록 · 순위 제외</small></button>
         </div>
       </div>
     </section>
 
     <!-- 2. 창업 뉴스 -->
     <section id="screen-news" class="screen" data-step="found">
-      <h2>창업 소식</h2>
+      <h2 class="sr-only">창업 소식</h2>
       <div class="solo" id="founding-news"></div>
-      <button id="btn-to-interview" class="primary block">면접 보러 가기</button>
+      <div class="cta-dock">
+        <button id="btn-to-interview" class="primary block cta">면접 보러 가기</button>
+      </div>
     </section>
 
     <!-- 3. 면접 -->
     <section id="screen-interview" class="screen" data-step="interview">
-      <h2>직급별 면접</h2>
-      <p class="lead">직급마다 후보 3명에게 질문하고 한 명을 뽑으세요. 능력이 좋을수록 연봉이 비싸고, <b>정직도는 입사 후에야</b> 알 수 있습니다. 면접 답변에도 허세가 섞여 있을 수 있어요.</p>
+      <div class="screen-head">
+        <h2>직급별 면접</h2>
+        <p class="lead">직급마다 후보 3명에게 질문하고 한 명을 뽑으세요. 능력이 좋을수록 연봉이 비싸고, <b>정직도는 입사 후에야</b> 알 수 있습니다. 면접 답변에도 허세가 섞여 있을 수 있어요.</p>
+      </div>
       <div id="interview"></div>
     </section>
 
-    <!-- 4. 이벤트 -->
+    <!-- 4. 이벤트 (분기 시작: 목표 → 필살기 → 지시) -->
     <section id="screen-event" class="screen" data-step="event">
-      <h2 id="event-heading"></h2>
-      <p class="profit-now" id="profit-now"></p>
+      <div class="quarter-head">
+        <h2 id="event-heading"></h2>
+        <div class="profit-now" id="profit-now"></div>
+      </div>
       <p class="lead">사장님, 100자 안에 지시를 내려 주세요. 이 말이 직원들을 거쳐 내려갑니다.</p>
-      <div class="solo" id="event-box"></div>
-      <button id="btn-run" class="primary block">지시 내리기</button>
+      <div id="event-box"></div>
+      <div class="cta-dock">
+        <button id="btn-run" class="primary block cta">지시 내리기</button>
+      </div>
     </section>
 
-    <!-- 5. 라운드 결과: 보고 → 진실 공개 → 점수 -->
+    <!-- 5. 라운드 결과: 보고 → 사장의 선택 → 진실 공개 → 판정 -->
     <section id="screen-result" class="screen" data-step="event">
-      <h2 id="result-title"></h2>
-      <p class="lead" id="result-lead"></p>
-      <div class="solo" id="result-box"></div>
-      <div class="solo" id="choice">
+      <div class="screen-head">
+        <h2 id="result-title"></h2>
+        <p class="lead" id="result-lead"></p>
+      </div>
+      <div class="result-grid" id="result-box"></div>
+      <div id="choice">
         <div class="card choice">
           <p class="choice-q">보고를 받았습니다. 사장님, 어떻게 하시겠어요?</p>
           <div class="choice-buttons">
-            <button id="btn-dig" class="choice-btn dig">🔍 파고들기<small>제대로 했는지 캐묻는다</small></button>
-            <button id="btn-praise" class="choice-btn praise">👏 칭찬하기<small>믿고 칭찬한다</small></button>
+            <button id="btn-dig" class="choice-btn dig"><span class="cb-ico" aria-hidden="true">🔍</span><span class="cb-name">파고들기</span><small>잘했으면 <b>충성심 −1</b><br>못했으면 <b>손실을 막음</b></small></button>
+            <span class="vs" aria-hidden="true">VS</span>
+            <button id="btn-praise" class="choice-btn praise"><span class="cb-ico" aria-hidden="true">👏</span><span class="cb-name">칭찬하기</span><small>잘했으면 <b>충성심 +1</b><br>못했으면 <b>−3,000만원</b></small></button>
           </div>
-          <details class="rules" open>
-            <summary>선택 규칙</summary>
-            <ul>
-              <li>칭찬했는데 <b>잘했으면</b> → 충성심 +1</li>
-              <li>칭찬했는데 <b>못했으면</b> → 회사에 큰 불이익 (−3,000만원)</li>
-              <li>파고들었는데 <b>잘했으면</b> → 서운해서 충성심 −1 (0이 되면 퇴사)</li>
-              <li>파고들었는데 <b>못했으면</b> → 문제를 미리 잡아 불이익 없음</li>
+          <details class="rules">
+            <summary>선택 규칙 자세히 보기</summary>
+            <ul class="rule-grid">
+              <li class="rule good"><span class="rule-when">👏 칭찬 + <b>잘했으면</b></span><b class="rule-then">충성심 +1</b></li>
+              <li class="rule bad"><span class="rule-when">👏 칭찬 + <b>못했으면</b></span><b class="rule-then">회사에 큰 불이익 (−3,000만원)</b></li>
+              <li class="rule warn"><span class="rule-when">🔍 파고듦 + <b>잘했으면</b></span><b class="rule-then">서운해서 충성심 −1 (0이 되면 퇴사)</b></li>
+              <li class="rule good"><span class="rule-when">🔍 파고듦 + <b>못했으면</b></span><b class="rule-then">문제를 미리 잡아 불이익 없음</b></li>
             </ul>
             <p class="hint">성과 60점 이상이면 잘 수행한 것입니다. 실패를 잡아내도 낮은 매출과 인건비는 그대로 남습니다. 단서를 보고 판단하거나, 남은 필살기로 현장 출동을 하면 실제 성과를 확인할 수 있어요.</p>
           </details>
         </div>
       </div>
-      <div class="row center">
-        <button id="btn-next" class="primary"></button>
+      <div class="cta-dock next-dock">
+        <button id="btn-next" class="primary cta block"></button>
       </div>
     </section>
 
     <!-- 6. 최종 결산 -->
     <section id="screen-final" class="screen" data-step="final">
       <div id="final"></div>
-      <div class="row center">
-        <button id="btn-restart" class="primary">다음 사람 차례</button>
+      <div class="row center final-actions">
+        <button id="btn-restart" class="primary cta">다음 사람 차례</button>
         <button id="btn-final-board" class="secondary">🏆 전체 순위 보기</button>
       </div>
     </section>
@@ -171,6 +248,12 @@
     </section>
   </main>
 
+  <!-- 연출용 겹침 화면 (ui.js가 잠깐 띄웠다가 숨김) -->
+  <div id="quarter-pop" class="pop-layer quarter-pop" hidden></div>
+  <div id="hire-pop" class="pop-layer hire-pop" hidden></div>
+  <div id="suspense" class="suspense" hidden></div>
+  <div id="final-pop" class="pop-layer final-pop" hidden></div>
+  <div id="fx" class="fx-layer" aria-hidden="true"></div>
   <div id="toast" role="status"></div>
 
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결 -->
