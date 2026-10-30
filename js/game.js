@@ -122,7 +122,7 @@ const MAX_ROLLS = 2; // 업종 뽑기: 처음 1번 + 다시 뽑기 1번 (대결 
 function checkFounding(c) {
   if (!c.player.trim()) return "사장님 닉네임을 적어 주세요. 순위표에 나와요.";
   if (!c.industry) return "업종을 뽑아 주세요.";
-  if (!c.detail.trim()) return "우리 회사가 무슨 일을 하는지 적어 주세요.";
+  if (!c.detail.trim()) return "우리 회사가 어떻게 일하는지 적어 주세요.";
   if (!c.name.trim()) return "회사 이름을 지어 주세요.";
   if (!c.motto.trim()) return "사훈을 정해 주세요.";
   return null;

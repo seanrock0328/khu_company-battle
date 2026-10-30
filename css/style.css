@@ -3177,3 +3177,18 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 .om-state { margin: 2px 0 0; font-size: var(--fs-s); font-weight: 700; color: var(--muted); min-height: 1.4em; }
 .om-state.ok { color: var(--money); }
 .om-state.cut { color: var(--stamp); }
+
+/* 창업: 한 번에 한 페이지 (1 업종 → 2 회사 → 3 창업 자금) */
+.found-steps { display: flex; gap: var(--s2); list-style: none; margin: 0 0 var(--s4); padding: 0; }
+.found-steps li { flex: 1; text-align: center; padding: 6px 4px; border-radius: 999px; border: var(--bw-s) solid var(--line); color: var(--muted); font-weight: 700; font-size: var(--fs-s); white-space: nowrap; }
+.found-steps li.on { border-color: var(--outline); color: var(--ink); background: var(--rank-0); box-shadow: var(--sh-s); }
+.found-steps li.done { color: var(--money); border-color: var(--money); }
+#found-box .found-page { display: none; }
+#found-box .found-page.on { display: block; animation: riseIn .25s var(--ease) both; }
+#found-box .found-page + .found-page { margin-top: 0; padding-top: 0; border-top: 0; }
+.found-nav { display: flex; justify-content: space-between; gap: var(--s3); margin-top: var(--s5); }
+.found-nav button { min-width: 120px; }
+#screen-found:not(.found-p3) #btn-found { display: none; }
+/* 로그인·손님이면 닉네임은 아이디로 정해져서 칸을 숨깁니다 (로그인 없이 할 때만 보임) */
+#found-box .found-player:has(input:disabled) { display: none; }
+.report-wait .rw-how { display: block; margin-top: 4px; font-weight: 500; color: var(--muted); }

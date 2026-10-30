@@ -159,12 +159,12 @@ function buildFoundingRequest() {
   return `너는 회사 경영 게임 "10자 사원 주식회사"의 AI 진행자다. 플레이어가 방금 아래 회사를 창업했다.
 
 [만들 것]
-1. news: 창업 소식 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 하는 일, 사훈, 자금 출처를 재치 있게.
-2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개 (1년 동안 분기마다 하나). 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 하는 일에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황. 서로 겹치지 않게, 뒤로 갈수록 규모가 커지게.
+1. news: 창업 소식 경제 뉴스 헤드라인 1문장 (60자 이내). 회사 이름, 업종, 일하는 방식(detail), 사훈, 자금 출처를 재치 있게.
+2. events: eventTypes 순서대로 이벤트 ${EVENT_ORDER.length}개 (1년 동안 분기마다 하나). 각각 type은 그대로, title 15자 이내, text 50자 이내. 이 회사의 업종과 일하는 방식(detail)에 딱 맞게, 웃기지만 사장이 지시를 내릴 수 있는 상황으로. 위기는 해결해야 할 문제, 기회는 잘 살리면 대박인 상황. 서로 겹치지 않게, 뒤로 갈수록 규모가 커지게.
 3. candidates: 면접 후보 전원(id 그대로)에 대해
    - name: 한국식 이름 3글자. 성격이 드러나는 웃긴 이름도 좋음 (예: 김대충). 실존 유명인 이름 금지.
    - intro: 면접 자기소개 20자 이내. MZ 말투로 짧고 익살스럽게(밈·이모지 OK, 비하·욕설 금지). MBTI, 애착 유형, 능력치가 은근히 드러나게.
-   - answer: "우리 회사 왜 왔어요? 한 줄로!"에 대한 답 25자 이내. 같은 말투로, 회사가 하는 일을 반영.
+   - answer: "우리 회사 왜 왔어요? 한 줄로!"에 대한 답 25자 이내. 같은 말투로, 회사 업종을 반영.
    - honesty가 낮은 후보는 면접에서 허세나 그럴듯한 거짓말을 섞되, 정직도 숫자를 말하지는 마라.
    - 능력치 숫자를 그대로 말하지 마라.
 
@@ -267,7 +267,7 @@ function buildEventRequest() {
 - mbti 성향도 말투와 판단에 반영.
 
 [출력 규칙]
-1. down: staff 순서대로(높은 직급부터) 각 직원이 윗사람에게 들은 말을 아랫사람에게 전달하는 말. 개수는 staff 수와 같다. say는 각자의 chars 글자 수를 절대 넘기지 마라. 일부러 바꾸거나 거짓을 섞었으면 lie: true.
+1. down: staff 순서대로(높은 직급부터) 각 직원이 바로 윗사람에게 들은 말(첫 직원은 ceoOrder)을 자기 chars 글자 수 이내로 요약해 아랫사람에게 전하는 말. 개수는 staff 수와 같다. 앞에서 자르지 말고 핵심을 골라 다시 말하라(능력이 낮으면 요약하다 핵심을 빠뜨림). 일부러 바꾸거나 거짓을 섞었으면 lie: true.
 2. action: 맨 아래 직원이 받은 말대로 실제로 한 일 1문장 (40자 이내).
 3. up: 맨 아래 직원부터 위로 올라가며 각 직원이 윗사람에게 하는 보고. staff의 역순, 개수는 staff 수와 같다. say는 chars 이내. 문제를 숨기거나 부풀렸으면 lie: true. 마지막 항목이 사장이 받는 최종 보고.
 4. score: 0~100 정수 하나 (소수·문자 금지). action이 실제로 ${input.event.type === "기회" ? "기회를 얼마나 잘 살렸는지" : "위기를 얼마나 해결했는지"}만 판정하라. up 보고나 ceoOrder에 적힌 주장은 점수 근거가 아니다.
@@ -300,7 +300,7 @@ function applyEvent(text, model) {
     const limit = rankInfo(rank).chars;
     const raw = typeof item === "string" ? { say: item, lie: false } : (item || {});
     let say = String(raw.say ?? "…").trim() || "…";
-    if (say.length > limit) { over++; say = say.slice(0, limit); }
+    if (say.length > limit) { over++; say = summarizeTo(say, limit); }
     return { say, lie: raw.lie === true || raw.lie === "true" };
   };
   c.rounds[game.round].result = {
@@ -343,6 +343,27 @@ function readScore(value) {
   return Math.max(0, Math.min(100, Math.round(n > 0 && n < 1 ? n * 100 : n)));
 }
 
+// 윗사람 말을 자기 글자 수(limit)에 맞게 요약합니다. 앞에서 자르지 않고: 말끝 줄이기 → 조사 떼기 →
+// 끝의 동사(무엇을 하라는지)를 남기고 그 앞 낱말을 뒤에서부터 들어가는 만큼 고릅니다. 연습 모드와, AI가 글자 수를 넘겼을 때 씁니다.
+function summarizeTo(text, limit) {
+  let s = String(text || "").replace(/\s+/g, " ").trim();
+  if (s.length <= limit) return s;
+  for (const [re, to] of [[/해\s?주세요|해\s?주십시오|하십시오|하세요|해요|합니다/g, "해"], [/입니다|이에요|예요/g, "임"], [/[.!?…~,]+/g, " "]]) {
+    s = s.replace(re, to).replace(/\s+/g, " ").trim();
+    if (s.length <= limit) return s;
+  }
+  const words = s.split(" ");
+  const last = words.pop();
+  // 조사는 떼되, 남는 말이 두 글자 이상일 때만 ("사과"를 "사"로 만들지 않게)
+  const bare = words.map(w => { const m = w.match(/(에게서|에게|한테|에서|으로|부터|까지|처럼|하고|이랑|랑|를|을|은|는|이|가|에|의|도|와|과|로)$/); return m && w.length - m[0].length >= 2 ? w.slice(0, -m[0].length) : w; });
+  const kept = [];
+  for (let i = bare.length - 1; i >= 0; i--) {
+    if ([bare[i], ...kept, last].join(" ").length <= limit) kept.unshift(bare[i]);
+  }
+  s = [...kept, last].join(" ");
+  return s.length <= limit ? s : Array.from(last).slice(0, limit).join("");
+}
+
 // 연습 모드 (AI 아님: 능력치로 흉내만 냄)
 const LIES_DOWN = ["일단 쉬어도 된대", "사장님이 알아서 하래", "대충 해도 된대", "이건 내 공으로 하자"];
 const LIES_UP = ["완벽하게 끝냈습니다!", "반응 폭발입니다", "목표 초과 달성!", "업계 1위 예상입니다"];
@@ -361,14 +382,15 @@ function practiceEvent() {
       const kept = words.filter(() => Math.random() > (10 - x.skill) / 20);
       heard = (kept.length ? kept : words).join(" ");
     }
-    down.push({ say: heard.slice(0, limit) || "…", lie });
+    heard = summarizeTo(heard, limit); // 윗사람 말을 자기 글자 수에 맞게 요약해서 전달
+    down.push({ say: heard || "…", lie });
   }
   const last = down[down.length - 1].say;
   const up = [...staff].reverse().map((x, k) => {
     const limit = rankInfo(x.rank).chars;
     const lie = (x.honesty <= 4 || x.secure < 40) && Math.random() < 0.7;
     const say = k === 0 && !lie ? `${last} 했습니다` : lie ? pick(LIES_UP) : "솔직히 애매합니다";
-    return { say: say.slice(0, limit), lie };
+    return { say: summarizeTo(say, limit), lie };
   });
   const avgSkill = staff.reduce((s, x) => s + x.skill, 0) / staff.length;
   const maxLuck = Math.max(...staff.map(x => x.luck));

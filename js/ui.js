@@ -1482,6 +1482,7 @@ async function officePaper(order, chain) {
   const K = () => st.clientWidth / P.W;
   const tf = (p, sc, rot) => `translate3d(${(p.x * K()).toFixed(1)}px, ${(p.y * K()).toFixed(1)}px, 0) translate(-50%, -100%) rotate(${rot || 0}deg) scale(${sc})`;
   let cur = head(0), scale = 1, keepChars = ORDER_MAX;
+  let heard = letters.join("");
   const hop = pace(520);
   fly.style.transform = tf(cur, 1);
   fly.style.setProperty("--pk", "1"); // 종이는 작아져도 "✂ N자" 꼬리표·글자는 13px 그대로 (CSS에서 1/--pk로 되돌림)
@@ -1520,11 +1521,12 @@ async function officePaper(order, chain) {
     } else {
       fly.style.transform = tf(to, sc);
     }
-    // 착지: 잘린 칸과 글자가 떨어짐
+    // 착지: 이 직급이 자기 글자 수로 요약한 말 (빠진 글자는 떨어짐)
     const keep = Math.round(chars / CELL_CHARS);
     fly.querySelectorAll(".fly-cells i").forEach((cell, k) => cell.classList.toggle("drop", k >= keep));
-    fly.querySelector(".fly-limit").textContent = `✂ ${chars}자`;
-    fly.querySelector(".fly-text").textContent = showText(Math.max(2, Math.round(12 * chars / ORDER_MAX)));
+    heard = typeof summarizeTo === "function" ? summarizeTo(heard, chars) : heard.slice(0, chars);
+    fly.querySelector(".fly-limit").textContent = `📝 ${chars}자 요약`;
+    fly.querySelector(".fly-text").textContent = heard;
     if (!skipping && !reduceMotion()) {
       const cut = letters.slice(chars, keepChars).filter(ch => ch.trim());
       cut.filter((_, k) => k % Math.max(1, Math.floor(cut.length / 4)) === 0).slice(0, 4).forEach((ch, k) => {
@@ -1884,7 +1886,7 @@ const CHAT = {
   rank: {
     임원: ["보고서 표지 색이 마음에 안 드는데", "회의는 짧게, 결론은 길게", "골프 약속은 미뤘습니다"],
     부장: ["또 회의야…", "내가 들은 거랑 좀 다른데?", "다들 자리에 있죠?"],
-    차장: ["부장님 말씀 19자로 줄이는 중", "점심 뭐 먹지", "엑셀 파일명 최종_진짜최종"],
+    차장: ["부장님 말씀 19자로 요약하는 중", "점심 뭐 먹지", "엑셀 파일명 최종_진짜최종"],
     과장: ["30자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다", "과장이라 과하게 일함"],
     대리: ["13자면 이모티콘은 포기", "'알아서 잘'이라고 전하자", "대리 출석 ✋"],
     사원: ["10자면 '네 알겠습니다'도 빠듯", "아무도 설명을 안 해 줘요", "저 사원인데 이거 제가 해요?"]
@@ -2027,7 +2029,7 @@ function demoHtml() {
     <svg class="plan-bg" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${P.bg}</svg>
     <div class="plan-items">${P.items.map(itemHtml).join("")}${desks}</div>
     <div class="demo-track"><div class="demo-lift"><span class="demo-paper"><span class="demo-cells">${"<i></i>".repeat(10)}</span>
-      <b class="demo-lim l0">${ORDER_MAX}자</b><b class="demo-lim l1">✂ ${rankInfo("부장").chars}자</b><b class="demo-lim l2">✂ ${rankInfo("대리").chars}자</b><b class="demo-lim l3">✂ ${rankInfo("사원").chars}자</b></span></div></div>
+      <b class="demo-lim l0">${ORDER_MAX}자</b><b class="demo-lim l1">📝 ${rankInfo("부장").chars}자</b><b class="demo-lim l2">📝 ${rankInfo("대리").chars}자</b><b class="demo-lim l3">📝 ${rankInfo("사원").chars}자</b></span></div></div>
     ${says.map(([cls, x, y, text]) => `<span class="demo-say ${cls}" style="--x:${x};--y:${y}">${esc(text)}</span>`).join("")}
     <span class="demo-stamp stamp" style="--x:438;--y:62">🤥 거짓말</span>
   </div>`;
@@ -2046,6 +2048,7 @@ function renderTitle() {
   if (ranks.dataset.html !== html) { ranks.innerHTML = html; ranks.dataset.html = html; }
 }
 
+let foundPage = { company: null, page: 1 }; // 창업 화면에서 보고 있는 페이지 (1 업종, 2 회사, 3 창업 자금)
 function renderFound() {
   const c = game.company;
   const screen = document.getElementById("screen-found");
@@ -2091,17 +2094,18 @@ function renderFound() {
     </label>`;
   }).join("");
 
+  // 한 번에 하나씩: 1 업종 → 2 회사 → 3 창업 자금. 봉투를 이미 열었으면 3페이지에서 시작합니다
+  if (foundPage.company !== c) foundPage = { company: c, page: opened ? 3 : 1 };
+  const page = foundPage.page;
+  if (screen) { screen.classList.remove("found-p1", "found-p2", "found-p3"); screen.classList.add(`found-p${page}`); }
   const box = document.getElementById("found-box");
   box.innerHTML = `
-    <div class="step-block"><p class="step-label"><span class="step-no">1</span>사장님</p>
-    <label class="field">사장님 닉네임 <span class="hint">(순위표에 나와요)</span>
-      <input data-field="player" maxlength="${PLAYER_MAX}" value="${esc(c.player)}" placeholder="예: 경희왕">
-    </label></div>
-    <div class="step-block"><p class="step-label"><span class="step-no">2</span>업종</p>
+    <ol class="found-steps" aria-label="창업 단계">${["업종", "회사", "창업 자금"].map((t, i) => `<li class="${i + 1 === page ? "on" : i + 1 < page ? "done" : ""}">${i + 1 < page ? "✓" : i + 1} ${t}</li>`).join("")}</ol>
+    <div class="step-block found-page ${page === 1 ? "on" : ""}" data-page="1"><p class="step-label"><span class="step-no">1</span>업종</p>
     ${industryHtml}</div>
-    <div class="step-block"><p class="step-label"><span class="step-no">3</span>회사</p>
-    <label class="field">우리 회사는 무슨 일을 하나요? <span class="counter" data-for="detail">${c.detail.length} / ${DETAIL_MAX}</span>
-      <textarea data-field="detail" maxlength="${DETAIL_MAX}" rows="2" placeholder="예: 시험기간에 교수님 몰래 족보를 배달해 줌">${esc(c.detail)}</textarea>
+    <div class="step-block found-page ${page === 2 ? "on" : ""}" data-page="2"><p class="step-label"><span class="step-no">2</span>회사</p>
+    <label class="field found-player">사장님 닉네임 <span class="hint">(순위표에 나와요)</span>
+      <input data-field="player" maxlength="${PLAYER_MAX}" value="${esc(c.player)}" placeholder="예: 경희왕">
     </label>
     <div class="field-pair">
     <label class="field">회사 이름
@@ -2109,11 +2113,32 @@ function renderFound() {
     </label>
     <label class="field">사훈 <span class="counter" data-for="motto">${c.motto.length} / ${MOTTO_MAX}</span>
       <input data-field="motto" maxlength="${MOTTO_MAX}" value="${esc(c.motto)}" placeholder="예: 빠르게 실패하자">
-    </label></div></div>
-    <div class="step-block"><p class="step-label"><span class="step-no">4</span>창업 자금 <span class="hint">봉투 하나를 고르세요</span></p>
+    </label></div>
+    <label class="field">우리 회사는 어떻게 일하나요? <span class="counter" data-for="detail">${c.detail.length} / ${DETAIL_MAX}</span>
+      <textarea data-field="detail" maxlength="${DETAIL_MAX}" rows="2" placeholder="예: 일단 해 보고, 망하면 빨리 사과함">${esc(c.detail)}</textarea>
+    </label></div>
+    <div class="step-block found-page ${page === 3 ? "on" : ""}" data-page="3"><p class="step-label"><span class="step-no">3</span>창업 자금 <span class="hint">봉투 하나를 고르세요</span></p>
     <div class="funds">${funding}</div>
     ${opened ? `<p class="funding-open opened-note"><span class="fo-ico" aria-hidden="true">✉️</span><span>이미 연 봉투: <b>${esc(fundingOf(c).name)} · ${money(c.initialCash, false)}</b><br><small>자금 출처와 금액은 이번 판에 고정됩니다.</small></span></p>` : '<p class="hint fund-hint">창업할 때 봉투를 딱 한 번 엽니다. 받은 돈은 순이익에 포함되지 않아요.</p>'}</div>
+    <div class="found-nav">
+      ${page > 1 ? `<button type="button" class="secondary" data-found-nav="prev">← 이전</button>` : "<span></span>"}
+      ${page < 3 ? `<button type="button" class="primary" data-found-nav="next">다음 →</button>` : ""}
+    </div>
   `;
+  box.onclick = e => {
+    const nav = e.target.closest("[data-found-nav]");
+    if (!nav) return;
+    if (nav.dataset.foundNav === "next") {
+      // 넘어가기 전에 이 페이지 칸만 확인 (전체 확인은 창업하기 버튼에서 main.js가 다시 함)
+      if (foundPage.page === 1 && !c.industry) return toast("업종을 먼저 뽑아 주세요.");
+      if (foundPage.page === 2) { const error = checkFounding(c); if (error) return toast(error); }
+      foundPage.page = Math.min(3, foundPage.page + 1);
+    } else foundPage.page = Math.max(1, foundPage.page - 1);
+    renderFound();
+    box.scrollIntoView({ block: "nearest", behavior: reduceMotion() ? "auto" : "smooth" });
+    const focus = box.querySelector(".found-page.on input:not([disabled]), .found-page.on textarea, .found-page.on [data-action='roll'], .found-page.on .fund input");
+    if (focus) setTimeout(() => focus.focus({ preventScroll: true }), 30);
+  };
   document.getElementById("btn-found").textContent = opened ? "창업 준비 이어가기" : "✉️ 봉투 열고 창업하기";
   // 입력하는 대로 명함 미리 보기 (보여 주기만, 저장은 main.js)
   box.oninput = () => setTimeout(renderFoundPreview, 0);
@@ -2202,7 +2227,7 @@ const AI_THOUGHTS = {
   event: {
     임원: ["보고서 표지 색이 마음에 안 드는데", "이 정도면 잘됐다고 하자"],
     부장: ["또 회의야…", "내가 들은 거랑 좀 다른데?"],
-    차장: ["부장님 말을 19자로 줄이라고?", "점심 뭐 먹지"],
+    차장: ["부장님 말을 19자로 요약하라고?", "점심 뭐 먹지"],
     과장: ["30자… 조사는 빼도 되겠지", "엑셀이 또 멈췄다"],
     대리: ["13자면 이모티콘은 포기", "'알아서 잘'이라고 전하자"],
     사원: ["10자면 '네 알겠습니다'도 빠듯해", "아무도 나한테 설명을 안 해 줘"]
@@ -2229,8 +2254,20 @@ function aiThoughts() {
   }));
 }
 
+// 기다리는 동안 보여 주는 '게임 방법 한 줄' (AI 대기 화면 팁, 보고 대기 칸)
+function howToLines() {
+  return [
+    `🎮 게임 방법 ① 사장님이 ${ORDER_MAX}자 안으로 짧고 굵게 지시해요`,
+    "🎮 게임 방법 ② 직원들이 들은 말을 자기 글자 수에 맞게 요약해서 아래로 전해요",
+    "🎮 게임 방법 ③ 일을 마친 직원들이 보고를 올려요. 부풀린 보고도 섞여 있어요",
+    "🎮 게임 방법 ④ 단서를 보고 🔍 파고들기 또는 👏 칭찬하기를 골라요",
+    "🎮 게임 방법 ⑤ 1년(4분기) 순이익으로 순위를 겨뤄요"
+  ];
+}
+
 function aiTips() {
   return [
+    ...howToLines(),
     `💡 성과 ${SUCCESS_LINE}점 이상이면 '잘 수행함'으로 판정해요`,
     `💡 못한 일을 칭찬하면 ${money(-PRAISE_FAIL_PENALTY)} 불이익!`,
     `💡 사원은 지시를 ${rankInfo("사원").chars}자까지만 전달해요`,
@@ -2639,7 +2676,7 @@ function orderMeter(staff) {
   return `<div class="order-meter" id="order-meter" aria-hidden="true">
     <div class="om-cells" style="--n:${Math.ceil(ORDER_MAX / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_MAX / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
     <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_MAX * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
-    <p class="om-note">칸이 찬 만큼 지시가 길어요 · 동그라미 = 그 직급이 전할 수 있는 글자 수</p>
+    <p class="om-note">1칸 = ${CELL_CHARS}자 · 동그라미 = 그 직급이 요약해서 전할 수 있는 글자 수</p>
     <p class="om-state" id="om-state"></p>
   </div>`;
 }
@@ -2657,10 +2694,10 @@ function paintOrderMeter(len) {
     const cut = [...meter.querySelectorAll(".om-mark.cut")].sort((a, b) => b.dataset.chars - a.dataset.chars).map(m => m.dataset.rank);
     const marks = meter.querySelectorAll(".om-mark");
     state.className = `om-state ${!len ? "" : cut.length ? "cut" : "ok"}`;
-    state.textContent = !len ? "짧고 굵게! 길게 쓸수록 아래 직급에서 줄여서 전해요."
+    state.textContent = !len ? "짧고 굵게! 길게 쓸수록 아래 직급이 요약하다 말이 바뀌어요."
       : !cut.length ? `✅ ${len}자: 막내까지 그대로 갈 수 있어요`
-      : cut.length === marks.length ? `✂ ${len}자: 모든 직원이 줄여서 전해요. 핵심은 앞에!`
-      : `✂ ${len}자: ${cut.join("·")}은(는) 줄여서 전해요. 핵심은 앞에!`;
+      : cut.length === marks.length ? `📝 ${len}자: 모든 직원이 요약해서 전해요. 핵심만 남겨요!`
+      : `📝 ${len}자: ${cut.join("·")}은(는) 요약해서 전해요. 핵심만 남겨요!`;
   }
   meter.classList.toggle("full", len >= ORDER_MAX);
 }
@@ -2856,7 +2893,7 @@ async function renderReports() {
   const chain = round.chain.map(id => candidateById(c, id));
   const up = [...chain].reverse();
   document.getElementById("result-box").innerHTML = `
-    <button type="button" class="report-wait" id="report-wait"><span class="rw-ico" aria-hidden="true">📈</span><b>단톡방에 보고가 올라오는 중…</b><small>탭하면 바로 보기</small></button>
+    <button type="button" class="report-wait" id="report-wait"><span class="rw-ico" aria-hidden="true">📈</span><b>단톡방에 보고가 올라오는 중…</b><small>탭하면 바로 보기</small><small class="rw-how">${esc(howToLines()[(game.round + 2) % howToLines().length])}</small></button>
     <div id="decision-tools"></div>`;
   document.getElementById("report-wait").onclick = skipReveal;
   talkEnsure();
@@ -3479,7 +3516,7 @@ function setupUI() {
     screen.classList.remove("intro");
     document.body.classList.remove("at-title");
     window.scrollTo(0, 0);
-    const first = screen.querySelector('#found-box [data-field="player"]:not([disabled])') || screen.querySelector("#found-box [data-action='roll']");
+    const first = screen.querySelector("#found-box .found-page.on [data-action='roll']") || screen.querySelector("#found-box .found-page.on input:not([disabled])");
     if (first) setTimeout(() => first.focus({ preventScroll: true }), 50);
   });
   const toggle = document.getElementById("talk-toggle");
