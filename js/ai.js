@@ -78,7 +78,7 @@ async function callTeamServer(prompt) {
   if (!res.ok) {
     // 서버 오류 문구에 이미 상태 번호가 있으면 다시 붙이지 않고, ChatKHU 원문(detail)은 화면 대신 콘솔에만 남깁니다
     if (data.detail) console.warn("팀 서버 오류 상세:", data.detail);
-    const msg = data.error || "팀 서버 오류가 났어요.";
+    const msg = data.error || "ChatKHU 연결에 문제가 생겼어요. '다시 시도'를 눌러 주세요.";
     throw new Error(msg.includes(`(${res.status})`) ? msg : `${msg} (${res.status})`);
   }
   if (!data.text) throw new Error("ChatKHU 답변이 비어 있어요. 다시 시도해 주세요.");

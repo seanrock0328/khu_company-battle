@@ -3231,8 +3231,9 @@ html:not(.dev) #screen-board .admin, html:not(.dev) #board-admin { display: none
 #screen-ai:not([data-state="busy"]) .ai-howto { display: none; }
 
 /* 보고 화면: 위에서부터 필살기 → 단서 → '실제로 무엇을 했을까요?' → 파고들기/칭찬하기 */
-body.choosing #screen-result > #result-box { order: 1; }
-body.choosing #screen-result > #choice { order: 2; }
+/* body.choosing은 순위표·설정에 다녀오면 풀리므로, 고르는 도구(#decision-tools)가 있는 동안으로 잡습니다 */
+#screen-result:has(#decision-tools) > #result-box { order: 1; }
+#screen-result:has(#decision-tools) > #choice { order: 2; }
 #decision-tools { scroll-margin: calc(var(--stick-top) + 24px); }
 /* 사장 필살기가 있는지 잘 보이게: 지시를 쓰거나 고르는 동안에도 흐리게 하지 않아요 */
 body.writing .power-panel, body.choosing #decision-tools .power-panel:not(:hover):not(:focus-within) { opacity: 1; }

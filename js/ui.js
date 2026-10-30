@@ -2301,7 +2301,7 @@ function startAIWait() {
   const step = () => {
     const sec = Math.floor((Date.now() - started) / 1000);
     if (fill) fill.style.width = `${Math.min(95, 4 + (1 - Math.exp(-sec / 15)) * 92).toFixed(1)}%`;
-    if (clock) clock.textContent = `⏱ ${sec}초 · 보통 10~40초`;
+    if (clock) clock.textContent = `⏱ ${sec}초`;
     if (tick % 3 === 0 && thought && lines.length && aiKind !== "event") {
       const line = lines[(tick / 3 + offset) % lines.length];
       thought.innerHTML = `<div class="thought-pop">${avatar(line.person)}<p class="thought-bubble"><b>${esc(line.who)}</b> ${esc(line.text)}</p></div>`;
@@ -2793,7 +2793,7 @@ function renderEvent() {
     ${activeStaff.length ? powerPanel("before") : ""}
     ${businessCard(c)}
     <div class="composer">
-      <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length}자</span></span>
+      <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${orderCount(round.order.length)}</span></span>
         <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 요금 10% 내려서 손님 모아">${esc(round.order)}</textarea>
       </label>
       ${activeStaff.length ? orderMeter(line) : ""}
