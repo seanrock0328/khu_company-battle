@@ -3222,8 +3222,8 @@ html:not(.dev) #manual-box, html:not(.dev) #screen-ai .practice-row,
 html:not(.dev) #screen-board .admin, html:not(.dev) #board-admin { display: none !important; }
 #screen-ai[data-state="busy"] #ai-status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
 
-/* 로딩 화면 '게임 방법' 카드: 기다리는 동안만 보여요 (실패·연결 없음 화면은 깔끔하게) */
-.ai-howto { margin-top: var(--s3); text-align: left; }
+/* 로딩 카드 맨 위 '게임 방법': 아래 로딩과 점선으로 나눠요. 기다리는 동안만 보여요 (실패·연결 없음 화면은 깔끔하게) */
+.ai-howto { margin: 0 0 var(--s4); padding-bottom: var(--s4); border-bottom: 2px dashed var(--line); text-align: left; }
 .ai-howto h3 { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); margin: 0 0 var(--s2); }
 .ai-howto ol { list-style: none; margin: 0; padding: 0; counter-reset: howto; display: grid; gap: var(--s2); }
 .ai-howto li { counter-increment: howto; display: grid; grid-template-columns: 24px 1fr; gap: var(--s2); align-items: start; font-size: var(--fs-s); line-height: 1.45; }
@@ -3237,3 +3237,14 @@ html:not(.dev) #screen-board .admin, html:not(.dev) #board-admin { display: none
 #decision-tools { scroll-margin: calc(var(--stick-top) + 24px); }
 /* 사장 필살기가 있는지 잘 보이게: 지시를 쓰거나 고르는 동안에도 흐리게 하지 않아요 */
 body.writing .power-panel, body.choosing #decision-tools .power-panel:not(:hover):not(:focus-within) { opacity: 1; }
+
+/* 휴대폰에서 MZ 글자가 도장 테두리에 겹치지 않게: 높이·테두리를 글자 크기 비율로, 휴대폰은 '상사'와도 안 겹치게 조금 띄움 */
+#screen-found .title-stamp { height: auto; line-height: 1; padding: .16em .3em .1em; border-width: max(3px, .1em); }
+@media (max-width: 759px) {
+  #screen-found .title-logo { padding: calc(var(--fs-hero) * .62 * 1.2) 0 0 calc(var(--fs-hero) * .62 * 2.3); }
+}
+/* 첫 화면(PC): #screen-found가 가로로 넘치는 걸 잘라서(overflow-x: clip) 왼쪽 끝의 기울어진 도장·형광펜·맥박 치는 버튼이 잘리던 것 → 왼쪽에 여백 */
+@media (min-width: 1000px) { #screen-found.intro .title-screen { padding-left: var(--s5); } }
+/* 상단 바 로고: 도장과 "상사"를 겹치는 음수 여백을 "상사" 쪽에 둡니다 → 휴대폰처럼 "상사"가 숨겨지면 도장이 옆 버튼에 겹치지 않아요 */
+.logo-stamp { margin-right: 0; }
+.logo-name { margin-left: -12px; }

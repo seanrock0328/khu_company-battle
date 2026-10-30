@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
   <!-- 배포할 때마다 아래 ?v= 값을 함께 바꿔 주세요. 브라우저가 예전 CSS·JS를 쓰지 않고 바로 새 파일을 받습니다 -->
-  <link rel="stylesheet" href="css/style.css?v=20261030-13">
+  <link rel="stylesheet" href="css/style.css?v=20261030-16">
 </head>
 <body data-screen="screen-found">
   <!-- HUD: 왼쪽 = 목표·진행, 오른쪽 = 자원·버튼 -->
@@ -87,20 +87,15 @@
       <p class="lead" id="ai-lead"></p>
       <div class="solo">
         <div class="card ai-status">
+          <!-- 기다리는 동안 읽을 게임 방법 (ui.js renderAIScreen이 채움). 아래에 로딩이 이어져요 -->
+          <section class="ai-howto" aria-labelledby="ai-howto-title">
+            <h3 id="ai-howto-title">📖 게임 방법</h3>
+            <ol id="ai-howto-list"></ol>
+          </section>
+          <!-- 로딩은 깔끔하게: 진행 막대 · 타이머 · 팁 한 줄 (그림·직원 말풍선은 뺌) -->
           <div id="ai-spinner" class="spinner ai-loader" hidden>
-            <div class="ai-desk" aria-hidden="true">
-              <div class="ai-screen">
-                <span class="ai-screen-name">MZ상사</span>
-                <span class="ai-line l1"></span><span class="ai-line l2"></span><span class="ai-line l3"></span>
-              </div>
-              <span class="ai-paper p1"></span><span class="ai-paper p2"></span><span class="ai-paper p3"></span>
-            </div>
-            <div class="ai-crew" aria-hidden="true">
-              <span class="ava rk-1">임</span><span class="ava rk-2">부</span><span class="ava rk-3">차</span><span class="ava rk-4">과</span><span class="ava rk-5">대</span><span class="ava rk-6">사</span>
-            </div>
             <div class="ai-progress" aria-hidden="true"><div class="ai-progress-fill" id="ai-progress-fill"></div></div>
             <p class="ai-elapsed" id="ai-elapsed" aria-hidden="true"></p>
-            <div class="ai-thought" id="ai-thought" aria-hidden="true"></div>
             <p class="ai-tip" id="ai-tip"></p>
           </div>
           <div class="ai-fail" aria-hidden="true">
@@ -114,11 +109,6 @@
             <button id="btn-ai-connect" class="primary">ChatKHU 연결하기</button>
           </div>
         </div>
-
-        <section class="card ai-howto" aria-labelledby="ai-howto-title">
-          <h3 id="ai-howto-title">📖 게임 방법</h3>
-          <ol id="ai-howto-list"></ol>
-        </section>
 
         <details id="manual-box">
           <summary>자동 연결이 안 되면: 복사·붙여넣기로 하기</summary>
@@ -266,13 +256,13 @@
   <div id="toast" role="status"></div>
 
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결. ?v= 값은 위 CSS 줄과 같이 바꿔 주세요 -->
-  <script src="data/presets.js?v=20261030-13"></script>
-  <script src="js/game.js?v=20261030-13"></script>
-  <script src="js/economy.js?v=20261030-13"></script>
-  <script src="js/ai.js?v=20261030-13"></script>
-  <script src="js/ui.js?v=20261030-13"></script>
-  <script src="js/board-sync.js?v=20261030-13"></script>
-  <script src="js/main.js?v=20261030-13"></script>
-  <script src="js/account.js?v=20261030-13"></script>
+  <script src="data/presets.js?v=20261030-16"></script>
+  <script src="js/game.js?v=20261030-16"></script>
+  <script src="js/economy.js?v=20261030-16"></script>
+  <script src="js/ai.js?v=20261030-16"></script>
+  <script src="js/ui.js?v=20261030-16"></script>
+  <script src="js/board-sync.js?v=20261030-16"></script>
+  <script src="js/main.js?v=20261030-16"></script>
+  <script src="js/account.js?v=20261030-16"></script>
 </body>
 </html>
