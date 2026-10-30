@@ -75,7 +75,12 @@ async function callTeamServer(prompt) {
     throw new Error("팀 서버에 접속하지 못했어요. 인터넷 연결을 확인하거나 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`${data.error || "팀 서버 오류가 났어요."} (${res.status}) ${data.detail || ""}`);
+  if (!res.ok) {
+    // 서버 오류 문구에 이미 상태 번호가 있으면 다시 붙이지 않고, ChatKHU 원문(detail)은 화면 대신 콘솔에만 남깁니다
+    if (data.detail) console.warn("팀 서버 오류 상세:", data.detail);
+    const msg = data.error || "팀 서버 오류가 났어요.";
+    throw new Error(msg.includes(`(${res.status})`) ? msg : `${msg} (${res.status})`);
+  }
   if (!data.text) throw new Error("ChatKHU 답변이 비어 있어요. 다시 시도해 주세요.");
   return data.text;
 }
@@ -193,9 +198,15 @@ function applyFounding(text, model) {
 
   c.news = String(d.news);
   c.events = events;
+  // ChatKHU가 같은 이름을 두 번 줄 때가 있어서 (보고 라인에서 누가 누군지 헷갈림) 겹치면 예비 이름으로 바꿉니다
+  const taken = new Set();
   allCandidates(c).forEach(x => {
     const r = byId.get(x.id) || {};
-    x.name = String(r.name || pickName()).slice(0, 6);
+    let name = String(r.name || "").trim().slice(0, 6);
+    for (let tries = 0; (!name || taken.has(name)) && tries < 30; tries++) name = pickName();
+    taken.add(name);
+    usedNames.add(name);
+    x.name = name;
     x.intro = String(r.intro || pick(FALLBACK_INTROS[x.type]));
     x.answer = String(r.answer || "열심히 하겠습니다.");
   });
