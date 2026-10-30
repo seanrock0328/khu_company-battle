@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
   <!-- 배포할 때마다 아래 ?v= 값을 함께 바꿔 주세요. 브라우저가 예전 CSS·JS를 쓰지 않고 바로 새 파일을 받습니다 -->
-  <link rel="stylesheet" href="css/style.css?v=20261030-8">
+  <link rel="stylesheet" href="css/style.css?v=20261030-10">
 </head>
 <body data-screen="screen-found">
   <!-- HUD: 왼쪽 = 목표·진행, 오른쪽 = 자원·버튼 -->
@@ -88,7 +88,7 @@
           <div id="ai-spinner" class="spinner ai-loader" hidden>
             <div class="ai-desk" aria-hidden="true">
               <div class="ai-screen">
-                <span class="ai-screen-name">ChatKHU</span>
+                <span class="ai-screen-name">MZ상사</span>
                 <span class="ai-line l1"></span><span class="ai-line l2"></span><span class="ai-line l3"></span>
               </div>
               <span class="ai-paper p1"></span><span class="ai-paper p2"></span><span class="ai-paper p3"></span>
@@ -108,10 +108,15 @@
           <p id="ai-status-text"></p>
           <p id="ai-error" class="error" role="alert"></p>
           <div class="row center">
-            <button id="btn-ai-retry" class="primary">ChatKHU로 다시 시도</button>
+            <button id="btn-ai-retry" class="primary">다시 시도</button>
             <button id="btn-ai-connect" class="primary">ChatKHU 연결하기</button>
           </div>
         </div>
+
+        <section class="card ai-howto" aria-labelledby="ai-howto-title">
+          <h3 id="ai-howto-title">📖 게임 방법</h3>
+          <ol id="ai-howto-list"></ol>
+        </section>
 
         <details id="manual-box">
           <summary>자동 연결이 안 되면: 복사·붙여넣기로 하기</summary>
@@ -166,7 +171,7 @@
         <h2 id="event-heading"></h2>
         <div class="profit-now" id="profit-now"></div>
       </div>
-      <p class="lead">사장님, 30자 안에 짧고 굵게 지시를 내려 주세요. 이 말이 직원들을 거쳐 내려갑니다.</p>
+      <p class="lead">사장님, 하고 싶은 지시를 자유롭게 내려 주세요. 이 말이 직원들을 거쳐 내려가요. 짧고 굵을수록 덜 바뀌어요.</p>
       <div id="event-box"></div>
       <div class="cta-dock">
         <button id="btn-run" class="primary block cta">지시 내리기</button>
@@ -259,13 +264,13 @@
   <div id="toast" role="status"></div>
 
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결. ?v= 값은 위 CSS 줄과 같이 바꿔 주세요 -->
-  <script src="data/presets.js?v=20261030-8"></script>
-  <script src="js/game.js?v=20261030-8"></script>
-  <script src="js/economy.js?v=20261030-8"></script>
-  <script src="js/ai.js?v=20261030-8"></script>
-  <script src="js/ui.js?v=20261030-8"></script>
-  <script src="js/board-sync.js?v=20261030-8"></script>
-  <script src="js/main.js?v=20261030-8"></script>
-  <script src="js/account.js?v=20261030-8"></script>
+  <script src="data/presets.js?v=20261030-10"></script>
+  <script src="js/game.js?v=20261030-10"></script>
+  <script src="js/economy.js?v=20261030-10"></script>
+  <script src="js/ai.js?v=20261030-10"></script>
+  <script src="js/ui.js?v=20261030-10"></script>
+  <script src="js/board-sync.js?v=20261030-10"></script>
+  <script src="js/main.js?v=20261030-10"></script>
+  <script src="js/account.js?v=20261030-10"></script>
 </body>
 </html>

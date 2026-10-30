@@ -459,20 +459,20 @@ function pick(list) {
 
 // 단계별 묶음: 화면(main.js)은 이 표만 보고 ChatKHU를 부릅니다
 const AI_STEPS = {
-  plan: { title: "사장님 지시를 경영 계획으로 옮기는 중", lead: "실제 가격·광고량·품질·비용 변화로 해석하고 직원들에게 전달합니다.", build: buildPlanRequest, apply: applyPlan, practice: practicePlan },
+  plan: { title: "사장님 지시를 계획으로 옮기는 중", lead: "가격·광고·품질·비용을 어떻게 바꿀지 정리해서 직원들에게 내려보내요.", build: buildPlanRequest, apply: applyPlan, practice: practicePlan },
   industry: {
-    title: "ChatKHU가 업종을 뽑는 중",
-    lead: "엉뚱하지만 있을 법한 업종을 ChatKHU가 골라 줍니다.",
+    title: "업종 뽑는 중",
+    lead: "엉뚱하지만 있을 법한 업종을 고르고 있어요.",
     build: buildIndustryRequest, apply: (t) => applyIndustry(t), practice: practiceIndustry
   },
   founding: {
-    title: "ChatKHU가 창업 소식과 면접 후보를 준비 중",
-    lead: "창업 뉴스, 1년 동안 닥칠 이벤트 4개, 직급별 면접 후보 18명의 자기소개를 만듭니다. 30초~1분 걸려요.",
+    title: "창업 준비 중",
+    lead: "창업 뉴스, 1년 동안 닥칠 사건 4개, 직급별 지원자 18명을 준비하고 있어요. 30초~1분 걸려요.",
     build: buildFoundingRequest, apply: applyFounding, practice: practiceFounding
   },
   event: {
-    title: "ChatKHU가 직원들을 연기하는 중",
-    lead: "지시가 내려가며 바뀌고, 누군가는 거짓말을 합니다. 보고는 부풀려져 올라옵니다.",
+    title: "직원들이 일하는 중",
+    lead: "지시가 내려가며 바뀌고, 누군가는 거짓말을 해요. 보고는 부풀려져 올라와요.",
     build: buildEventRequest, apply: applyEvent, practice: practiceEvent
   }
 };

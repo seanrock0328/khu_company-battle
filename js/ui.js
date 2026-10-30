@@ -68,7 +68,7 @@ function renderSettingsButton() {
   const src = getApiKey() ? ` · ${aiSourceLabel()}` : ""; // 팀 서버는 플레이어에게 따로 표시하지 않아요 (개인 키일 때만)
   const full = hasAI() ? `ChatKHU · ${shown}${src}` : "ChatKHU 연결";
   btn.innerHTML = hasAI()
-    ? `<span aria-hidden="true">🔌</span><span class="pill-text"> ChatKHU</span><small class="pill-more"> · ${esc(shown)}${esc(src)}</small>`
+    ? `<span aria-hidden="true">🔌</span><span class="pill-text"> ChatKHU</span><small class="pill-more">${esc(src)}</small>`
     : `<span aria-hidden="true">⚠️</span><span class="pill-text"> ChatKHU 연결</span>`;
   btn.title = full;
   btn.setAttribute("aria-label", full);
@@ -869,7 +869,7 @@ function floorPerson(c, i) {
 // 책상 앞 이름표: 직급(작은 직급 색 표시) + 이름 / 글자칸 + 글자 수
 function plateHtml(c, i, person) {
   const rank = FLOOR_RANKS[i];
-  const chars = i === 0 ? ORDER_MAX : rankInfo(rank).chars;
+  const chars = i === 0 ? ORDER_SCALE : rankInfo(rank).chars;
   const here = i === 0 || (person && (!person.quit || office.holdQuit));
   // 퇴사자는 이름에 줄을 긋고, 빨간 '퇴사' 팻말은 의자 자리에 (공석은 이름표 하나로만 알림)
   const gone = i !== 0 && !here && !!person && !!person.quit;
@@ -878,7 +878,7 @@ function plateHtml(c, i, person) {
   const frozen = person && office.holdQuit && office.shownLoyalty && office.shownLoyalty.has(person.id);
   const hv = Number(frozen ? office.shownLoyalty.get(person.id) : person ? person.loyalty : 0);
   return `<span class="pl-row"><b class="rank rk-${i}">${esc(rank)}</b><span class="pn${gone ? " gone" : ""}">${esc(name)}</span></span>
-    <span class="pl-row pl-chars">${cells(Math.round(chars / CELL_CHARS), `rk-${i}`)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
+    <span class="pl-row pl-chars">${cells(Math.round(chars / CELL_CHARS), `rk-${i}`)}<small>${i === 0 ? "자유" : `${chars}자`}</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
 }
 
 // 사람이 바뀐 자리만 고칩니다. animate면 새 직원은 입구 문으로 걸어 들어옵니다.
@@ -922,7 +922,7 @@ function officeSync(animate) {
     if (plate) {
       plate.innerHTML = plateHtml(c, i, person);
       plate.classList.toggle("empty", !here);
-      plate.title = `${rank} ${i === 0 ? c.player || "" : person ? person.name : "공석"} · 지시 ${i === 0 ? ORDER_MAX : rankInfo(rank).chars}자`;
+      plate.title = `${rank} ${i === 0 ? c.player || "" : person ? person.name : "공석"} · 지시 ${i === 0 ? "자유" : `${rankInfo(rank).chars}자`}`;
     }
     const want = i === 0 ? "ceo" : here ? person.id : null;
     const m = office.mates.get(i);
@@ -1476,7 +1476,7 @@ async function officePaper(order, chain) {
   const letters = Array.from(String(order || ""));
   const showText = n => letters.slice(0, n).join("") + (letters.length > n ? "…" : "");
   fx.innerHTML = "";
-  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(Math.ceil(ORDER_MAX / CELL_CHARS))}</span><b class="fly-limit">${ORDER_MAX}자</b></div>`;
+  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(Math.ceil(ORDER_SCALE / CELL_CHARS))}</span><b class="fly-limit">${letters.length}자</b></div>`;
   fly.querySelector(".fly-text").textContent = showText(12);
   // 데스크톱: 머리 위 / 휴대폰 지도: 몸 오른쪽 (지도 위쪽이 잘리지 않게)
   const head = i => { const s = planSeat(P, i); return office.strip ? { x: Math.min(P.W - 50, s.x + P.mate * .95), y: s.y - P.mate * .35 } : { x: s.x + 6, y: Math.max(46, s.y - P.mate * 1.45 - 2) }; };
@@ -1489,7 +1489,7 @@ async function officePaper(order, chain) {
   fly.style.setProperty("--pk", "1"); // 종이는 작아져도 "✂ N자" 꼬리표·글자는 13px 그대로 (CSS에서 1/--pk로 되돌림)
   fly.classList.add("on");
   // 휴대폰 지도에서는 지시서가 작아 글자가 안 보이니, 지도 아래 자막으로 "지시 → 잘린 지시"를 보여 줍니다
-  if (office.strip) officeSay(0, `📄 ${ORDER_MAX}자 · ${showText(ORDER_MAX)}`, { paper: true });
+  if (office.strip) officeSay(0, `📄 ${letters.length}자 · ${showText(40)}`, { paper: true });
   const ceo = office.mates.get(0);
   if (ceo) { ceo.el.classList.add("hop"); setTimeout(() => ceo.el.classList.remove("hop"), 700); }
   await beat(pace(380));
@@ -1497,7 +1497,7 @@ async function officePaper(order, chain) {
     const i = rankNo(x.rank);
     const to = head(i);
     const chars = rankInfo(x.rank).chars;
-    const sc = .62 + .38 * chars / ORDER_MAX;
+    const sc = .62 + .38 * chars / ORDER_SCALE;
     const lift = Math.min(150, 50 + Math.hypot(to.x - cur.x, to.y - cur.y) * .3);
     const mid = { x: (cur.x + to.x) / 2, y: Math.min(cur.y, to.y) - lift };
     const trail = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -2030,7 +2030,7 @@ function demoHtml() {
     <svg class="plan-bg" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${P.bg}</svg>
     <div class="plan-items">${P.items.map(itemHtml).join("")}${desks}</div>
     <div class="demo-track"><div class="demo-lift"><span class="demo-paper"><span class="demo-cells">${"<i></i>".repeat(10)}</span>
-      <b class="demo-lim l0">${ORDER_MAX}자</b><b class="demo-lim l1">📝 ${rankInfo("부장").chars}자</b><b class="demo-lim l2">📝 ${rankInfo("대리").chars}자</b><b class="demo-lim l3">📝 ${rankInfo("사원").chars}자</b></span></div></div>
+      <b class="demo-lim l0">📣 자유</b><b class="demo-lim l1">📝 ${rankInfo("부장").chars}자</b><b class="demo-lim l2">📝 ${rankInfo("대리").chars}자</b><b class="demo-lim l3">📝 ${rankInfo("사원").chars}자</b></span></div></div>
     ${says.map(([cls, x, y, text]) => `<span class="demo-say ${cls}" style="--x:${x};--y:${y}">${esc(text)}</span>`).join("")}
     <span class="demo-stamp stamp" style="--x:438;--y:62">🤥 거짓말</span>
   </div>`;
@@ -2180,6 +2180,7 @@ function renderAIScreen(step) {
   document.getElementById("ai-lead").textContent = step.lead;
   document.getElementById("ai-request").value = step.build();
   document.getElementById("ai-response").value = "";
+  document.getElementById("ai-howto-list").innerHTML = howToSteps().map(s => `<li>${esc(s)}</li>`).join("");
   document.getElementById("btn-copy").textContent = "요청문 복사하기";
   document.getElementById("manual-box").open = false;
   document.getElementById("screen-ai").classList.toggle("in-quarter", aiKind === "event");
@@ -2199,8 +2200,8 @@ function renderAIScreen(step) {
 function setAIState(state, message) {
   document.getElementById("ai-spinner").hidden = state !== "busy";
   document.getElementById("ai-status-text").textContent = {
-    busy: "ChatKHU가 쓰는 중… 보통 10~40초 걸려요.",
-    error: "ChatKHU에서 결과를 받지 못했어요.",
+    busy: "준비하고 있어요… 보통 10~40초 걸려요.",
+    error: "잠깐 연결이 끊겼어요.",
     nokey: "ChatKHU API 키가 아직 없어요. 연결하면 버튼 없이 자동으로 진행돼요."
   }[state];
   document.getElementById("ai-error").textContent = state === "error" ? message : "";
@@ -2256,19 +2257,23 @@ function aiThoughts() {
 }
 
 // 기다리는 동안 보여 주는 '게임 방법 한 줄' (AI 대기 화면 팁, 보고 대기 칸)
-function howToLines() {
+// 게임 방법 5단계: 로딩 화면의 '게임 방법' 카드와 보고 대기 안내에 같이 씁니다
+function howToSteps() {
   return [
-    `🎮 게임 방법 ① 사장님이 ${ORDER_MAX}자 안으로 짧고 굵게 지시해요`,
-    "🎮 게임 방법 ② 직원들이 들은 말을 자기 글자 수에 맞게 요약해서 아래로 전해요",
-    "🎮 게임 방법 ③ 일을 마친 직원들이 보고를 올려요. 부풀린 보고도 섞여 있어요",
-    "🎮 게임 방법 ④ 단서를 보고 🔍 파고들기 또는 👏 칭찬하기를 골라요",
-    "🎮 게임 방법 ⑤ 1년(4분기) 순이익으로 순위를 겨뤄요"
+    "사장님이 하고 싶은 지시를 자유롭게 내려요. 짧고 굵을수록 덜 바뀌어요",
+    "직원들이 들은 말을 자기 글자 수에 맞게 요약해서 아래로 전해요",
+    "말단 사원이 들은 대로 일하고, 그 행동이 실제 매출이 돼요",
+    "보고는 올라갈수록 부풀려져요. 단서를 보고 🔍 파고들기·👏 칭찬하기를 골라요",
+    "1년(4분기) 순이익으로 순위를 겨뤄요"
   ];
+}
+
+function howToLines() {
+  return howToSteps().map((s, i) => `🎮 게임 방법 ${"①②③④⑤"[i]} ${s}`);
 }
 
 function aiTips() {
   return [
-    ...howToLines(),
     "💡 회사 매출은 실제 고객·광고·계약에서 나와요",
     `💡 실제 행동을 맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}!`,
     `💡 사원은 지시를 ${rankInfo("사원").chars}자까지만 전달해요`,
@@ -2661,7 +2666,7 @@ function renderDecisionTools() {
     <h3>📎 보고 옆에 놓인 단서</h3>
     <div class="clue-list">${cluesFor(round, { seed: game.company.gameId || `${game.company.player}|${game.company.name}`, quarter: game.round, event: game.company.events?.[game.round] }).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
     <p class="hint">매출이 늘었다고 지시대로 했다는 뜻은 아니에요. 보고와 단서로 실제 행동을 추리하세요.</p>
-    </section>${powerPanel("after")}
+    </section>
     ${round.power === "visit" ? `<section class="visit-result" aria-label="현장 출동 결과">
       <h3>🔎 사장님이 직접 확인한 현장</h3>
       <p>${esc(round.result.action)}</p><p>${esc(round.result.audit)}</p>
@@ -2671,7 +2676,8 @@ function renderDecisionTools() {
     <fieldset class="action-guess"><legend>직원은 실제로 무엇을 했을까요?</legend>
       <p class="hint">맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}. 회사 영업이익은 실행한 행동에서 이미 결정돼요.</p>
       ${round.guessOptions.map((a, i) => `<label><input type="radio" name="action-guess" data-guess value="${i}" ${round.guess === i ? "checked" : ""}> <span>${esc(actionLabel(a))}</span></label>`).join("")}
-    </fieldset>`;
+    </fieldset>
+    ${powerPanel("after")}`;
   if (round.power === "visit") {
     sfx("stamp");
     const m = office.mates.get(0);
@@ -2710,8 +2716,8 @@ function quarterPop(c, ev) {
 function orderMeter(staff) {
   return `<div class="order-meter" id="order-meter" aria-hidden="true">
     <p class="om-state" id="om-state"></p>
-    <div class="om-cells" style="--n:${Math.ceil(ORDER_MAX / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_MAX / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
-    <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_MAX * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
+    <div class="om-cells" style="--n:${Math.ceil(ORDER_SCALE / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_SCALE / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
+    <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_SCALE * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
     <p class="om-note">1칸 = ${CELL_CHARS}자 · 동그라미 = 그 직급이 요약해서 전할 수 있는 글자 수</p>
   </div>`;
 }
@@ -2734,7 +2740,7 @@ function paintOrderMeter(len) {
       : cut.length === marks.length ? `📝 ${len}자: 모든 직원이 요약해서 전해요. 핵심만 남겨요!`
       : `📝 ${len}자: ${cut.join("·")}${(String(cut[cut.length - 1]).charCodeAt(String(cut[cut.length - 1]).length - 1) - 0xAC00) % 28 ? "이" : "가"} 요약해서 전해요. 핵심만 남겨요!`;
   }
-  meter.classList.toggle("full", len >= ORDER_MAX);
+  meter.classList.toggle("full", len >= ORDER_SCALE);
 }
 
 // 휴대폰에서 지시서(#order)가 아래 큰 버튼(지시 내리기)에 가려 있으면, 지시서 아래 끝이 버튼 위에 오도록 패널만 스크롤.
@@ -2786,12 +2792,12 @@ function renderEvent() {
     </article>
     ${businessCard(c)}
     <div class="composer">
-      <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span></span>
+      <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length}자</span></span>
         <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 요금 10% 내려서 손님 모아">${esc(round.order)}</textarea>
       </label>
       ${activeStaff.length ? orderMeter(line) : ""}
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
-        <li class="rk-0">${avatar(null)}<small>${ORDER_MAX}</small></li>${chain}</ol></div>` : ""}
+        <li class="rk-0">${avatar(null)}<small>∞</small></li>${chain}</ol></div>` : ""}
     </div>
     <section class="money-desk ${activeStaff.length ? "" : "closed"}" aria-label="이번 분기 투자와 회사 통장">
       ${activeStaff.length ? `<fieldset class="invest-choice">

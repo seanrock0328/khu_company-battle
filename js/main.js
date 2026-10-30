@@ -210,7 +210,7 @@ let draftTimer;
 eventBox.addEventListener("input", e => {
   if (e.target.id !== "order") return;
   game.company.rounds[game.round].order = e.target.value;
-  document.querySelector('.counter[data-for="order"]').textContent = `${e.target.value.length} / ${ORDER_MAX}`;
+  document.querySelector('.counter[data-for="order"]').textContent = `${e.target.value.length}자`;
   clearTimeout(draftTimer);
   const round = game.company.rounds[game.round];
   draftTimer = setTimeout(() => {
