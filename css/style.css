@@ -3248,3 +3248,15 @@ body.writing .power-panel, body.choosing #decision-tools .power-panel:not(:hover
 /* 상단 바 로고: 도장과 "상사"를 겹치는 음수 여백을 "상사" 쪽에 둡니다 → 휴대폰처럼 "상사"가 숨겨지면 도장이 옆 버튼에 겹치지 않아요 */
 .logo-stamp { margin-right: 0; }
 .logo-name { margin-left: -12px; }
+
+/* 상단 바: 로그인 배지가 붙으면 칩이 많아(결산 화면 등) 좁은 폭에서 겹치던 것 → 덜 중요한 칩부터 접음 */
+@media (max-width: 1179px) {
+  .hud-bar:has(.user:not([hidden])) .hud-res .res:not(.money) { display: none; }
+}
+@media (max-width: 999px) {
+  .hud-bar:has(.user:not([hidden])) .steps li:not(.current) { display: none; }
+  .hud-bar:has(.user:not([hidden])) #btn-settings .pill-text { display: none; }
+  .hud-bar:has(.user:not([hidden])) #btn-settings { width: 44px; padding: 0; }
+  .hud-bar:has(.user:not([hidden])) #btn-board { width: 44px; padding: 0; font-size: 0; }
+  .hud-bar:has(.user:not([hidden])) #btn-board span { font-size: var(--fs-l); }
+}
