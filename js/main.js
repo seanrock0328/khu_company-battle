@@ -39,15 +39,28 @@ async function autoRunAI() {
   const step = AI_STEPS[aiStep.name];
   const token = ++aiToken;
   setAIState("busy");
-  try {
-    const answer = await callChatKHU(document.getElementById("ai-request").value);
+  // ChatKHU가 가끔 형식이 틀린 답(down·up 빠짐 등)을 주므로, 답은 왔는데 형식만 틀렸으면 한 번은 조용히 다시 부릅니다.
+  for (let attempt = 1; ; attempt++) {
+    let answer;
+    try {
+      answer = await callChatKHU(document.getElementById("ai-request").value);
+    } catch (err) {
+      if (token !== aiToken) return;
+      setAIState("error", err.message); // 서버·연결 오류는 바로 알림 (요청 한도 아끼기)
+      return;
+    }
     if (token !== aiToken) return;
     document.getElementById("ai-response").value = answer; // 형식이 틀렸을 때 확인용
-    step.apply(answer, getModel());
-  } catch (err) {
-    if (token !== aiToken) return;
-    setAIState("error", err.message);
-    return;
+    try {
+      step.apply(answer, getModel());
+      break;
+    } catch (err) {
+      console.warn("ChatKHU 답변 형식 오류", attempt, err.message, answer.slice(0, 500));
+      if (attempt >= 2) {
+        setAIState("error", err.message);
+        return;
+      }
+    }
   }
   aiStep.onDone();
 }
