@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
   <!-- 배포할 때마다 아래 ?v= 값을 함께 바꿔 주세요. 브라우저가 예전 CSS·JS를 쓰지 않고 바로 새 파일을 받습니다 -->
-  <link rel="stylesheet" href="css/style.css?v=20261030-17">
+  <link rel="stylesheet" href="css/style.css?v=20261030-18">
 </head>
 <body data-screen="screen-found">
   <!-- HUD: 왼쪽 = 목표·진행, 오른쪽 = 자원·버튼 -->
@@ -226,19 +226,19 @@
     <!-- ChatKHU 연결 설정 -->
     <section id="screen-settings" class="screen">
       <h2>ChatKHU 연결</h2>
-      <p class="lead">MZ상사는 ChatKHU가 직원들의 말과 회사 소식을 써 줘요. 자동으로 연결되니 따로 할 일은 없어요. 원하면 모델만 골라 주세요.</p>
+      <p class="lead">MZ상사는 ChatKHU가 직원들의 말과 회사 소식을 써 줘요. 자동으로 연결되니 따로 할 일은 없어요.</p>
       <div class="solo">
         <div class="card">
           <!-- 개발용: 주소에 ?dev 를 붙였거나 이미 개인 키가 저장된 브라우저에서만 보입니다 (ui.js renderSettings) -->
           <label class="field dev-only">개인 API 키 (개발용)
             <input id="key-input" type="password" autocomplete="off" placeholder="새 키를 붙여넣거나, 비워 두면 기존 키 유지">
           </label>
-          <label class="field">모델
+          <label class="field dev-only">모델 (개발용)
             <select id="model-select"></select>
           </label>
           <p class="hint" id="key-state"></p>
           <div class="row">
-            <button id="btn-key-save" class="primary">저장하고 돌아가기</button>
+            <button id="btn-key-save" class="primary">돌아가기</button>
             <button id="btn-key-clear" class="secondary">내 키 지우고 팀 서버 쓰기</button>
           </div>
           <p class="hint dev-only">공용 컴퓨터나 전시 부스에서는 행사가 끝나면 키를 지우세요. 키가 노출되면 API Gateway에서 바로 해지하세요.</p>
@@ -256,13 +256,13 @@
   <div id="toast" role="status"></div>
 
   <!-- 순서 중요: 데이터 → 게임 규칙 → AI → 화면 → 연결. ?v= 값은 위 CSS 줄과 같이 바꿔 주세요 -->
-  <script src="data/presets.js?v=20261030-17"></script>
-  <script src="js/game.js?v=20261030-17"></script>
-  <script src="js/economy.js?v=20261030-17"></script>
-  <script src="js/ai.js?v=20261030-17"></script>
-  <script src="js/ui.js?v=20261030-17"></script>
-  <script src="js/board-sync.js?v=20261030-17"></script>
-  <script src="js/main.js?v=20261030-17"></script>
-  <script src="js/account.js?v=20261030-17"></script>
+  <script src="data/presets.js?v=20261030-18"></script>
+  <script src="js/game.js?v=20261030-18"></script>
+  <script src="js/economy.js?v=20261030-18"></script>
+  <script src="js/ai.js?v=20261030-18"></script>
+  <script src="js/ui.js?v=20261030-18"></script>
+  <script src="js/board-sync.js?v=20261030-18"></script>
+  <script src="js/main.js?v=20261030-18"></script>
+  <script src="js/account.js?v=20261030-18"></script>
 </body>
 </html>

@@ -3484,6 +3484,8 @@ function renderSettings() {
   // 개인 키 칸은 개발용: 주소에 ?dev 를 붙였거나 이미 키가 저장된 브라우저에서만 보여요
   const dev = document.documentElement.classList.contains("dev") || !!getApiKey();
   document.querySelectorAll("#screen-settings .dev-only").forEach(el => { el.hidden = !dev; });
+  // 모델은 Gemini 고정: 고르는 칸은 개발용 주소(?dev)에서만 (개인 키만 있는 브라우저도 Gemini로, getModel과 같은 기준)
+  document.getElementById("model-select").closest("label").hidden = !document.documentElement.classList.contains("dev");
   document.getElementById("key-state").textContent = getApiKey()
     ? "✅ 내 키가 저장되어 있어요. 지금은 팀 서버 대신 내 키로 ChatKHU를 불러요."
     : TEAM_SERVER_URL ? "✅ ChatKHU에 연결돼 있어요." : "아직 ChatKHU 연결이 없어요.";
