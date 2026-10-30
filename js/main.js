@@ -197,7 +197,7 @@ document.getElementById("interview").addEventListener("click", e => {
 
 function startRound() {
   game.company.rounds[game.round] ||= { order: "", result: null, investment: 0 };
-  game.company.rounds[game.round].committed = false;
+  if (game.company.rounds[game.round].committed) return continueBusinessRound();
   renderEvent();
   document.getElementById("btn-run").textContent = staffOf(game.company).length ? "지시 내리기" : "영업 중단 분기 결산하기";
   showScreen("screen-event");
@@ -242,9 +242,23 @@ document.getElementById("btn-run").addEventListener("click", () => {
   const round = game.company.rounds[game.round];
   round.order = order;
   round.committed = true;
-  round.chain = transmissionStaff(game.company).map(x => x.id); // 직통 전화면 마지막 직원만
+  prepareBusinessRound(game.company);
   checkpointGame("event");
-  runAI("event", showRoundResult);
+  continueBusinessRound();
+});
+
+function continueBusinessRound() {
+  const r = game.company.rounds[game.round];
+  if (r.result) return showRoundResult();
+  const report = () => { checkpointGame("event"); runAI("event", showRoundResult); };
+  if (r.plan) report();
+  else runAI("plan", report);
+}
+
+document.getElementById("result-box").addEventListener("change", e => {
+  if (!e.target.matches("[data-guess]")) return;
+  game.company.rounds[game.round].guess = Number(e.target.value);
+  checkpointGame("choice");
 });
 
 const choiceBox = document.getElementById("choice");
@@ -270,7 +284,9 @@ async function showRoundResult() {
 
 // 보고를 받은 뒤 사장의 선택: 파고들기 / 칭찬하기
 async function choose(choice) {
-  if (game.company.rounds[game.round].choice) return;
+  const round = game.company.rounds[game.round];
+  if (round.choice) return;
+  if (!Number.isInteger(round.guess)) return toast("직원이 실제로 한 행동을 먼저 골라 주세요.");
   choiceBox.hidden = true;
   settleRound(game.company, choice);
   await renderTruth();

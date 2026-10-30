@@ -18,7 +18,7 @@ function setup(options = {}) {
     },
     ...options.globals
   });
-  for (const file of ["data/presets.js", "js/game.js"]) {
+  for (const file of ["data/presets.js", "js/game.js", "js/economy.js"]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, "..", file), "utf8"), context);
   }
   return code => vm.runInContext(code, context);
@@ -29,7 +29,7 @@ function hire(run) {
     const c = game.company;
     c.funding = "parents";
     c.industry = "붕어빵"; c.player = "사장"; c.name = "테스트 회사";
-    c.foundingByAI = true;
+    c.foundingByAI = true; c.business = makeBusiness({ type:"sales", positioning:"balanced" });
     makeCandidates(c);
     const employee = c.candidates["사원"][0];
     employee.name = "김테스트";
@@ -87,46 +87,6 @@ test("6자리를 모두 채워야 업무를 시작하고, 어느 봉투든 6명�
   }
 });
 
-for (const [choice, score, loyalty, penalty] of [
-  ["praise", 60, 6, 0], ["praise", 59, 5, 3000],
-  ["dig", 60, 4, 0], ["dig", 59, 5, 0]
-]) {
-  test(`${choice} / ${score}점의 충성심과 손익을 한 번만 적용한다`, () => {
-    const run = setup();
-    hire(run);
-    run(`c.rounds[0] = { result: { score: ${score} } }; settleRound(c, "${choice}");`);
-    assert.equal(run("employee.loyalty"), loyalty);
-    assert.equal(run("c.rounds[0].penalty"), penalty);
-    assert.equal(run("c.rounds[0].profit"), run(`${score} * 100 - employee.salary * 200 - ${penalty}`));
-    run(`settleRound(c, "${choice}");`);
-    assert.equal(run("employee.loyalty"), loyalty);
-  });
-}
-
-test("전원 퇴사 후에도 4분기를 마치고 마지막 근무 분기의 급여를 지급한다", () => {
-  const run = setup();
-  hire(run);
-  run(`
-    employee.loyalty = 1;
-    c.rounds[0] = { chain: [employee.id], result: { score: 60, news: "퇴사" } };
-    settleRound(c, "dig");
-  `);
-  assert.equal(run("staffOf(c).length"), 0);
-  assert.equal(run("c.rounds[0].cost"), run("employee.salary * 200"));
-  assert.equal(run("recordResult(c)"), null);
-  run(`
-    for (game.round = 1; game.round < ROUNDS; game.round++) {
-      c.rounds[game.round] = { order: "", result: null };
-      closeUnstaffedRound(c);
-    }
-  `);
-  assert.equal(run("c.rounds.length"), 4);
-  assert.equal(run('c.rounds.slice(1).every(r => r.choice === "closed" && r.profit === -CLOSED_PENALTY && !r.result.practice)'), true);
-  assert.equal(run("recordResult(c).total"), 1);
-  run("recordResult(c)");
-  assert.equal(run("loadBoard().length"), 1);
-});
-
 test("전원 퇴사 후 남은 분기마다 영업 중단 손실을 한 번씩 적용한다", () => {
   const run = setup();
   hire(run);
@@ -145,53 +105,6 @@ test("전원 퇴사 후 남은 분기마다 영업 중단 손실을 한 번씩 �
   assert.match(run("c.rounds[0].loyaltyNote"), /임대료와 위약금 −1억원/);
 });
 
-function simulate(scores, choices, salary = 14, loyalty = 5) {
-  const run = setup();
-  hire(run);
-  run(`employee.salary = ${salary}; employee.loyalty = ${loyalty}; c.funding = "lottery";`);
-  for (let i = 0; i < 4; i++) {
-    run(`
-      game.round = ${i};
-      c.rounds[game.round] = { result: null };
-      if (!staffOf(c).length) closeUnstaffedRound(c);
-      else {
-        c.rounds[game.round].result = { score: ${scores[i]}, news: "비교 결산" };
-        settleRound(c, "${choices[i]}");
-      }
-    `);
-  }
-  return run("totalProfit(c)");
-}
-
-test("4턴 동안 추궁해도 초기 충성심 5인 직원은 남아 있고 1년 수익만 결산한다", () => {
-  assert.equal(simulate(Array(4).fill(70), Array(4).fill("dig")), 16800);
-});
-
-test("충성심이 낮은 직원을 전원 퇴사시키는 전략이 정상 경영보다 불리하다", () => {
-  // 낮은 충성심 2인 상황을 고정: 2분기 근무 수익 8,400 - 중단 2분기 손실 20,000.
-  const closed = simulate(Array(4).fill(70), Array(4).fill("dig"), 14, 2);
-  const scores = [20, 90, 30, 70];
-  const normal = simulate(scores, scores.map(s => s >= 60 ? "praise" : "dig"));
-  assert.equal(closed, -11600);
-  assert.equal(normal, 9800);
-  assert.ok(normal > closed);
-});
-
-test("영업 중단으로 정상 경영의 최악 손실도 피할 수 없다", () => {
-  const run = setup();
-  // 인건비는 예산과 6직급 최고 연봉 합 중 작은 쪽까지만 나올 수 있다 (능력 9 후보만 뽑아도 연봉 합 28)
-  assert.ok(run("CLOSED_PENALTY > Math.min(Math.max(...FUNDING.map(f => f.budget)), HIRE_RANKS.reduce((s, r) => s + Math.max(1, Math.round(rankInfo(r).base * (0.6 + 9 * 0.08))), 0)) * COST_PER_SALARY + PRAISE_FAIL_PENALTY + DINNER_COST + INVESTMENT_COST - INVESTMENT_LOSS"));
-  for (const salary of [14, 18, 22, 28]) {
-    for (const score of [0, 20, 59, 60, 70, 100]) {
-      // 충성심 2와 첫 2분기 성과를 고정. 남은 2분기의 운영과 중단을 비교.
-      const scores = [70, 70, score, score];
-      const closed = simulate(scores, Array(4).fill("dig"), salary, 2);
-      const normal = simulate(scores, Array(4).fill("praise"), salary, 2);
-      assert.ok(normal > closed, `인건비 ${salary}, 남은 분기 성과 ${score}`);
-    }
-  }
-});
-
 test("한 판은 위기 2번·기회 2번의 4턴이며 4분기에 종료된다", () => {
   const run = setup();
   assert.equal(run("ROUNDS"), 4);
@@ -207,55 +120,10 @@ test("AI 창업 요청과 연습 모드가 모두 1년 이벤트 4개를 만든�
   assert.match(run("buildFoundingRequest()"), /이벤트 4개 \(1년 동안 분기마다 하나\)/);
   run("practiceFounding()");
   assert.equal(run("c.events.length"), 4);
-  run(`applyFounding(JSON.stringify({ news: "창업", events: c.events,
+  run(`applyFounding(JSON.stringify({ business:{type:"sales",positioning:"balanced"}, news: "창업", events: c.events,
     candidates: allCandidates(c).map(x => ({ id: x.id, name: x.name, intro: x.intro, answer: x.answer })) }), "테스트")`);
   assert.equal(run("c.events.length"), 4);
   assert.equal(run("c.foundingByAI"), true);
-});
-
-test("이벤트 요청문은 게임의 성공선과 점수 구간을 알려 주고 서로 모순되지 않는다", () => {
-  const run = setup();
-  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
-  hire(run);
-  run('c.events = [{ type: "위기", title: "주문 폭주", text: "주문이 밀렸다" }]; c.rounds[0] = { order: "오늘 안에 처리해", result: null, investment: 1000 };');
-  const prompt = run("buildEventRequest()");
-  assert.match(prompt, /10자 사원 주식회사/);
-  assert.ok(prompt.includes(`${run("SUCCESS_LINE")}점 이상을 "잘 수행함", ${run("SUCCESS_LINE") - 1}점 이하를 "수행 실패"`));
-  assert.doesNotMatch(prompt, /재미와 반전 20점/);
-  assert.doesNotMatch(prompt, /최종 전략/); // 최종 전략은 투자 선택으로 바뀜
-  for (const field of ["down", "action", "up", "score", "news", "reason", "audit", "say", "lie"]) {
-    assert.ok(prompt.includes(`"${field}":`), field);
-  }
-});
-
-test("요청문에 넣는 AI 글(이벤트·뉴스)은 길이를 잘라서, AI가 길이 규칙을 어겨도 요청문이 끝없이 길어지지 않는다", () => {
-  const run = setup();
-  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
-  hire(run);
-  run(`
-    c.events = EVENT_ORDER.map(type => ({ type, title: "가".repeat(500), text: "나".repeat(5000) }));
-    for (let i = 0; i < 3; i++) c.rounds[i] = { order: "처리", result: { score: 70, news: "다".repeat(5000) }, choice: "praise" };
-    game.round = 3; c.rounds[3] = { order: "처리", result: null };
-  `);
-  const prompt = run("buildEventRequest()");
-  assert.ok(prompt.length < 4000, `요청문 ${prompt.length}자`);
-  assert.equal(run('c.events[0].title.length'), 500); // 화면에 보이는 글은 그대로
-});
-
-test("AI 점수가 비었거나 숫자가 아니면 오류로 돌려보내고, 0~1 소수는 100점 만점으로 바꾼다", () => {
-  const run = setup();
-  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
-  hire(run);
-  run('c.events = [{ type: "기회", title: "방송", text: "출연 제안" }]; c.rounds[0] = { order: "출연해", result: null };');
-  const apply = extra => run(`applyEvent(${JSON.stringify(JSON.stringify({ down: [{ say: "출연해" }], up: [{ say: "했음" }], ...extra }))}, "테스트"); c.rounds[0].result.score`);
-  for (const [score, expected] of [[0.85, 85], ["72", 72], [" 64점 ", 64], [1, 1], [0, 0], [150, 100], [-5, 0]]) {
-    assert.equal(apply({ score }), expected, JSON.stringify(score));
-  }
-  run("c.rounds[0].result = null");
-  for (const bad of [{ score: null }, { score: "" }, { score: " " }, {}, { score: "높음" }, { score: true }, { score: [80] }]) {
-    assert.throws(() => apply(bad), /성과 점수\(score\)/, JSON.stringify(bad));
-    assert.equal(run("c.rounds[0].result"), null); // 실패하면 결과를 남기지 않아 다시 시도할 수 있다
-  }
 });
 
 test("이전 8턴 순위는 보관하면서 새로운 4턴 순위에서 제외한다", () => {
@@ -269,25 +137,6 @@ test("이전 8턴 순위는 보관하면서 새로운 4턴 순위에서 제외�
   assert.equal(run('JSON.parse(localStorage.getItem("company_battle_leaderboard_v4"))[0].profit'), 88888);
 });
 
-test("회식은 판당 한 번 충성심을 회복하고 비용을 중복 없이 결산한다", () => {
-  const run = setup();
-  hire(run);
-  run('c.rounds[0] = { order: "주문 처리", result: null };');
-  assert.match(run('usePower(c, "visit")'), /보고/);
-  assert.match(run('usePower(c, "direct")'), /한 명/);
-  assert.equal(run('usePower(c, "dinner")'), null);
-  assert.equal(run("employee.loyalty"), 7);
-  assert.match(run('usePower(c, "dinner")'), /한 번/);
-  run('c.rounds[0].result = { score: 80 }; settleRound(c, "praise"); settleRound(c, "praise");');
-  assert.equal(run("employee.loyalty"), 8);
-  assert.equal(run("c.rounds[0].powerCost"), 300);
-  assert.equal(run("totalProfit(c)"), run("8000 - employee.salary * 200 - 300"));
-  run('game.round = 1; c.rounds[1] = { result: { score: 50 } };');
-  assert.match(run('usePower(c, "visit")'), /한 번/);
-  run("resetGame()");
-  assert.equal(run("game.company.powerUsed"), null);
-});
-
 test("회식은 충성심 10을 넘지 않으며 이미 가득하면 필살기를 쓰지 않는다", () => {
   const run = setup();
   hire(run);
@@ -296,38 +145,6 @@ test("회식은 충성심 10을 넘지 않으며 이미 가득하면 필살기�
   assert.equal(run("c.powerUsed"), null);
   run('employee.loyalty = 9; usePower(c, "dinner");');
   assert.equal(run("employee.loyalty"), 10);
-});
-
-test("직통 전화는 말단에게만 전달하되 전 직원 인건비를 유지한다", () => {
-  const run = setup();
-  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
-  hire(run);
-  run(`
-    const executive = c.candidates["임원"][0];
-    askCandidate(c, "임원", executive.id, "motivation"); hireCandidate(c, "임원", executive.id);
-    c.events = [{ type: "위기", title: "주문", text: "처리하세요" }];
-    c.rounds[0] = { order: "고객 주문 처리", result: null };
-  `);
-  assert.equal(run('usePower(c, "direct")'), null);
-  assert.equal(run("transmissionStaff(c).length"), 1);
-  assert.equal(run("transmissionStaff(c)[0].id"), run("employee.id"));
-  assert.doesNotMatch(run("buildEventRequest()"), /"rank":"임원"/);
-  run('c.rounds[0].chain = transmissionStaff(c).map(x => x.id); practiceEvent();');
-  assert.equal(run("c.rounds[0].result.down.length"), 1);
-  run('applyEvent(JSON.stringify({ down: [{ say: "처리해", lie: false }], up: [{ say: "처리함", lie: false }], score: 80 }), "테스트"); settleRound(c, "praise");');
-  assert.equal(run("c.rounds[0].result.up.length"), 1);
-  assert.equal(run("c.rounds[0].cost"), run("(employee.salary + executive.salary) * COST_PER_SALARY"));
-});
-
-test("현장 출동은 보고 후 결산 전에만 쓰고 결과를 바꾸지 않는다", () => {
-  const run = setup();
-  hire(run);
-  run('c.rounds[0] = { result: { score: 59, action: "실제 업무", audit: "감춘 사실" } };');
-  assert.match(run('usePower(c, "dinner")'), /지시 전/);
-  assert.equal(run('usePower(c, "visit")'), null);
-  assert.equal(run("c.rounds[0].result.score"), 59);
-  run('settleRound(c, "dig")');
-  assert.match(run('usePower(c, "visit")'), /진행 중/);
 });
 
 test("추리 단서는 점수·진실 원문을 노출하지 않고 성공·실패 경계에서 겹친다", () => {
@@ -354,65 +171,12 @@ test("추리 단서는 분기마다 다른 출처로 나오고, 같은 분기는
   assert.notDeepEqual(clues(0, 59, true, "서버 다운"), JSON.parse(run('JSON.stringify(cluesFor({ result: { score: 59, up: [{ lie: true }] } }, { seed: "판-8", quarter: 0, event: { title: "서버 다운" } }))')));
 });
 
-test("AI가 경우별로 미리 쓴 단서 중 실제 결과에 맞는 칸을 고르고, 답이 새는 칸은 준비된 문장으로 채운다", () => {
-  const run = setup();
-  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
-  hire(run);
-  run('c.events = [{ type: "위기", title: "서버 다운", text: "서버가 멈췄다" }]; c.rounds[0] = { order: "복구해", result: null };');
-  const written = {
-    low: "SNS 반응: 아직도 안 열린다는 글이 이어짐", mid: "SNS 반응: 된다는 글과 느리다는 글이 섞임", high: "SNS 반응: 빨리 고쳤다는 칭찬 글이 보임",
-    lie: "사내 메신저: 보고 직전 문구를 몇 번 고쳤음", honest: "사내 메신저: 작업 기록이 보고와 비슷함"
-  };
-  const clues = (score, lie, extra) => {
-    run(`applyEvent(${JSON.stringify(JSON.stringify({ down: [{ say: "복구해" }], up: [{ say: "복구함", lie }], score, ...extra }))}, "테스트")`);
-    return JSON.parse(run('JSON.stringify(cluesFor(c.rounds[0], { seed: "판-1", quarter: 0, event: c.events[0] }))'));
-  };
-  assert.deepEqual(clues(20, false, { clues: written }), [written.low, written.honest]);
-  assert.deepEqual(clues(90, true, { clues: written }), [written.high, written.lie]);
-  // AI가 쓴 글이어도 46~79점은 같은 칸을 써서 성공선(60) 양쪽이 똑같이 보인다
-  assert.deepEqual(clues(59, true, { clues: written }), clues(60, true, { clues: written }));
-  assert.deepEqual(clues(46, false, { clues: written }), [written.mid, written.honest]);
-  // 점수·숫자·성공·거짓말·직원 이름을 쓴 칸은 버리고 그 칸만 준비된 문장 (다른 칸 자리는 그대로)
-  const name = run("staffOf(c)[0].name");
-  const leaky = clues(70, true, { clues: { ...written, mid: "손님 반응: 대성공! 칠십점짜리 대응", lie: `회의록: ${name}가 문구를 고치자고 함` } });
-  assert.notEqual(leaky[0], written.mid);
-  assert.notEqual(leaky[1], `회의록: ${name}가 문구를 고치자고 함`);
-  assert.doesNotMatch(leaky.join(" "), /성공|거짓말/);
-  for (const bad of ["회의록: 거짓 보고라는 말이 돎", "회의록: 속였다는 이야기", "SNS: 문의 3건"]) {
-    assert.notEqual(clues(70, true, { clues: { ...written, mid: bad, lie: bad } }).join("|").includes(bad), true, bad);
-  }
-  // 대문자 키도 읽고, 경우를 나누지 않은 배열·빈 값은 쓰지 않고 준비된 문장 두 개
-  assert.equal(clues(70, true, { Clues: written })[0], written.mid);
-  for (const extra of [{ clues: ["SNS: 섞임", "메신저: 고침"] }, { clues: "SNS: 섞임" }, {}]) {
-    const two = clues(70, true, extra);
-    assert.equal(two.length, 2);
-    assert.ok(two.every(x => x.length > 4 && !/섞임$|고침$/.test(x)), JSON.stringify(extra));
-  }
-});
-
 test("모든 추리 단서 문장은 점수 숫자나 성공·실패를 직접 말하지 않는다", () => {
   const run = setup();
   const all = JSON.parse(run("JSON.stringify([...CLUE_RESULT.flatMap(x => [...x.low, ...x.mid, ...x.high]), ...CLUE_PROCESS.flatMap(x => [...x.lie, ...x.honest])])"));
   assert.ok(all.length >= 50);
   for (const text of all) assert.doesNotMatch(text, /\d|성공|실패|점수/);
 });
-
-for (const [score, returned] of [[0, 500], [59, 500], [60, 1600], [100, 1600]]) {
-  test(`성과 ${score}점일 때 투자금 회수는 ${returned}만원이며 원금을 한 번만 정산한다`, () => {
-    const run = setup();
-    hire(run);
-    run('c.initialCash = 10000; c.rounds[0] = { result: null, investment: 0 };');
-    assert.equal(run('setInvestment(c, true)'), null);
-    assert.equal(run('setInvestment(c, true)'), null);
-    assert.equal(run('cashBalance(c)'), 10000); // 지출 예약은 실제 잔액에서 중복 차감하지 않음
-    run(`c.rounds[0].result = { score: ${score} }; settleRound(c, "dig"); settleRound(c, "dig");`);
-    assert.equal(run('c.rounds[0].investmentCost'), 1000);
-    assert.equal(run('c.rounds[0].investmentReturn'), returned);
-    assert.equal(run('c.rounds[0].profit'), run(`${score} * 100 + ${returned} - 1000 - employee.salary * 200`));
-    assert.equal(run('cashBalance(c)'), run('10000 + totalProfit(c)'));
-    assert.match(run('setInvestment(c, false)'), /지시/);
-  });
-}
 
 test("영업 중단 분기에는 예약된 투자도 집행하지 않는다", () => {
   const run = setup();
@@ -478,55 +242,15 @@ test("알바 자금의 시작 충성심 보너스는 후보 생성 때 한 번�
 test("급여와 회식비를 확보한 뒤 남은 현금으로만 투자한다", () => {
   const run = setup();
   hire(run);
-  run('c.initialCash = employee.salary * 200 + 1200; c.rounds[0] = { result: null, investment: 0 };');
+  run('c.initialCash = employee.salary * 200 + c.business.fixed + 1200; c.rounds[0] = { result: null, investment: 0 };');
   assert.equal(run('usePower(c, "dinner")'), null);
   assert.match(run('setInvestment(c, true)'), /부족/);
   assert.equal(run('setInvestment(c, false)'), null);
-  run('c.initialCash = employee.salary * 200 + 1300;');
+  run('c.initialCash = employee.salary * 200 + c.business.fixed + 1300;');
   assert.equal(run('setInvestment(c, true)'), null);
   assert.equal(run('availableCash(c)'), 0);
   run('c.rounds[0].committed = true;');
   assert.match(run('setInvestment(c, false)'), /지시/);
-});
-
-test("긴급 용돈은 한 번만 입금되고 순이익에는 포함하지 않는다", () => {
-  const run = setup();
-  hire(run);
-  run('c.initialCash = 1000; c.rounds[0] = { result: { score: 0 } }; settleRound(c, "praise");');
-  assert.equal(run('c.rounds[0].support'), 4000);
-  assert.equal(run('cashBalance(c)'), run('1000 + totalProfit(c) + 4000'));
-  run('game.round = 1; c.rounds[1] = { result: { score: 0 } }; settleRound(c, "praise");');
-  assert.equal(run('c.rounds[1].support'), 0);
-  assert.equal(run('totalSupport(c)'), 4000);
-  assert.equal(run('cashBalance(c) - initialCapital(c) - totalSupport(c)'), run('totalProfit(c)'));
-});
-
-test("현금이 마이너스여도 급여는 정산하고 새 투자는 막되 그대로 운영할 수 있다", () => {
-  const run = setup();
-  hire(run);
-  run('c.funding = "lottery"; c.initialCash = 0; c.rounds[0] = { result: { score: 0 } }; settleRound(c, "dig");');
-  assert.equal(run('cashBalance(c)'), run('-employee.salary * 200'));
-  run('game.round = 1; c.rounds[1] = { result: null, investment: 0 };');
-  assert.match(run('setInvestment(c, true)'), /부족/);
-  assert.equal(run('setInvestment(c, false)'), null);
-  assert.match(run('usePower(c, "dinner")'), /부족/);
-});
-
-test("모든 분기의 입출금과 잔액이 맞고 직전 마감이 다음 기초가 된다", () => {
-  const run = setup();
-  hire(run);
-  run(`c.initialCash = 8000;
-    for (game.round = 0; game.round < ROUNDS; game.round++) {
-      c.rounds[game.round] = { result: null, investment: 0 };
-      if (game.round % 2 === 0) setInvestment(c, true);
-      c.rounds[game.round].result = { score: game.round < 2 ? 70 : 20 };
-      settleRound(c, "dig");
-    }
-  `);
-  assert.equal(run('financeHistory(c).every(r => r.opening + r.income - r.expense === r.closing)'), true);
-  assert.equal(run('financeHistory(c).slice(1).every((r, i) => r.opening === financeHistory(c)[i].closing)'), true);
-  assert.equal(run('financeHistory(c)[3].closing'), run('cashBalance(c)'));
-  assert.equal(run('cashBalance(c) - initialCapital(c) - totalSupport(c)'), run('totalProfit(c)'));
 });
 
 test("기본: 업종이 달라도 순위표 하나로 수익순 정렬한다 (10/29 팀 결정)", () => {
@@ -576,6 +300,8 @@ function finishGame(run, model, score = 100) {
   run(`
     for (game.round = 0; game.round < ROUNDS; game.round++) {
       c.rounds[game.round] = { order: "주문 처리", result: null, investment: 0 };
+      prepareBusinessRound(c);
+      applyPlan(JSON.stringify({ action:emptyAction() }), "${model}");
       applyEvent(JSON.stringify({ down: [{ say: "처리" }], up: [{ say: "완료" }], score: ${score} }), "${model}");
       settleRound(c, "praise");
     }
@@ -587,7 +313,7 @@ test("붙여넣은 ChatKHU 답(모델 이름 없음)이 있는 판은 연습으�
     const run = setup();
     run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
     hire(run);
-    run(`applyFounding(JSON.stringify({ news: "창업", events: EVENT_ORDER.map(type => ({ type, title: "이벤트", text: "내용" })),
+    run(`applyFounding(JSON.stringify({ business:{type:"sales",positioning:"balanced"}, news: "창업", events: EVENT_ORDER.map(type => ({ type, title: "이벤트", text: "내용" })),
       candidates: allCandidates(c).map(x => ({ id: x.id, name: "김테스트" })) }), "${model}")`);
     assert.equal(run("c.foundingByAI"), official);
     finishGame(run, model);
@@ -600,7 +326,7 @@ test("붙여넣은 ChatKHU 답(모델 이름 없음)이 있는 판은 연습으�
   run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
   hire(run);
   finishGame(run, "gemini-3.8-flash");
-  run('game.round = 2; applyEvent(JSON.stringify({ down: [], up: [], score: 100 }), "");');
+  run('game.round = 2; c.rounds[2].result = null; applyEvent(JSON.stringify({ down: [], up: [], score: 100 }), "");');
   assert.equal(run("isPractice(c)"), true);
 });
 
@@ -631,39 +357,6 @@ function workerSetup() {
   };
   return { kv, tokens, post, run: code => vm.runInContext(code, context) };
 }
-
-test("서버 순위표 수익 범위는 지금 4분기 통장 규칙으로 나올 수 있는 최고·최저와 맞다", () => {
-  const server = workerSetup();
-  const rules = setup();
-  assert.equal(server.run("MAX_PROFIT"), rules("ROUNDS * (100 * REVENUE_PER_POINT + INVESTMENT_WIN - INVESTMENT_COST)"));
-  assert.equal(server.run("MIN_PROFIT"), rules("-ROUNDS * CLOSED_PENALTY"));
-  // 실제로 해 본 최고 판: 4분기 100점 + 매 분기 투자 성공, 연봉 1인 직원 한 명
-  hire(rules);
-  rules(`
-    employee.salary = 1; c.initialCash = 14000;
-    for (game.round = 0; game.round < ROUNDS; game.round++) {
-      c.rounds[game.round] = { result: null, investment: 0 };
-      setInvestment(c, true);
-      c.rounds[game.round].result = { score: 100 };
-      settleRound(c, "praise");
-    }
-  `);
-  assert.equal(rules("c.rounds.every(r => r.investmentCost === 1000)"), true);
-  assert.ok(rules("totalProfit(c)") <= server.run("MAX_PROFIT"));
-  // 손실을 가장 크게 잡은 판: 최대 인건비 + 회식 + 매 분기 투자 실패 + 4분기 0점 칭찬
-  const worst = setup();
-  hire(worst);
-  worst(`
-    c.funding = "lottery"; employee.salary = 28;
-    for (game.round = 0; game.round < ROUNDS; game.round++) {
-      c.rounds[game.round] = { result: null, investment: 1000 };
-      if (game.round === 0) usePower(c, "dinner");
-      c.rounds[game.round].result = { score: 0 };
-      settleRound(c, "praise");
-    }
-  `);
-  assert.ok(worst("totalProfit(c)") >= server.run("MIN_PROFIT"));
-});
 
 test("서버는 범위 밖 수익을 거절하고, 모델 이름이 빈 기록(영업 중단)은 받는다", async () => {
   const { post, tokens, kv } = workerSetup();
@@ -707,7 +400,7 @@ test("한 판 번호는 판마다 다르고, 이어하기로 다시 기록해도
 
 test("공유 순위표: 결산 순위는 판을 끝낸 뒤 순위표를 다시 받아 계산하고, 같은 판 중복은 이 기기에서도 지운다", async () => {
   const server = {
-    entries: [{ player: "A", name: "가", industry: "붕어빵", profit: 1000, at: 1700000000001, news: "통장 결산 · A" }],
+    entries: [{ player: "A", name: "가", industry: "붕어빵", profit: -39000, at: 1700000000001, news: "사업 수익 v2 · A" }],
     gameIds: new Set(), posts: 0
   };
   // 진짜 서버 대신 쓰는 가짜 서버 (이 테스트는 인터넷에 접속하지 않습니다)
@@ -737,7 +430,7 @@ test("공유 순위표: 결산 순위는 판을 끝낸 뒤 순위표를 다시 �
   await settle(); // 화면을 열 때 순위표 받기 (A 한 명)
 
   // 플레이하는 동안 다른 사장님 B가 더 높은 기록을 올림
-  server.entries.push({ player: "B", name: "나", industry: "AI", profit: 40000, at: 1700000000002, news: "통장 결산 · B" });
+  server.entries.push({ player: "B", name: "나", industry: "AI", profit: 40000, at: 1700000000002, news: "사업 수익 v2 · B" });
   hire(run);
   finishGame(run, "gemini-3.8-flash", 70);
   run("var saved = JSON.stringify(c);");

@@ -6,9 +6,11 @@
 // 회사:
 // {
 //   gameId(한 판 번호), player, emoji, industry, detail(세부정보), name, motto, funding,
-//   news(창업 기사), events: [{type:"위기"|"기회", title, text}] x4,
+//   business(수익모델·고객 성향), news(창업 기사), events: [{type:"위기"|"기회", title, text}] x4,
 //   candidates: { 임원: [후보 x3], ... }, hires: { 임원: 후보id | null, ... },
-//   rounds: [{ order, result, choice:"dig"|"praise", success, revenue, cost, penalty, profit, loyaltyNote, quits:[이름] }]
+//   rounds: [{ order, plan, execution, economics, guessOptions, guess, result,
+//     choice:"dig"|"praise", success(지시 준수), revenue, cost, operatingCost, operatingProfit,
+//     judgmentBonus, penalty, profit, loyaltyNote, quits:[이름] }]
 // }
 // 후보: { id, rank, name, mbti, secure(안정형 %), skill, luck, honesty(숨김), loyalty(충성심, 5에서 시작), quit, salary, intro, answer, interviewed:[질문id] }
 
@@ -31,13 +33,9 @@ const ORDER_MAX = 30;
 const ROUNDS = EVENT_ORDER.length; // 4분기
 
 // ===== 경제 규칙 (단위: 만원) =====
-// 분기 수익 = 성과 점수 x 100 - 인건비 x 200 - 불이익
-const REVENUE_PER_POINT = 100;   // 성과 1점당 매출
+// 회사 매출·원가 계산은 economy.js에서 담당합니다.
 const COST_PER_SALARY = 200;     // 연봉 1당 분기 인건비
-const SUCCESS_LINE = 60;         // 성과 60점 이상이면 "잘 수행함"
-const PRAISE_FAIL_PENALTY = 3000; // 잘 못했는데 칭찬하면 큰 불이익
-// 최대 분기 손실(인건비 5600 + 불이익 3000 + 회식 300 + 투자 손실 500 = 9400)보다 크게.
-// 전원 퇴사로 적자 분기를 피하는 전략이 이득이 되지 않게 합니다.
+// 정상 운영의 최대 고정 지출(급여·고정비·실행비·회식·투자 손실)보다 큰 휴업 손실.
 const CLOSED_PENALTY = 10000;    // 영업 중단 분기의 임대료·위약금
 const LOYALTY_START = 5;
 const LOYALTY_MAX = 10;
@@ -46,7 +44,7 @@ const INVESTMENT_COST = 1000;
 const INVESTMENT_WIN = 1600;
 const INVESTMENT_LOSS = 500;
 const FAMILY_SUPPORT = 4000;
-const CASH_RULE_VERSION = "통장 결산 · ";
+const CASH_RULE_VERSION = "사업 수익 v2 · ";
 
 function quarterLabel(i) {
   return `${Math.floor(i / 4) + 1}년차 ${(i % 4) + 1}분기`;
@@ -56,7 +54,7 @@ function newCompany() {
   return {
     player: "", emoji: "", industry: "", detail: "", name: "", motto: "", funding: "savings",
     rolls: 0, news: "", events: [], candidates: {}, hires: {}, rounds: [], foundingByAI: false,
-    powerUsed: null, initialCash: null, fundingLine: "", financeVersion: CASH_RULE_VERSION,
+    business: null, powerUsed: null, initialCash: null, fundingLine: "", financeVersion: CASH_RULE_VERSION,
     // 한 판 번호: 이어하기로 결산을 다시 열어도 공유 순위표에 같은 판이 두 번 올라가지 않게
     gameId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   };
@@ -70,7 +68,7 @@ function rankInfo(rankName) {
 
 // ===== 대결 업종 =====
 // 팀 결정(10/29): 업종은 사람마다 랜덤으로 뽑고, 순위표는 업종 상관없이 하나로 매깁니다.
-// 수익은 업종이 아니라 직원·지시·선택으로 갈리므로 업종이 달라도 공정합니다.
+// 수익모델별 시작 매출·기초 비용은 같고 고객 반응과 실행에 따라 실적이 달라집니다.
 // 예전처럼 "모두 같은 업종으로 대결"하려면 index.html에서 game.js보다 먼저
 // <script>window.KHU_SHARED_INDUSTRY = true</script> 를 넣으면 됩니다.
 const SHARED_INDUSTRY = globalThis.KHU_SHARED_INDUSTRY === true;
@@ -160,7 +158,7 @@ function cashBalance(c) {
 // 지출은 분기 말에 한 번 정산하되, 지시 전에는 급여·회식·투자 예정액을 확보합니다.
 function availableCash(c) {
   const round = c.rounds[game.round];
-  return cashBalance(c) - payroll(c) * COST_PER_SALARY
+  return cashBalance(c) - payroll(c) * COST_PER_SALARY - (c.business?.fixed || 0)
     - (round && !round.choice ? (round.investment || 0) + (round.powerCost || 0) : 0);
 }
 
@@ -178,8 +176,8 @@ function setInvestment(c, invest) {
 function financeHistory(c) {
   return settledRounds(c).map((r, i) => ({
     quarter: i + 1, opening: r.openingCash, closing: r.closingCash,
-    income: r.revenue + (r.investmentReturn || 0) + (r.support || 0),
-    expense: r.cost + r.penalty + (r.powerCost || 0) + (r.investmentCost || 0),
+    income: r.revenue + (r.judgmentBonus || 0) + (r.investmentReturn || 0) + (r.support || 0),
+    expense: r.cost + (r.operatingCost || 0) + r.penalty + (r.powerCost || 0) + (r.investmentCost || 0),
     profit: r.profit, round: r
   }));
 }
@@ -338,10 +336,9 @@ function usePower(c, id) {
   return null;
 }
 
-// 일부 증거만 보여 줍니다. 중간 구간은 성공과 실패가 겹쳐 정답을 확정할 수 없습니다.
-// 45·80은 js/ai.js 이벤트 요청문의 점수 구간(0~45 망함, 80~100 대성공)과 같은 숫자입니다. 바꾸면 요청문도 같이 바꾸세요.
-// 증거 1(결과 쪽)은 점수 구간으로, 증거 2(과정 쪽)는 보고를 부풀렸는지로 문장 묶음을 고릅니다.
-// 어느 출처·문장이 나올지는 한 판 번호와 분기로만 정하므로 점수나 거짓말 여부가 출처로 새지 않고,
+// 증거 1은 기준 매출 대비 고객 반응, 증거 2는 보고를 부풀렸는지로 문장 묶음을 고릅니다.
+// 매출이 높아도 지시를 다르게 실행했을 수 있어, 고객 반응만으로 행동 정답을 확정할 수 없습니다.
+// 어느 출처·문장이 나올지는 한 판 번호와 분기로만 정하므로 결과나 거짓말 여부가 출처로 새지 않고,
 // 한 판의 네 분기는 서로 다른 출처가 나오며, 같은 분기는 다시 그려도 같은 단서가 나옵니다.
 const CLUE_RESULT = [
   { src: "문의함",
@@ -402,13 +399,14 @@ function cluesFor(round, opts = {}) {
   const pick = clueHash(`${opts.seed || ""}|${quarter}|${opts.event?.title || ""}`);
   const res = CLUE_RESULT[(base + quarter) % CLUE_RESULT.length];
   const pro = CLUE_PROCESS[(base * 7 + quarter) % CLUE_PROCESS.length];
-  const band = r.score <= 45 ? res.low : r.score >= 80 ? res.high : res.mid;
+  const performance = round.economics ? (round.economics.revenue / 10000 * 70) : 60;
+  const band = performance <= 45 ? res.low : performance >= 80 ? res.high : res.mid;
   const kind = r.up.some(x => x.lie) ? pro.lie : pro.honest;
-  // ChatKHU가 경우별로 미리 써 둔 단서(js/ai.js readClues)에서 실제 구간·거짓말 여부에 맞는 칸을 먼저 쓰고, 빈 칸은 준비된 문장으로 채웁니다
+  // ChatKHU가 미리 쓴 단서 중 매출 수준·보고 여부에 맞는 칸을 쓰고 빈 칸은 준비 문장으로 채웁니다.
   const ai = r.clues && typeof r.clues === "object" && !Array.isArray(r.clues) ? r.clues : {};
   const own = key => typeof ai[key] === "string" && ai[key].trim() ? ai[key] : "";
   return [
-    own(r.score <= 45 ? "low" : r.score >= 80 ? "high" : "mid") || `${res.src}: ${band[pick % band.length]}`,
+    own(performance <= 45 ? "low" : performance >= 80 ? "high" : "mid") || `${res.src}: ${band[pick % band.length]}`,
     own(r.up.some(x => x.lie) ? "lie" : "honest") || `${pro.src}: ${kind[(pick >>> 8) % kind.length]}`
   ];
 }
@@ -456,60 +454,43 @@ function hireCandidate(c, rank, id) {
   return null;
 }
 
-// ===== 분기 결산: 파고들기 / 칭찬하기 =====
-// 칭찬 + 잘함   → 충성심 +1
-// 칭찬 + 못함   → 큰 불이익 (-3000만원)
-// 파고듦 + 잘함 → 충성심 -1 (의심받아 서운함)
-// 파고듦 + 못함 → 불이익 없음 (문제를 미리 잡아냄)
-// 충성심이 0이 되면 퇴사합니다.
-
+// ===== 분기 결산: 회사 영업이익 + 판단 보너스 + 투자 손익 =====
 function settleRound(c, choice) {
   const round = c.rounds[game.round];
   if (!round || !round.result) throw new Error("분기 결과를 먼저 받아 주세요.");
-  if (round.choice) return round; // 더블 클릭으로 충성심이나 불이익이 중복 적용되지 않게
-  const openingCash = cashBalance(c);
+  if (round.choice) return round;
   const staff = staffOf(c);
-  if (!["dig", "praise"].includes(choice) && !(choice === "closed" && staff.length === 0)) {
-    throw new Error("칭찬하기 또는 파고들기를 골라 주세요.");
-  }
-  const score = round.result.score;
-  const success = score >= SUCCESS_LINE;
-  let penalty = 0;
-  let delta = 0;
-  let note;
-
-  if (choice === "closed") {
-    penalty = CLOSED_PENALTY;
-    note = `직원이 없어 영업을 중단했습니다. 임대료와 위약금 ${money(-penalty)}`;
-  } else if (choice === "praise") {
-    if (success) { delta = 1; note = "칭찬받은 직원들의 충성심이 올랐습니다 (+1)"; }
-    else { penalty = PRAISE_FAIL_PENALTY; note = "엉터리 일을 칭찬해서 문제가 커졌습니다"; }
-  } else {
-    if (success) { delta = -1; note = "잘했는데 의심받은 직원들이 서운해합니다 (충성심 -1)"; }
-    else { note = "파고든 덕분에 문제를 미리 잡아 불이익을 막았습니다"; }
-  }
-
-  const quits = [];
-  if (delta) {
-    staff.forEach(x => {
-      x.loyalty = Math.max(0, Math.min(LOYALTY_MAX, x.loyalty + delta));
-      if (x.loyalty === 0) { x.quit = true; quits.push(`${x.rank} ${x.name}`); }
-    });
-  }
-
-  const baseRevenue = choice === "closed" ? 0 : score * REVENUE_PER_POINT;
-  const revenue = baseRevenue;
-  const investmentCost = choice === "closed" ? 0 : (round.investment || 0);
-  const investmentReturn = investmentCost ? (success ? INVESTMENT_WIN : INVESTMENT_LOSS) : 0;
+  const closed = choice === "closed" && !staff.length;
+  if (!["dig", "praise"].includes(choice) && !closed) throw new Error("칭찬하기 또는 파고들기를 골라 주세요.");
+  if (!closed && (!round.economics || !round.execution)) throw new Error("실제 업무 결과를 먼저 계산해 주세요.");
+  const openingCash = cashBalance(c);
+  const success = !closed && round.execution.followed;
+  const correct = !closed && Number.isInteger(round.guess) && !!round.guessOptions?.[round.guess]
+    && sameAction(round.guessOptions[round.guess], round.execution.action);
+  const judgmentBonus = correct ? JUDGMENT_BONUS : 0;
+  const delta = closed ? 0 : choice === "praise" ? (success ? 1 : 0) : (success ? -1 : 1);
+  const note = closed ? "직원이 없어 영업을 중단했습니다. 임대료와 위약금 " + money(-CLOSED_PENALTY)
+    : choice === "praise" ? (success ? "지시를 지킨 직원에게 칭찬! 충성심 +1" : "다르게 실행한 일을 칭찬했습니다. 충성심은 그대로입니다.")
+    : success ? "지시대로 했는데 의심받아 서운합니다. 충성심 −1" : "엇갈린 지시를 함께 바로잡았습니다. 충성심 +1";
+  const e = round.economics;
+  const revenue = closed ? 0 : e.revenue;
+  const cost = closed ? 0 : e.payrollCost;
+  const operatingCost = closed ? 0 : e.variableCost + e.fixedCost + e.executionCost;
+  const operatingProfit = revenue - cost - operatingCost;
+  const investmentCost = closed ? 0 : (round.investment || 0);
+  const investmentReturn = investmentCost ? (operatingProfit > 0 ? INVESTMENT_WIN : INVESTMENT_LOSS) : 0;
   const powerCost = round.powerCost || 0;
-  const cost = staff.reduce((s, x) => s + x.salary, 0) * COST_PER_SALARY;
-  const profit = revenue + investmentReturn - investmentCost - cost - penalty - powerCost;
+  const penalty = closed ? CLOSED_PENALTY : 0;
+  const profit = operatingProfit + judgmentBonus + investmentReturn - investmentCost - penalty - powerCost;
   const support = c.funding === "parents" && openingCash + profit < 0 && totalSupport(c) === 0 ? FAMILY_SUPPORT : 0;
-  Object.assign(round, {
-    choice, success, baseRevenue, revenue, cost, penalty, powerCost, investmentCost, investmentReturn,
-    profit, support, openingCash, closingCash: openingCash + profit + support,
-    loyaltyNote: note, quits
+  const quits = [];
+  staff.forEach(x => {
+    x.loyalty = Math.max(0, Math.min(LOYALTY_MAX, x.loyalty + delta));
+    if (!x.loyalty) { x.quit = true; quits.push(x.rank + " " + x.name); }
   });
+  Object.assign(round, { choice, success, judgmentCorrect: correct, judgmentBonus,
+    baseRevenue: revenue, revenue, cost, operatingCost, operatingProfit, penalty, powerCost, investmentCost, investmentReturn,
+    profit, support, openingCash, closingCash: openingCash + profit + support, loyaltyNote: note, quits });
   return round;
 }
 
@@ -519,7 +500,7 @@ function closeUnstaffedRound(c) {
   round.chain = [];
   round.result = {
     down: [], up: [], action: "직원 전원 퇴사로 업무를 수행하지 못했습니다.",
-    score: 0, news: `${c.name}, ${quarterLabel(game.round)} 직원 부재로 영업 중단`,
+    followed: false, news: `${c.name}, ${quarterLabel(game.round)} 직원 부재로 영업 중단`,
     reason: "업무를 수행할 직원이 없습니다", audit: "", over: 0,
     practice: isPractice(c), model: ""
   };
@@ -563,7 +544,7 @@ function money(n, signed = true) {
 // ===== 순위표 (이 노트북 브라우저에 저장) =====
 
 // 필살기·최종 전략이 없는 이전 규칙의 기록과 수익을 비교하지 않게 분리합니다.
-const BOARD_KEY = "company_battle_leaderboard_v6";
+const BOARD_KEY = "company_battle_leaderboard_v7";
 
 function loadBoard() {
   try {

@@ -3192,3 +3192,16 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 /* 로그인·손님이면 닉네임은 아이디로 정해져서 칸을 숨깁니다 (로그인 없이 할 때만 보임) */
 #found-box .found-player:has(input:disabled) { display: none; }
 .report-wait .rw-how { display: block; margin-top: 4px; font-weight: 500; color: var(--muted); }
+/* 회사 수익구조·행동 추리 */
+.business-card { margin: 14px 0; }
+.business-card p, .business-explanation p { overflow-wrap: anywhere; }
+.business-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.business-metrics div { padding: 8px; background: var(--surface-2); border-radius: 6px; }
+.business-metrics dt { font-size: var(--fs-xs); color: var(--muted); }
+.business-metrics dd { margin: 4px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.action-guess { margin: 16px 0; padding: 14px; border: 2px solid var(--money); border-radius: 10px; }
+.action-guess legend { font-weight: 800; }
+.action-guess label { display: flex; align-items: center; gap: 8px; padding: 12px 8px; margin: 6px 0; background: var(--surface-2); border-radius: 6px; cursor: pointer; }
+.action-guess input { flex: 0 0 auto; width: 18px; height: 18px; }
+.action-guess label:has(input:checked) { outline: 2px solid var(--money); }
+.business-explanation { margin: 12px 0; padding: 12px; background: var(--surface-2); border-radius: 8px; }
