@@ -3245,3 +3245,6 @@ body.writing .power-panel, body.choosing #decision-tools .power-panel:not(:hover
 }
 /* 첫 화면(PC): #screen-found가 가로로 넘치는 걸 잘라서(overflow-x: clip) 왼쪽 끝의 기울어진 도장·형광펜·맥박 치는 버튼이 잘리던 것 → 왼쪽에 여백 */
 @media (min-width: 1000px) { #screen-found.intro .title-screen { padding-left: var(--s5); } }
+/* 상단 바 로고: 도장과 "상사"를 겹치는 음수 여백을 "상사" 쪽에 둡니다 → 휴대폰처럼 "상사"가 숨겨지면 도장이 옆 버튼에 겹치지 않아요 */
+.logo-stamp { margin-right: 0; }
+.logo-name { margin-left: -12px; }
