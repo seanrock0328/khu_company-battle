@@ -3208,10 +3208,32 @@ body.tab-hidden .office *, body.tab-hidden .demo *, body.tab-hidden .title-stamp
 
 /* MZ상사 로고: 크고 진한 '상사' 왼쪽 위에 빨간 MZ 도장을 비스듬히 찍은 모양 */
 #screen-found .title-logo { position: relative; display: inline-block; padding: clamp(26px, 4.2vw, 40px) 0 0 clamp(48px, 7vw, 74px); }
-#screen-found .title-name { margin: 0; font-size: calc(var(--fs-hero) * 1.9); line-height: 1; letter-spacing: .02em; -webkit-text-stroke: 3px currentColor; }
+#screen-found .title-name { margin: 0; font-size: calc(var(--fs-hero) * 1.9); line-height: 1; letter-spacing: .02em; -webkit-text-stroke: .012em currentColor; paint-order: stroke fill; } /* 테두리를 글자 크기에 맞추고 글자 밑에 칠해서 상의 ㅇ 구멍이 메워지지 않게 */
 #screen-found .title-stamp { position: absolute; left: 0; top: 0; z-index: 2; font-size: calc(var(--fs-hero) * .62); height: 1.3em; padding: 0 .28em; border-width: 5px; rotate: -14deg; }
 .logo-stamp { position: relative; z-index: 2; height: 24px; padding: 0 5px; font-size: 15px; border-width: 2px; translate: 0 -8px; margin-right: -12px; rotate: -10deg; }
-.logo-name { font-size: 1.3em; -webkit-text-stroke: .6px currentColor; }
+.logo-name { font-size: 1.3em; -webkit-text-stroke: .03em currentColor; paint-order: stroke fill; }
 /* 도장이 글자 위에 겹쳐도 MZ가 또렷하게 보이게 (곱하기 섞기 대신 종이색 바탕) */
 #screen-found .title-stamp, .logo-stamp { mix-blend-mode: normal; background: color-mix(in srgb, var(--paper, #fffdf7) 88%, transparent); }
 .logo-stamp { height: 26px; font-size: 16px; }
+
+/* 출시 화면 정리: 연습 모드·복사 붙여넣기(ChatKHU 필수), 순위표 관리자 줄은 플레이어에게 숨기고 ?dev(html.dev)에서만 보여요.
+   쓰는 중 안내는 타이머 한 줄(⏱ N초 · 보통 10~40초)로 합칩니다. 글은 화면 읽기 프로그램에는 그대로 읽혀요 */
+html:not(.dev) #manual-box, html:not(.dev) #screen-ai .practice-row,
+html:not(.dev) #screen-board .admin, html:not(.dev) #board-admin { display: none !important; }
+#screen-ai[data-state="busy"] #ai-status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+
+/* 로딩 화면 '게임 방법' 카드: 기다리는 동안만 보여요 (실패·연결 없음 화면은 깔끔하게) */
+.ai-howto { margin-top: var(--s3); text-align: left; }
+.ai-howto h3 { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-m); margin: 0 0 var(--s2); }
+.ai-howto ol { list-style: none; margin: 0; padding: 0; counter-reset: howto; display: grid; gap: var(--s2); }
+.ai-howto li { counter-increment: howto; display: grid; grid-template-columns: 24px 1fr; gap: var(--s2); align-items: start; font-size: var(--fs-s); line-height: 1.45; }
+.ai-howto li::before { content: counter(howto); display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--rank-0); color: var(--ceo-ink); font-family: var(--font-display); font-size: 13px; box-shadow: inset 0 0 0 2px var(--outline); }
+#screen-ai:not([data-state="busy"]) .ai-howto { display: none; }
+
+/* 보고 화면: 위에서부터 필살기 → 단서 → '실제로 무엇을 했을까요?' → 파고들기/칭찬하기 */
+/* body.choosing은 순위표·설정에 다녀오면 풀리므로, 고르는 도구(#decision-tools)가 있는 동안으로 잡습니다 */
+#screen-result:has(#decision-tools) > #result-box { order: 1; }
+#screen-result:has(#decision-tools) > #choice { order: 2; }
+#decision-tools { scroll-margin: calc(var(--stick-top) + 24px); }
+/* 사장 필살기가 있는지 잘 보이게: 지시를 쓰거나 고르는 동안에도 흐리게 하지 않아요 */
+body.writing .power-panel, body.choosing #decision-tools .power-panel:not(:hover):not(:focus-within) { opacity: 1; }

@@ -639,7 +639,7 @@
         <figure class="gate-demo" aria-label="예시: 사장 지시가 부장, 사원으로 내려가며 짧아져요">
           <figcaption class="gd-head"><b>💬 사내 단톡방</b><span>지시 전달 중<span class="gd-dots" aria-hidden="true"><i></i><i></i><i></i></span></span></figcaption>
           <ol class="gd-feed">
-            <li class="gd-msg gd-ceo"><span class="gd-ava">사장</span><span class="gd-bubble">고객 불만 원인 찾아서 내일까지 해결책 보고해요</span><span class="gd-limit">30자</span></li>
+            <li class="gd-msg gd-ceo"><span class="gd-ava">사장</span><span class="gd-bubble">고객 불만 원인 찾아서 내일까지 해결책 보고해요</span><span class="gd-limit">자유</span></li>
             <li class="gd-msg gd-mid"><span class="gd-ava">부장</span><span class="gd-bubble">불만 원인 찾아 보고</span><span class="gd-limit">22자</span></li>
             <li class="gd-msg gd-low"><span class="gd-ava">사원</span><span class="gd-bubble">불 찾아옴?! 🔥</span><span class="gd-limit">10자</span></li>
           </ol>
@@ -1294,7 +1294,7 @@
       // 서버에 저장소가 없거나 접속 실패(8초 안에 답 없음 포함): 로그인 없이 지금처럼
       if (document.getElementById("screen-auth-wait").classList.contains("active")) {
         startGame();
-        if (failed) toast("팀 서버가 답하지 않아 로그인 없이 시작해요. 새로고침하면 다시 연결해요.");
+        if (failed) toast("서버에 연결하지 못해 로그인 없이 시작해요. 새로고침하면 다시 연결해요.");
       }
       return;
     }

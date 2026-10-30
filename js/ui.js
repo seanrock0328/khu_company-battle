@@ -65,9 +65,10 @@ function renderSettingsButton() {
   const btn = document.getElementById("btn-settings");
   const model = CHATKHU_MODELS.find(m => m.id === getModel());
   const shown = model ? model.name.replace(/ \(.*\)/, "") : getModel();
-  const full = hasAI() ? `ChatKHU · ${shown} · ${aiSourceLabel()}` : "ChatKHU 연결";
+  const src = getApiKey() ? ` · ${aiSourceLabel()}` : ""; // 팀 서버는 플레이어에게 따로 표시하지 않아요 (개인 키일 때만)
+  const full = hasAI() ? `ChatKHU · ${shown}${src}` : "ChatKHU 연결";
   btn.innerHTML = hasAI()
-    ? `<span aria-hidden="true">🔌</span><span class="pill-text"> ChatKHU</span><small class="pill-more"> · ${esc(shown)} · ${esc(aiSourceLabel())}</small>`
+    ? `<span aria-hidden="true">🔌</span><span class="pill-text"> ChatKHU</span><small class="pill-more">${esc(src)}</small>`
     : `<span aria-hidden="true">⚠️</span><span class="pill-text"> ChatKHU 연결</span>`;
   btn.title = full;
   btn.setAttribute("aria-label", full);
@@ -868,7 +869,7 @@ function floorPerson(c, i) {
 // 책상 앞 이름표: 직급(작은 직급 색 표시) + 이름 / 글자칸 + 글자 수
 function plateHtml(c, i, person) {
   const rank = FLOOR_RANKS[i];
-  const chars = i === 0 ? ORDER_MAX : rankInfo(rank).chars;
+  const chars = i === 0 ? ORDER_SCALE : rankInfo(rank).chars;
   const here = i === 0 || (person && (!person.quit || office.holdQuit));
   // 퇴사자는 이름에 줄을 긋고, 빨간 '퇴사' 팻말은 의자 자리에 (공석은 이름표 하나로만 알림)
   const gone = i !== 0 && !here && !!person && !!person.quit;
@@ -877,7 +878,7 @@ function plateHtml(c, i, person) {
   const frozen = person && office.holdQuit && office.shownLoyalty && office.shownLoyalty.has(person.id);
   const hv = Number(frozen ? office.shownLoyalty.get(person.id) : person ? person.loyalty : 0);
   return `<span class="pl-row"><b class="rank rk-${i}">${esc(rank)}</b><span class="pn${gone ? " gone" : ""}">${esc(name)}</span></span>
-    <span class="pl-row pl-chars">${cells(Math.round(chars / CELL_CHARS), `rk-${i}`)}<small>${chars}자</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
+    <span class="pl-row pl-chars">${cells(Math.round(chars / CELL_CHARS), `rk-${i}`)}<small>${i === 0 ? "자유" : `${chars}자`}</small>${here && person ? `<span class="ph" title="충성심 ${hv}/10">♥${hv}</span>` : ""}</span>`;
 }
 
 // 사람이 바뀐 자리만 고칩니다. animate면 새 직원은 입구 문으로 걸어 들어옵니다.
@@ -921,7 +922,7 @@ function officeSync(animate) {
     if (plate) {
       plate.innerHTML = plateHtml(c, i, person);
       plate.classList.toggle("empty", !here);
-      plate.title = `${rank} ${i === 0 ? c.player || "" : person ? person.name : "공석"} · 지시 ${i === 0 ? ORDER_MAX : rankInfo(rank).chars}자`;
+      plate.title = `${rank} ${i === 0 ? c.player || "" : person ? person.name : "공석"} · 지시 ${i === 0 ? "자유" : `${rankInfo(rank).chars}자`}`;
     }
     const want = i === 0 ? "ceo" : here ? person.id : null;
     const m = office.mates.get(i);
@@ -1475,7 +1476,7 @@ async function officePaper(order, chain) {
   const letters = Array.from(String(order || ""));
   const showText = n => letters.slice(0, n).join("") + (letters.length > n ? "…" : "");
   fx.innerHTML = "";
-  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(Math.ceil(ORDER_MAX / CELL_CHARS))}</span><b class="fly-limit">${ORDER_MAX}자</b></div>`;
+  fly.innerHTML = `<div class="fly-in"><span class="fly-text"></span><span class="fly-cells">${"<i></i>".repeat(Math.ceil(ORDER_SCALE / CELL_CHARS))}</span><b class="fly-limit">${letters.length}자</b></div>`;
   fly.querySelector(".fly-text").textContent = showText(12);
   // 데스크톱: 머리 위 / 휴대폰 지도: 몸 오른쪽 (지도 위쪽이 잘리지 않게)
   const head = i => { const s = planSeat(P, i); return office.strip ? { x: Math.min(P.W - 50, s.x + P.mate * .95), y: s.y - P.mate * .35 } : { x: s.x + 6, y: Math.max(46, s.y - P.mate * 1.45 - 2) }; };
@@ -1488,7 +1489,7 @@ async function officePaper(order, chain) {
   fly.style.setProperty("--pk", "1"); // 종이는 작아져도 "✂ N자" 꼬리표·글자는 13px 그대로 (CSS에서 1/--pk로 되돌림)
   fly.classList.add("on");
   // 휴대폰 지도에서는 지시서가 작아 글자가 안 보이니, 지도 아래 자막으로 "지시 → 잘린 지시"를 보여 줍니다
-  if (office.strip) officeSay(0, `📄 ${ORDER_MAX}자 · ${showText(ORDER_MAX)}`, { paper: true });
+  if (office.strip) officeSay(0, `📄 ${letters.length}자 · ${showText(40)}`, { paper: true });
   const ceo = office.mates.get(0);
   if (ceo) { ceo.el.classList.add("hop"); setTimeout(() => ceo.el.classList.remove("hop"), 700); }
   await beat(pace(380));
@@ -1496,7 +1497,7 @@ async function officePaper(order, chain) {
     const i = rankNo(x.rank);
     const to = head(i);
     const chars = rankInfo(x.rank).chars;
-    const sc = .62 + .38 * chars / ORDER_MAX;
+    const sc = .62 + .38 * chars / ORDER_SCALE;
     const lift = Math.min(150, 50 + Math.hypot(to.x - cur.x, to.y - cur.y) * .3);
     const mid = { x: (cur.x + to.x) / 2, y: Math.min(cur.y, to.y) - lift };
     const trail = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -2029,7 +2030,7 @@ function demoHtml() {
     <svg class="plan-bg" viewBox="0 0 ${P.W} ${P.H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${P.bg}</svg>
     <div class="plan-items">${P.items.map(itemHtml).join("")}${desks}</div>
     <div class="demo-track"><div class="demo-lift"><span class="demo-paper"><span class="demo-cells">${"<i></i>".repeat(10)}</span>
-      <b class="demo-lim l0">${ORDER_MAX}자</b><b class="demo-lim l1">📝 ${rankInfo("부장").chars}자</b><b class="demo-lim l2">📝 ${rankInfo("대리").chars}자</b><b class="demo-lim l3">📝 ${rankInfo("사원").chars}자</b></span></div></div>
+      <b class="demo-lim l0">📣 자유</b><b class="demo-lim l1">📝 ${rankInfo("부장").chars}자</b><b class="demo-lim l2">📝 ${rankInfo("대리").chars}자</b><b class="demo-lim l3">📝 ${rankInfo("사원").chars}자</b></span></div></div>
     ${says.map(([cls, x, y, text]) => `<span class="demo-say ${cls}" style="--x:${x};--y:${y}">${esc(text)}</span>`).join("")}
     <span class="demo-stamp stamp" style="--x:438;--y:62">🤥 거짓말</span>
   </div>`;
@@ -2179,6 +2180,7 @@ function renderAIScreen(step) {
   document.getElementById("ai-lead").textContent = step.lead;
   document.getElementById("ai-request").value = step.build();
   document.getElementById("ai-response").value = "";
+  document.getElementById("ai-howto-list").innerHTML = howToSteps().map(s => `<li>${esc(s)}</li>`).join("");
   document.getElementById("btn-copy").textContent = "요청문 복사하기";
   document.getElementById("manual-box").open = false;
   document.getElementById("screen-ai").classList.toggle("in-quarter", aiKind === "event");
@@ -2198,8 +2200,8 @@ function renderAIScreen(step) {
 function setAIState(state, message) {
   document.getElementById("ai-spinner").hidden = state !== "busy";
   document.getElementById("ai-status-text").textContent = {
-    busy: `ChatKHU가 쓰는 중… 보통 10~40초 걸려요. (${getModel()})`,
-    error: "ChatKHU에서 결과를 받지 못했어요.",
+    busy: "준비하고 있어요… 보통 10~40초 걸려요.",
+    error: "잠깐 연결이 끊겼어요.",
     nokey: "ChatKHU API 키가 아직 없어요. 연결하면 버튼 없이 자동으로 진행돼요."
   }[state];
   document.getElementById("ai-error").textContent = state === "error" ? message : "";
@@ -2207,7 +2209,7 @@ function setAIState(state, message) {
   document.getElementById("btn-ai-connect").hidden = state !== "nokey";
   document.getElementById("btn-practice").disabled = state === "busy";
   document.getElementById("screen-ai").dataset.state = state;
-  // 실패해도 복사·붙여넣기 안내는 접어 둡니다: 바로 아래 '다시 시도'와 '연습 모드'가 먼저 보이게
+  // 연습 모드·복사 붙여넣기 버튼은 화면에서 숨겨 두었어요 (ChatKHU가 필수). 실패하면 '다시 시도'만 보입니다
   if (state === "busy") { aiStarted = Date.now(); startAIWait(); }
   else stopAIWait();
 }
@@ -2255,19 +2257,23 @@ function aiThoughts() {
 }
 
 // 기다리는 동안 보여 주는 '게임 방법 한 줄' (AI 대기 화면 팁, 보고 대기 칸)
-function howToLines() {
+// 게임 방법 5단계: 로딩 화면의 '게임 방법' 카드와 보고 대기 안내에 같이 씁니다
+function howToSteps() {
   return [
-    `🎮 게임 방법 ① 사장님이 ${ORDER_MAX}자 안으로 짧고 굵게 지시해요`,
-    "🎮 게임 방법 ② 직원들이 들은 말을 자기 글자 수에 맞게 요약해서 아래로 전해요",
-    "🎮 게임 방법 ③ 일을 마친 직원들이 보고를 올려요. 부풀린 보고도 섞여 있어요",
-    "🎮 게임 방법 ④ 단서를 보고 🔍 파고들기 또는 👏 칭찬하기를 골라요",
-    "🎮 게임 방법 ⑤ 1년(4분기) 순이익으로 순위를 겨뤄요"
+    "사장님이 하고 싶은 지시를 자유롭게 내려요. 짧고 굵을수록 덜 바뀌어요",
+    "직원들이 들은 말을 자기 글자 수에 맞게 요약해서 아래로 전해요",
+    "말단 사원이 들은 대로 일하고, 그 행동이 실제 매출이 돼요",
+    "보고는 올라갈수록 부풀려져요. 단서를 보고 🔍 파고들기·👏 칭찬하기를 골라요",
+    "1년(4분기) 순이익으로 순위를 겨뤄요"
   ];
+}
+
+function howToLines() {
+  return howToSteps().map((s, i) => `🎮 게임 방법 ${"①②③④⑤"[i]} ${s}`);
 }
 
 function aiTips() {
   return [
-    ...howToLines(),
     "💡 회사 매출은 실제 고객·광고·계약에서 나와요",
     `💡 실제 행동을 맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}!`,
     `💡 사원은 지시를 ${rankInfo("사원").chars}자까지만 전달해요`,
@@ -2323,7 +2329,7 @@ function renderFoundingNews() {
   document.getElementById("founding-news").innerHTML = `
     <article class="news founding">
       <div class="masthead"><span>창간 특집</span><b>경희경제신문</b><span>${esc(today())}</span></div>
-      <p class="paper">오늘의 창업 <span>${c.foundingByAI ? `ChatKHU 작성${c.foundingModel ? " · " + esc(c.foundingModel) : ""}` : "연습 모드"}</span></p>
+      <p class="paper">오늘의 창업 <span>${c.foundingByAI ? "ChatKHU 작성" : "연습 모드"}</span></p>
       <h3>${esc(c.news)}</h3>
       ${companyTitle(c)}
       <p class="detail">${esc(c.detail)}</p>
@@ -2656,11 +2662,12 @@ function renderDecisionTools() {
   const box = document.getElementById("decision-tools");
   if (!box) return;
   document.body.classList.add("choosing"); // 고르는 동안은 파고들기/칭찬하기 한 쌍이 화면의 주인공
-  box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
+  box.innerHTML = `${powerPanel("after")}
+    <section class="clues" aria-label="보고와 비교할 추리 단서">
     <h3>📎 보고 옆에 놓인 단서</h3>
     <div class="clue-list">${cluesFor(round, { seed: game.company.gameId || `${game.company.player}|${game.company.name}`, quarter: game.round, event: game.company.events?.[game.round] }).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
     <p class="hint">매출이 늘었다고 지시대로 했다는 뜻은 아니에요. 보고와 단서로 실제 행동을 추리하세요.</p>
-    </section>${powerPanel("after")}
+    </section>
     ${round.power === "visit" ? `<section class="visit-result" aria-label="현장 출동 결과">
       <h3>🔎 사장님이 직접 확인한 현장</h3>
       <p>${esc(round.result.action)}</p><p>${esc(round.result.audit)}</p>
@@ -2709,8 +2716,8 @@ function quarterPop(c, ev) {
 function orderMeter(staff) {
   return `<div class="order-meter" id="order-meter" aria-hidden="true">
     <p class="om-state" id="om-state"></p>
-    <div class="om-cells" style="--n:${Math.ceil(ORDER_MAX / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_MAX / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
-    <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_MAX * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
+    <div class="om-cells" style="--n:${Math.ceil(ORDER_SCALE / CELL_CHARS)}">${Array.from({ length: Math.ceil(ORDER_SCALE / CELL_CHARS) }, () => "<span class=\"om-cell\"><i></i></span>").join("")}</div>
+    <div class="om-marks">${staff.map(x => `<span class="om-mark rk-${rankNo(x.rank)}" data-rank="${esc(x.rank)}" data-chars="${rankInfo(x.rank).chars}" style="left:${rankInfo(x.rank).chars / ORDER_SCALE * 100}%" title="${esc(x.rank)} ${rankInfo(x.rank).chars}자">${esc(initial(x.rank))}</span>`).join("")}</div>
     <p class="om-note">1칸 = ${CELL_CHARS}자 · 동그라미 = 그 직급이 요약해서 전할 수 있는 글자 수</p>
   </div>`;
 }
@@ -2733,7 +2740,7 @@ function paintOrderMeter(len) {
       : cut.length === marks.length ? `📝 ${len}자: 모든 직원이 요약해서 전해요. 핵심만 남겨요!`
       : `📝 ${len}자: ${cut.join("·")}${(String(cut[cut.length - 1]).charCodeAt(String(cut[cut.length - 1]).length - 1) - 0xAC00) % 28 ? "이" : "가"} 요약해서 전해요. 핵심만 남겨요!`;
   }
-  meter.classList.toggle("full", len >= ORDER_MAX);
+  meter.classList.toggle("full", len >= ORDER_SCALE);
 }
 
 // 휴대폰에서 지시서(#order)가 아래 큰 버튼(지시 내리기)에 가려 있으면, 지시서 아래 끝이 버튼 위에 오도록 패널만 스크롤.
@@ -2783,14 +2790,15 @@ function renderEvent() {
       <p class="mission-text">${esc(ev.text)}</p>
       <p class="goal-line"><span>🎯 고객과 비용을 관리해 영업이익 만들기</span><span>💸 분기 급여 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
     </article>
+    ${activeStaff.length ? powerPanel("before") : ""}
     ${businessCard(c)}
     <div class="composer">
-      <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length} / ${ORDER_MAX}</span></span>
+      <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${orderCount(round.order.length)}</span></span>
         <textarea id="order" maxlength="${ORDER_MAX}" rows="3" ${!activeStaff.length ? "disabled" : ""} placeholder="예: 요금 10% 내려서 손님 모아">${esc(round.order)}</textarea>
       </label>
       ${activeStaff.length ? orderMeter(line) : ""}
       ${activeStaff.length ? `<div class="chain-row"><span class="hint">전달 순서</span><ol class="chain-mini">
-        <li class="rk-0">${avatar(null)}<small>${ORDER_MAX}</small></li>${chain}</ol></div>` : ""}
+        <li class="rk-0">${avatar(null)}<small>∞</small></li>${chain}</ol></div>` : ""}
     </div>
     <section class="money-desk ${activeStaff.length ? "" : "closed"}" aria-label="이번 분기 투자와 회사 통장">
       ${activeStaff.length ? `<fieldset class="invest-choice">
@@ -2814,7 +2822,6 @@ function renderEvent() {
       </fieldset>` : ""}
       ${bankCard(c)}
     </section>
-    ${activeStaff.length ? powerPanel("before") : ""}
     ${quit.length ? `<p class="hint quit-list">퇴사: ${quit.join(" ")}</p>` : ""}
     ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : ""}
     ${settledRounds(c).length ? `<details class="finance-fold" ${foldOpen ? "open" : ""}><summary><span aria-hidden="true">📊</span> 지난 분기 돈의 흐름 보기</summary>${financeChart(c)}</details>` : ""}`;
@@ -3135,7 +3142,7 @@ async function renderTruth() {
     const verdict = document.createElement("article");
     verdict.className = `news verdict ${round.success ? "good" : "bad"}`;
     verdict.innerHTML = `
-      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : `직원 연기${r.model ? " · " + esc(r.model) : ""}`}</span></p>
+      <p class="paper">경희경제신문 · ${quarterLabel(game.round)} <span>${closed ? "영업 중단 결산" : r.practice ? "연습 모드" : "직원 연기"}</span></p>
       <h3>${esc(r.news)}</h3>
       <div class="verdict-row">
         ${stamp(closed ? "휴업" : round.success ? "승인" : "반려", `verdict-stamp ${round.success ? "ok" : "no"}`)}
@@ -3474,9 +3481,12 @@ function renderSettings() {
   document.getElementById("model-select").innerHTML = CHATKHU_MODELS.map(m =>
     `<option value="${esc(m.id)}" ${m.id === getModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
   document.getElementById("key-input").value = "";
+  // 개인 키 칸은 개발용: 주소에 ?dev 를 붙였거나 이미 키가 저장된 브라우저에서만 보여요
+  const dev = document.documentElement.classList.contains("dev") || !!getApiKey();
+  document.querySelectorAll("#screen-settings .dev-only").forEach(el => { el.hidden = !dev; });
   document.getElementById("key-state").textContent = getApiKey()
     ? "✅ 내 키가 저장되어 있어요. 지금은 팀 서버 대신 내 키로 ChatKHU를 불러요."
-    : TEAM_SERVER_URL ? "✅ 팀 서버로 연결돼 있어요. 키를 넣지 않아도 됩니다." : "아직 연결이 없어요. 키를 넣어 주세요.";
+    : TEAM_SERVER_URL ? "✅ ChatKHU에 연결돼 있어요." : "아직 ChatKHU 연결이 없어요.";
   document.getElementById("btn-key-clear").hidden = !getApiKey();
 }
 

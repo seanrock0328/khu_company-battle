@@ -71,14 +71,14 @@ async function callTeamServer(prompt) {
       body: JSON.stringify({ prompt, model: getModel() })
     }, AI_TIMEOUT_MS);
   } catch (e) {
-    if (e.timeout) throw new Error(`팀 서버가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 아래 '복사·붙여넣기로 하기'나 연습 모드로 진행해 주세요.`);
-    throw new Error("팀 서버에 접속하지 못했어요. 인터넷 연결을 확인하거나 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
+    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 잠시 후 '다시 시도'를 눌러 주세요.`);
+    throw new Error("ChatKHU에 연결하지 못했어요. 인터넷 연결을 확인하고 '다시 시도'를 눌러 주세요.");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     // 서버 오류 문구에 이미 상태 번호가 있으면 다시 붙이지 않고, ChatKHU 원문(detail)은 화면 대신 콘솔에만 남깁니다
     if (data.detail) console.warn("팀 서버 오류 상세:", data.detail);
-    const msg = data.error || "팀 서버 오류가 났어요.";
+    const msg = data.error || "ChatKHU 연결에 문제가 생겼어요. '다시 시도'를 눌러 주세요.";
     throw new Error(msg.includes(`(${res.status})`) ? msg : `${msg} (${res.status})`);
   }
   if (!data.text) throw new Error("ChatKHU 답변이 비어 있어요. 다시 시도해 주세요.");
@@ -102,8 +102,8 @@ async function callChatKHU(prompt) {
       })
     }, AI_TIMEOUT_MS);
   } catch (e) {
-    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 다시 시도하거나 아래 '복사·붙여넣기로 하기'나 연습 모드로 진행해 주세요.`);
-    throw new Error("브라우저에서 ChatKHU에 접속하지 못했어요. 아래 '복사·붙여넣기로 하기'로 진행해 주세요.");
+    if (e.timeout) throw new Error(`ChatKHU가 ${AI_TIMEOUT_MS / 1000}초 동안 답하지 않았어요. 잠시 후 '다시 시도'를 눌러 주세요.`);
+    throw new Error("브라우저에서 ChatKHU에 접속하지 못했어요. 인터넷 연결을 확인하고 '다시 시도'를 눌러 주세요.");
   }
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 150);
@@ -459,20 +459,20 @@ function pick(list) {
 
 // 단계별 묶음: 화면(main.js)은 이 표만 보고 ChatKHU를 부릅니다
 const AI_STEPS = {
-  plan: { title: "사장님 지시를 경영 계획으로 옮기는 중", lead: "실제 가격·광고량·품질·비용 변화로 해석하고 직원들에게 전달합니다.", build: buildPlanRequest, apply: applyPlan, practice: practicePlan },
+  plan: { title: "사장님 지시를 계획으로 옮기는 중", lead: "가격·광고·품질·비용을 어떻게 바꿀지 정리해서 직원들에게 내려보내요.", build: buildPlanRequest, apply: applyPlan, practice: practicePlan },
   industry: {
-    title: "ChatKHU가 업종을 뽑는 중",
-    lead: "엉뚱하지만 있을 법한 업종을 ChatKHU가 골라 줍니다.",
+    title: "업종 뽑는 중",
+    lead: "엉뚱하지만 있을 법한 업종을 고르고 있어요.",
     build: buildIndustryRequest, apply: (t) => applyIndustry(t), practice: practiceIndustry
   },
   founding: {
-    title: "ChatKHU가 창업 소식과 면접 후보를 준비 중",
-    lead: "창업 뉴스, 1년 동안 닥칠 이벤트 4개, 직급별 면접 후보 18명의 자기소개를 만듭니다. 30초~1분 걸려요.",
+    title: "창업 준비 중",
+    lead: "창업 뉴스, 1년 동안 닥칠 사건 4개, 직급별 지원자 18명을 준비하고 있어요. 30초~1분 걸려요.",
     build: buildFoundingRequest, apply: applyFounding, practice: practiceFounding
   },
   event: {
-    title: "ChatKHU가 직원들을 연기하는 중",
-    lead: "지시가 내려가며 바뀌고, 누군가는 거짓말을 합니다. 보고는 부풀려져 올라옵니다.",
+    title: "직원들이 일하는 중",
+    lead: "지시가 내려가며 바뀌고, 누군가는 거짓말을 해요. 보고는 부풀려져 올라와요.",
     build: buildEventRequest, apply: applyEvent, practice: practiceEvent
   }
 };

@@ -15,7 +15,7 @@
 // 후보: { id, rank, name, mbti, secure(안정형 %), skill, luck, honesty(숨김), loyalty(충성심, 5에서 시작), quit, salary, intro, answer, interviewed:[질문id] }
 
 const RANKS = [
-  { name: "사장", chars: 30, base: 0 },  // 플레이어 (지시 최대 글자 수 = ORDER_MAX)
+  { name: "사장", chars: 30, base: 0 },  // 플레이어 (지시는 자유, 30 = 막대 눈금 ORDER_SCALE)
   { name: "임원", chars: 25, base: 6 },
   { name: "부장", chars: 22, base: 5 },
   { name: "차장", chars: 19, base: 4 },
@@ -29,7 +29,12 @@ const PLAYER_MAX = 10;
 const DETAIL_MAX = 40;
 const NAME_MAX = 12;
 const MOTTO_MAX = 20;
-const ORDER_MAX = 30;
+// 사장 지시는 글자 수 제한이 없어요. ORDER_MAX는 너무 긴 글로 AI 요청문이 커지지 않게 하는 안전선입니다
+const ORDER_MAX = 500;
+// 안전선에 가까워질 때만 글자 수 옆에 최대치를 보여 줍니다 (orderCount)
+function orderCount(len) { return len >= ORDER_MAX - 50 ? `${len} / ${ORDER_MAX}자` : `${len}자`; }
+// 지시 막대·글자 칸의 눈금: 임원 25 ~ 사원 10자와 비교해 보여 주는 기준 길이
+const ORDER_SCALE = 30;
 const ROUNDS = EVENT_ORDER.length; // 4분기
 
 // ===== 경제 규칙 (단위: 만원) =====
