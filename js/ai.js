@@ -284,8 +284,8 @@ ${JSON.stringify(input)}
 
 function applyEvent(text, model) {
   const c = game.company;
-  const d = parseJson(text);
-  if (!Array.isArray(d.down) || !Array.isArray(d.up)) throw new Error("down이나 up이 없어요.");
+  const d = findReport(parseJson(text));
+  if (!d) throw new Error("down이나 up이 없어요.");
   const score = readScore(d.score);
 
   const staff = transmissionStaff(c);
@@ -360,6 +360,34 @@ function practiceEvent() {
     audit: lies ? `${staff.filter((x, k) => down[k].lie).map(x => x.name).join(", ")}이(가) 지시를 바꿔 전달했습니다.` : "모두 지시대로 전달했습니다.",
     over: 0, practice: true, model: ""
   };
+}
+
+// ChatKHU가 형식을 조금 바꿔 답할 때가 있어서 (바깥에 한 겹 더 감싸기, Down처럼 대문자, 배열 대신 객체·문자열)
+// down·up이 있는 객체를 찾아 배열로 맞춥니다. 끝내 없으면 null.
+function findReport(obj, depth = 0) {
+  if (!obj || typeof obj !== "object" || depth > 3) return null;
+  const keyOf = name => Object.keys(obj).find(k => k.toLowerCase() === name);
+  const asList = v => Array.isArray(v) ? v
+    : v && typeof v === "object" ? Object.values(v)
+    : typeof v === "string" && v.trim() ? v.split(/\n|→|->/).map(x => x.trim()).filter(Boolean)
+    : null;
+  const dk = keyOf("down"), uk = keyOf("up");
+  if (dk && uk) {
+    const down = asList(obj[dk]), up = asList(obj[uk]);
+    if (down && up) {
+      const out = { ...obj, down, up };
+      for (const k of ["score", "news", "reason", "audit", "action"]) {
+        const real = keyOf(k);
+        if (real && out[k] === undefined) out[k] = obj[real];
+      }
+      return out;
+    }
+  }
+  for (const v of Array.isArray(obj) ? obj : Object.values(obj)) {
+    const found = findReport(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 // ===== 공통 =====
