@@ -3229,3 +3229,10 @@ html:not(.dev) #screen-board .admin, html:not(.dev) #board-admin { display: none
 .ai-howto li { counter-increment: howto; display: grid; grid-template-columns: 24px 1fr; gap: var(--s2); align-items: start; font-size: var(--fs-s); line-height: 1.45; }
 .ai-howto li::before { content: counter(howto); display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--rank-0); color: var(--ceo-ink); font-family: var(--font-display); font-size: 13px; box-shadow: inset 0 0 0 2px var(--outline); }
 #screen-ai:not([data-state="busy"]) .ai-howto { display: none; }
+
+/* 보고 화면: 위에서부터 필살기 → 단서 → '실제로 무엇을 했을까요?' → 파고들기/칭찬하기 */
+body.choosing #screen-result > #result-box { order: 1; }
+body.choosing #screen-result > #choice { order: 2; }
+#decision-tools { scroll-margin: calc(var(--stick-top) + 24px); }
+/* 사장 필살기가 있는지 잘 보이게: 지시를 쓰거나 고르는 동안에도 흐리게 하지 않아요 */
+body.writing .power-panel, body.choosing #decision-tools .power-panel:not(:hover):not(:focus-within) { opacity: 1; }

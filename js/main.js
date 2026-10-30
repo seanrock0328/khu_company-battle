@@ -261,6 +261,7 @@ document.getElementById("result-box").addEventListener("change", e => {
   if (!e.target.matches("[data-guess]")) return;
   game.company.rounds[game.round].guess = Number(e.target.value);
   checkpointGame("choice");
+  choiceBox.scrollIntoView({ behavior: "smooth", block: "nearest" }); // 고르면 바로 아래 파고들기/칭찬하기가 보이게
 });
 
 const choiceBox = document.getElementById("choice");
@@ -281,7 +282,8 @@ async function showRoundResult() {
   showScreen("screen-result");
   await renderReports();
   choiceBox.hidden = false;
-  choiceBox.scrollIntoView({ behavior: "smooth", block: "center" });
+  // 위에서부터 필살기 → 단서 → 추리 → 파고들기/칭찬하기 순서라 맨 위(필살기)부터 보여 줍니다
+  (document.getElementById("decision-tools") || choiceBox).scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // 보고를 받은 뒤 사장의 선택: 파고들기 / 칭찬하기

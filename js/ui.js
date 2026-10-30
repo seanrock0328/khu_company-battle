@@ -2662,7 +2662,8 @@ function renderDecisionTools() {
   const box = document.getElementById("decision-tools");
   if (!box) return;
   document.body.classList.add("choosing"); // 고르는 동안은 파고들기/칭찬하기 한 쌍이 화면의 주인공
-  box.innerHTML = `<section class="clues" aria-label="보고와 비교할 추리 단서">
+  box.innerHTML = `${powerPanel("after")}
+    <section class="clues" aria-label="보고와 비교할 추리 단서">
     <h3>📎 보고 옆에 놓인 단서</h3>
     <div class="clue-list">${cluesFor(round, { seed: game.company.gameId || `${game.company.player}|${game.company.name}`, quarter: game.round, event: game.company.events?.[game.round] }).map((text, k) => `<p class="clue" style="--i:${k}"><span class="clue-no" aria-hidden="true">증거 ${k + 1}</span>${esc(text)}</p>`).join("")}</div>
     <p class="hint">매출이 늘었다고 지시대로 했다는 뜻은 아니에요. 보고와 단서로 실제 행동을 추리하세요.</p>
@@ -2676,8 +2677,7 @@ function renderDecisionTools() {
     <fieldset class="action-guess"><legend>직원은 실제로 무엇을 했을까요?</legend>
       <p class="hint">맞히면 판단 보너스 ${money(JUDGMENT_BONUS)}. 회사 영업이익은 실행한 행동에서 이미 결정돼요.</p>
       ${round.guessOptions.map((a, i) => `<label><input type="radio" name="action-guess" data-guess value="${i}" ${round.guess === i ? "checked" : ""}> <span>${esc(actionLabel(a))}</span></label>`).join("")}
-    </fieldset>
-    ${powerPanel("after")}`;
+    </fieldset>`;
   if (round.power === "visit") {
     sfx("stamp");
     const m = office.mates.get(0);
@@ -2790,6 +2790,7 @@ function renderEvent() {
       <p class="mission-text">${esc(ev.text)}</p>
       <p class="goal-line"><span>🎯 고객과 비용을 관리해 영업이익 만들기</span><span>💸 분기 급여 <b>${money(payroll(c) * COST_PER_SALARY, false)}</b></span></p>
     </article>
+    ${activeStaff.length ? powerPanel("before") : ""}
     ${businessCard(c)}
     <div class="composer">
       <label class="field order-field"><span class="composer-head">📣 사장님 지시 <span class="counter" data-for="order">${round.order.length}자</span></span>
@@ -2821,7 +2822,6 @@ function renderEvent() {
       </fieldset>` : ""}
       ${bankCard(c)}
     </section>
-    ${activeStaff.length ? powerPanel("before") : ""}
     ${quit.length ? `<p class="hint quit-list">퇴사: ${quit.join(" ")}</p>` : ""}
     ${!activeStaff.length ? `<p class="choice-result bad">직원이 모두 퇴사해 영업을 중단합니다. 남은 분기마다 매출·인건비는 0원이며, 임대료와 위약금으로 ${money(CLOSED_PENALTY, false)}의 손실이 발생합니다.</p>` : ""}
     ${settledRounds(c).length ? `<details class="finance-fold" ${foldOpen ? "open" : ""}><summary><span aria-hidden="true">📊</span> 지난 분기 돈의 흐름 보기</summary>${financeChart(c)}</details>` : ""}`;
