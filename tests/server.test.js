@@ -186,7 +186,7 @@ test("서버: 파일로 연 화면(Origin null)은 ALLOW_FILE_ORIGIN=1일 때만
   assert.equal((await on.call("/", { body: { prompt }, origin: "null" })).status, 200);
   const info = (await on.call("/", { method: "GET" })).data;
   assert.equal(info.fileTest, true);
-  assert.equal(info.version, 8);
+  assert.equal(info.version, 9);
 });
 
 test("서버: 실제 게임 요청문은 통과하고, 머리말로 시작하지 않거나 너무 긴 요청은 ChatKHU에 보내지 않는다", async () => {
@@ -384,4 +384,55 @@ test("게임: 팀 서버가 AI 답을 110초 동안 안 주면 다시 시도·�
   await c.advance(1000);
   assert.match(error.message, /110초 동안 답하지 않았어요/);
   assert.match(error.message, /연습 모드/);
+});
+
+// ===== 순위표 관리자: 하나씩 지우기·초기화 =====
+
+test("서버: 관리자는 기록을 하나씩 지우고, 지운 기록·초기화 전 기록은 다른 기기가 다시 올려도 안 보인다", async () => {
+  const w = loadWorker();
+  const board = async () => (await w.call("/board", { method: "GET" })).data.entries.map(e => e.player).sort();
+  const a = await w.call("/guest", { body: { name: "가가" } });
+  const b = await w.call("/guest", { body: { name: "나나" } });
+  const ea = { profit: 100, at: w.clock.now - 5000, industry: "붕어빵", gameId: "gamea1" };
+  const eb = { profit: 200, at: w.clock.now - 4000, industry: "붕어빵", gameId: "gameb1" };
+  assert.equal((await w.call("/board", { body: { token: a.data.token, entry: ea } })).status, 200);
+  assert.equal((await w.call("/board", { body: { token: b.data.token, entry: eb } })).status, 200);
+  assert.deepEqual(await board(), ["가가(손님)", "나나(손님)"]);
+
+  // 관리자 모드 확인과 하나 지우기
+  assert.equal((await w.call("/admin", { body: { code: "틀림" } })).status, 403);
+  assert.equal((await w.call("/admin", { body: { code: "admin-test" } })).status, 200);
+  assert.equal((await w.call("/delete", { body: { code: "틀림", player: "가가(손님)", at: ea.at } })).status, 403);
+  const del = await w.call("/delete", { body: { code: "admin-test", player: "가가(손님)", at: ea.at } });
+  assert.equal(del.status, 200);
+  assert.equal(del.data.deleted, 1);
+  w.clock.now += 11 * 1000; // 서버의 10초 기억(cache)이 지난 뒤에도
+  assert.deepEqual(await board(), ["나나(손님)"]);
+  // 열려 있던 다른 기기가 같은 기록을 다시 올려도 무시
+  const again = await w.call("/board", { body: { token: a.data.token, entry: ea } });
+  assert.equal(again.data.ignored, true);
+  assert.deepEqual(await board(), ["나나(손님)"]);
+
+  // 초기화: 이전 기록은 다시 올려도 안 보이고, 초기화 뒤 새 판은 보인다 (기기 시계가 30초 늦어도)
+  w.clock.now += 60 * 1000;
+  assert.equal((await w.call("/reset", { body: { code: "admin-test" } })).status, 200);
+  assert.deepEqual(await board(), []);
+  assert.equal((await w.call("/board", { body: { token: b.data.token, entry: eb } })).data.ignored, true);
+  w.clock.now += 1000;
+  const late = { profit: 300, at: w.clock.now - 30 * 1000, industry: "붕어빵", gameId: "gameb2" };
+  assert.equal((await w.call("/board", { body: { token: b.data.token, entry: late } })).data.ignored, undefined);
+  assert.deepEqual(await board(), ["나나(손님)"]);
+});
+
+test("서버: 맞는 관리자 코드로는 여러 기록을 연달아 지울 수 있고, 틀린 코드만 10번까지 센다", async () => {
+  const w = loadWorker();
+  const g = await w.call("/guest", { body: { name: "많이" } });
+  for (let k = 0; k < 15; k++) {
+    await w.call("/board", { body: { token: g.data.token, entry: { profit: k, at: w.clock.now - 1000 - k, industry: "AI", gameId: `many${k}xx` } } });
+  }
+  for (let k = 0; k < 15; k++) {
+    assert.equal((await w.call("/delete", { body: { code: "admin-test", player: "많이(손님)", at: w.clock.now - 1000 - k } })).status, 200, `${k + 1}번째 지우기`);
+  }
+  for (let k = 0; k < 10; k++) assert.equal((await w.call("/delete", { body: { code: "틀림", player: "x", at: 1 } })).status, 403);
+  assert.equal((await w.call("/delete", { body: { code: "admin-test", player: "많이(손님)", at: 1 } })).status, 429);
 });
