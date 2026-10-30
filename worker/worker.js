@@ -129,6 +129,24 @@ function cleanEntry(e) {
   return entry;
 }
 
+// 관리자가 지운 기록 표시: 초기화 시각(resetAt)과 하나씩 지운 기록 목록(removed: "닉네임|at").
+// KV 목록(list)은 지운 뒤에도 1분쯤 옛 기록을 보여 줄 수 있고, 다른 기기가 열어 둔 화면이 옛 기록을 다시 올릴 수 있어서
+// 키를 지우는 것과 별도로 이 표시로 걸러 냅니다. (보여 줄 때, 새로 올릴 때 모두)
+const RESET_GRACE_MS = 60 * 1000; // 기기 시계가 조금 늦어도 초기화 직후 새 판이 막히지 않게
+const MAX_REMOVED = 1000;
+const entrySig = e => `${String(e.player || "").toLowerCase()}|${Math.round(Number(e.at))}`;
+async function boardMeta(env) {
+  const m = await env.BOARD.get("board-meta", "json").catch(() => null);
+  return { resetAt: Number(m?.resetAt) || 0, removed: Array.isArray(m?.removed) ? m.removed : [] };
+}
+function isHidden(entry, meta) {
+  // rx = 서버가 기록을 받은 시각(서버 시계라 기기 시계와 상관없음). 예전 기록은 rx가 없어 at으로 판단
+  return (entry.rx || entry.at) <= meta.resetAt || meta.removed.includes(entrySig(entry));
+}
+function adminOk(env, body) {
+  return !!env.ADMIN_CODE && cleanText(body.code, 100) === env.ADMIN_CODE;
+}
+
 async function readEntries(env) {
   if (boardCache.entries && Date.now() - boardCache.at < BOARD_CACHE_MS) return boardCache.entries;
   const entries = [];
@@ -148,7 +166,9 @@ async function handleBoard(request, env, url, allowed) {
 
   if (request.method === "GET" && path === "/board") {
     const season = await env.BOARD.get("season", "json");
-    return reply(200, { season, entries: await readEntries(env) }, allowed);
+    const meta = await boardMeta(env);
+    const entries = (await readEntries(env)).filter(e => !isHidden(e, meta));
+    return reply(200, { season, entries, resetAt: meta.resetAt, removed: meta.removed }, allowed);
   }
   if (request.method !== "POST") return reply(405, { error: "지원하지 않는 요청이에요." }, allowed);
   if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");
@@ -161,12 +181,16 @@ async function handleBoard(request, env, url, allowed) {
     if (!owner) return reply(401, { error: "로그인해야 순위에 기록돼요." }, allowed);
     const entry = cleanEntry({ ...(body.entry || {}), player: owner });
     if (!entry) return reply(400, { error: "기록 형식이 잘못됐어요." }, allowed);
+    // 관리자가 지운 기록이나 초기화 전 기록을 다른 기기가 다시 올리면 조용히 무시 (기기에서 다시 올리기를 멈추도록 ok)
+    const meta = await boardMeta(env);
+    if (meta.removed.includes(entrySig(entry)) || entry.at <= meta.resetAt - RESET_GRACE_MS) return reply(200, { ok: true, ignored: true }, allowed);
     // 같은 판(gameId)은 같은 키: 이어하기로 결산 화면을 다시 열어도 순위표에는 한 번만 올라갑니다
     const gameId = String(body.entry?.gameId ?? "");
     const key = /^[0-9a-z]{6,24}$/.test(gameId)
       ? `e:g:${normId(owner)}:${gameId}`
       : `e:${entry.at}:${Math.random().toString(36).slice(2, 8)}`;
     if (key.startsWith("e:g:") && await env.BOARD.get(key) !== null) return reply(200, { ok: true, duplicate: true }, allowed);
+    entry.rx = Date.now();
     await env.BOARD.put(key, "1", { metadata: entry });
     if (boardCache.entries) boardCache.entries.push(entry);
     return reply(200, { ok: true }, allowed);
@@ -187,10 +211,12 @@ async function handleBoard(request, env, url, allowed) {
     }
     const incoming = Array.isArray(body.entries) ? body.entries.slice(0, 200) : [];
     const have = new Set((await readEntries(env)).map(e => e.at));
+    const meta = await boardMeta(env);
     let added = 0;
     for (const raw of incoming) {
       const entry = cleanEntry(raw);
-      if (!entry || have.has(entry.at)) continue;
+      if (!entry || have.has(entry.at) || meta.removed.includes(entrySig(entry))) continue;
+      entry.rx = Date.now();
       await env.BOARD.put(`e:${entry.at}:${Math.random().toString(36).slice(2, 8)}`, "1", { metadata: entry });
       if (boardCache.entries) boardCache.entries.push(entry);
       have.add(entry.at);
@@ -198,10 +224,37 @@ async function handleBoard(request, env, url, allowed) {
     }
     return reply(200, { ok: true, added, skipped: incoming.length - added }, allowed);
   }
+  // 관리자 코드 확인 (순위표의 관리자 모드 켜기)
+  if (path === "/admin") {
+    if (!adminOk(env, body)) return reply(403, { error: "관리자 코드가 틀렸어요." }, allowed);
+    return reply(200, { ok: true }, allowed);
+  }
+  // 관리자: 기록 하나 지우기 (닉네임 + 기록 시각으로 찾음)
+  if (path === "/delete") {
+    if (!adminOk(env, body)) return reply(403, { error: "관리자 코드가 틀렸어요." }, allowed);
+    const target = { player: cleanText(body.player, 14), at: Math.round(Number(body.at)) };
+    if (!target.player || !Number.isFinite(target.at)) return reply(400, { error: "지울 기록을 찾지 못했어요." }, allowed);
+    const sig = entrySig(target);
+    const meta = await boardMeta(env);
+    if (!meta.removed.includes(sig)) meta.removed = meta.removed.concat(sig).slice(-MAX_REMOVED);
+    await env.BOARD.put("board-meta", JSON.stringify(meta));
+    let deleted = 0, cursor;
+    do {
+      const page = await env.BOARD.list({ prefix: "e:", cursor, limit: 1000 });
+      const hits = page.keys.filter(k => k.metadata && entrySig(k.metadata) === sig);
+      await Promise.all(hits.map(k => env.BOARD.delete(k.name)));
+      deleted += hits.length;
+      cursor = page.list_complete ? null : page.cursor;
+    } while (cursor);
+    if (boardCache.entries) boardCache.entries = boardCache.entries.filter(e => entrySig(e) !== sig);
+    return reply(200, { ok: true, deleted }, allowed);
+  }
   if (path === "/reset") {
     if (!env.ADMIN_CODE || cleanText(body.code, 100) !== env.ADMIN_CODE) {
       return reply(403, { error: "관리자 코드가 틀렸어요." }, allowed);
     }
+    // 초기화 시각을 먼저 기록: 키 삭제가 퍼지기 전에도, 다른 기기가 옛 기록을 다시 올려도 순위표에 안 보입니다
+    await env.BOARD.put("board-meta", JSON.stringify({ resetAt: Date.now(), removed: [] }));
     let cursor, removed = 0;
     do {
       const page = await env.BOARD.list({ prefix: "e:", cursor, limit: 1000 });
@@ -374,12 +427,20 @@ export default {
       }
     }
 
-    if (["/board", "/season", "/reset", "/import"].includes(url.pathname)) {
+    if (["/board", "/season", "/reset", "/import", "/delete", "/admin"].includes(url.pathname)) {
       if (request.method === "POST") {
-        const admin = url.pathname === "/reset" || url.pathname === "/import";
-        const limited = admin
-          ? rateLimited(`admin:${ip}`, Date.now(), ADMIN_LIMIT)
-          : rateLimited(`acct:${ip}`, Date.now(), ACCOUNT_LIMIT);
+        const admin = ["/reset", "/import", "/delete", "/admin"].includes(url.pathname);
+        let limited;
+        if (admin) {
+          // 관리자 코드는 "틀린 시도"만 셉니다 (10분에 10번 틀리면 그 IP는 맞는 코드도 잠시 막힘).
+          // 맞는 코드로 기록을 여러 개 지우는 것은 막지 않습니다.
+          const now = Date.now();
+          const fails = (hits.get(`admin:${ip}`) || []).filter(t => now - t < RATE_WINDOW_MS).length;
+          const body = await request.clone().json().catch(() => ({}));
+          limited = fails >= ADMIN_LIMIT || (!adminOk(env, body || {}) && rateLimited(`admin:${ip}`, now, ADMIN_LIMIT));
+        } else {
+          limited = rateLimited(`acct:${ip}`, Date.now(), ACCOUNT_LIMIT);
+        }
         if (limited) return reply(429, { error: "잠깐 쉬었다 해 주세요." }, allowed);
       }
       try {
@@ -408,7 +469,7 @@ export default {
           bodyStart: body
         }, allowed);
       }
-      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, fileTest: env.ALLOW_FILE_ORIGIN === "1", version: 8 }, allowed);
+      return reply(200, { ok: true, service: "10자 사원 주식회사 중간 서버", keySet: !!env.CHATKHU_KEY, board: !!env.BOARD, accounts: !!env.BOARD, guests: !!env.BOARD, adminCode: !!env.ADMIN_CODE, fileTest: env.ALLOW_FILE_ORIGIN === "1", boardAdmin: true, version: 9 }, allowed);
     }
     if (request.method !== "POST") return reply(405, { error: "POST만 받아요." }, allowed);
     if (!allowed) return reply(403, { error: "허용되지 않은 주소에서 온 요청이에요." }, "");

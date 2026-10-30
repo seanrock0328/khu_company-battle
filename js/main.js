@@ -358,10 +358,11 @@ clearBtn.addEventListener("click", () => {
     setTimeout(() => { clearArmed = false; clearBtn.textContent = "순위표 초기화"; }, 4000);
     return;
   }
-  clearBoard(); // 공유 순위표면 관리자 코드를 물어보고, 취소하면 아무것도 지우지 않습니다
+  const result = clearBoard(); // 공유 순위표면 관리자 코드를 물어보고, 결과 안내는 board-sync.js가 띄웁니다
   lastPlacedAt = null;
   clearArmed = false;
   clearBtn.textContent = "순위표 초기화";
+  if (result && typeof result.then === "function") return; // 공유 순위표: 서버 결과를 기다림 (취소·코드 틀림이면 그대로)
   renderBoard(null);
   toast("순위표를 비웠어요.");
 });
