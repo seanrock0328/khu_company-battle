@@ -432,8 +432,67 @@ function renderSoundButton() {
   const btn = document.getElementById("btn-sound");
   if (!btn) return;
   btn.setAttribute("aria-pressed", String(sound.on));
-  btn.setAttribute("aria-label", sound.on ? "효과음 끄기" : "효과음 켜기");
+  btn.setAttribute("aria-label", sound.on ? "소리 끄기 (효과음·배경음)" : "소리 켜기 (효과음·배경음)");
   btn.innerHTML = `<span aria-hidden="true">${sound.on ? "🔊" : "🔇"}</span>`;
+}
+
+// ===== 배경음 (music/ 폴더의 CC0 곡, 출처는 music/CREDITS.md) =====
+// 첫 탭 이후에만 재생되고(브라우저 정책), 🔊 버튼이 효과음과 함께 켜고 끕니다. 탭을 숨기면 멈춥니다.
+// office = 평소 사무실, reveal = 보고가 올라오고 진실이 드러나는 동안. 소리 크기는 WebAudio로 줄입니다(아이폰은 audio.volume이 안 먹음).
+const BGM_TRACKS = { office: "music/office.mp3", reveal: "music/reveal.mp3" };
+const BGM_VOLUME = { office: 0.2, reveal: 0.24 };
+const bgm = { want: "office", nodes: {} };
+
+function bgmNode(name) {
+  if (bgm.nodes[name]) return bgm.nodes[name];
+  if (!sound.ctx) return null;
+  const el = new Audio(BGM_TRACKS[name]);
+  el.loop = true;
+  el.preload = "auto";
+  let gain = null;
+  // 파일로 직접 연 index.html(file://)에서는 WebAudio로 연결하면 소리가 안 나서 audio 볼륨만 씁니다
+  if (location.protocol !== "file:") {
+    try {
+      gain = sound.ctx.createGain();
+      gain.gain.value = 0;
+      sound.ctx.createMediaElementSource(el).connect(gain).connect(sound.ctx.destination);
+    } catch { gain = null; }
+  }
+  if (!gain) el.volume = 0;
+  return (bgm.nodes[name] = { el, gain, stop: 0 });
+}
+
+function bgmLevel(node, to, sec) {
+  if (!node.gain) { node.el.volume = to; return; }
+  const g = node.gain.gain;
+  const t = sound.ctx.currentTime;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(to, t + sec);
+}
+
+function bgmSync() {
+  const on = sound.on && !!sound.ctx && !document.hidden;
+  for (const name of Object.keys(BGM_TRACKS)) {
+    const want = on && name === bgm.want;
+    if (!want && !bgm.nodes[name]) continue;
+    const node = bgmNode(name);
+    if (!node) continue;
+    clearTimeout(node.stop);
+    if (want) {
+      if (node.el.paused) node.el.play().catch(() => {});
+      bgmLevel(node, BGM_VOLUME[name], 0.8);
+    } else {
+      bgmLevel(node, 0, 0.6);
+      node.stop = setTimeout(() => node.el.pause(), 700);
+    }
+  }
+}
+
+function bgmScene(name) {
+  if (bgm.want === name || !BGM_TRACKS[name]) return;
+  bgm.want = name;
+  bgmSync();
 }
 
 // ===== 캐릭터 그림 (인라인 SVG) =====
@@ -2747,6 +2806,7 @@ function revealUI(on) {
   if (skip) skip.hidden = !on;
   if (talkIsSheet()) talkOpen(on);
   if (on) talkTypingShow("");
+  bgmScene(on ? "reveal" : "office");
 }
 
 // 판정·숫자·퇴사 연출이 이어지는 동안에도 "탭하면 바로 보기"가 보이게 (단톡방 시트가 닫혀 있으면 사무실 위 칩으로)
@@ -3386,7 +3446,9 @@ function esc(s) {
 function setupUI() {
   renderSoundButton();
   // 첫 탭에서 소리 켜기 (브라우저 정책)
-  document.addEventListener("pointerdown", () => { if (sound.on) audio(); }, { capture: true, passive: true });
+  document.addEventListener("pointerdown", () => { if (sound.on) { audio(); bgmSync(); } }, { capture: true, passive: true });
+  document.addEventListener("keydown", () => { if (sound.on && !sound.ctx) { audio(); bgmSync(); } }, { capture: true });
+  document.addEventListener("visibilitychange", bgmSync);
   document.addEventListener("click", e => {
     const b = e.target.closest("button, .fund, .invest-option");
     if (!b || b.disabled || b.id === "btn-sound") return;
@@ -3397,6 +3459,7 @@ function setupUI() {
     sound.on = !sound.on;
     try { localStorage.setItem("kcb_sound", sound.on ? "on" : "off"); } catch {}
     if (sound.on) { audio(); sfx("tapBig"); }
+    bgmSync();
     renderSoundButton();
   });
   const start = document.getElementById("btn-start");
