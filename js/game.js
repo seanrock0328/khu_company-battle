@@ -388,9 +388,11 @@ function cluesFor(round, opts = {}) {
   const pro = CLUE_PROCESS[(base * 7 + quarter) % CLUE_PROCESS.length];
   const band = r.score <= 45 ? res.low : r.score >= 80 ? res.high : res.mid;
   const kind = r.up.some(x => x.lie) ? pro.lie : pro.honest;
+  // ChatKHU가 그 분기 일에 맞춰 쓴 단서(js/ai.js readClues)가 있으면 먼저 쓰고, 없거나 모자라면 준비된 문장으로 채웁니다
+  const ai = Array.isArray(r.clues) ? r.clues.filter(x => typeof x === "string" && x.trim()) : [];
   return [
-    `${res.src}${tag}: ${band[pick % band.length]}`,
-    `${pro.src}: ${kind[(pick >>> 8) % kind.length]}`
+    ai[0] || `${res.src}${tag}: ${band[pick % band.length]}`,
+    ai[1] || `${pro.src}: ${kind[(pick >>> 8) % kind.length]}`
   ];
 }
 

@@ -351,6 +351,29 @@ test("추리 단서는 분기마다 다른 출처로 나오고, 같은 분기는
   assert.notDeepEqual(clues(0, 59, true, "서버 다운"), JSON.parse(run('JSON.stringify(cluesFor({ result: { score: 59, up: [{ lie: true }] } }, { seed: "판-8", quarter: 0, event: { title: "서버 다운" } }))')));
 });
 
+test("AI가 쓴 단서를 먼저 쓰고, 답이 새는 단서는 버린 뒤 준비된 문장으로 채운다", () => {
+  const run = setup();
+  run(fs.readFileSync(path.join(__dirname, "..", "js/ai.js"), "utf8"));
+  hire(run);
+  run('c.events = [{ type: "위기", title: "서버 다운", text: "서버가 멈췄다" }]; c.rounds[0] = { order: "복구해", result: null };');
+  const clues = extra => {
+    run(`applyEvent(${JSON.stringify(JSON.stringify({ down: [{ say: "복구해" }], up: [{ say: "복구함" }], score: 70, ...extra }))}, "테스트")`);
+    return JSON.parse(run('JSON.stringify(cluesFor(c.rounds[0], { seed: "판-1", quarter: 0, event: c.events[0] }))'));
+  };
+  const both = clues({ clues: ["SNS 반응: 접속된다는 글과 아직 느리다는 글이 섞임", "사내 메신저: 새벽 내내 '재부팅' 이야기만 오감"] });
+  assert.deepEqual(both, ["SNS 반응: 접속된다는 글과 아직 느리다는 글이 섞임", "사내 메신저: 새벽 내내 '재부팅' 이야기만 오감"]);
+  // 점수·성공·거짓말을 대놓고 말한 단서는 버리고 그 자리는 준비된 문장
+  const leaky = clues({ clues: ["손님 반응: 대성공! 70점짜리 대응", "회의록: 부장이 거짓말을 했다"] });
+  assert.doesNotMatch(leaky.join(" "), /70|성공|거짓말/);
+  assert.equal(leaky.length, 2);
+  // 대문자 키·한 개만 와도 읽고, 빈자리는 채운다
+  const one = clues({ Clues: ["거래처 메일: 복구됐냐는 문의가 계속 옴"] });
+  assert.equal(one[0], "거래처 메일: 복구됐냐는 문의가 계속 옴");
+  assert.ok(one[1].length > 4);
+  // 단서가 없으면 예전처럼 준비된 문장 두 개
+  assert.equal(clues({}).length, 2);
+});
+
 test("모든 추리 단서 문장은 점수 숫자나 성공·실패를 직접 말하지 않는다", () => {
   const run = setup();
   const all = JSON.parse(run("JSON.stringify([...CLUE_RESULT.flatMap(x => [...x.low, ...x.mid, ...x.high]), ...CLUE_PROCESS.flatMap(x => [...x.lie, ...x.honest])])"));
